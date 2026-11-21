@@ -103,7 +103,7 @@ const HttpBackend = {
   async send(req, o) {
     const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, abilities: req.abilities, lang: req.lang }) });
+    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], abilities: req.abilities, lang: req.lang }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };

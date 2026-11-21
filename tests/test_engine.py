@@ -162,3 +162,70 @@ def test_diagnose_reports_network_key_and_missing_models(monkeypatch):
     assert "openrouter: key reject" in text
     assert "gemini: NETWORK FAIL ConnectError" in text
     assert "gsk_test_123456" not in text
+
+
+def test_casual_path_skips_pipeline(monkeypatch):
+    import chat_adapter
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    ran = []
+
+    async def no_pipeline(*a, **k):
+        ran.append(1)
+        raise AssertionError("pipeline must not run for greetings")
+
+    async def quick(client, spec, messages, **kw):
+        return "Hello! Kaise ho?"
+
+    monkeypatch.setattr(pipeline, "run", no_pipeline)
+    monkeypatch.setattr(chat_adapter, "chat", quick)
+    for greeting in ("Hlo", "hello!", "Namaste", "thanks"):
+        out = json.loads(android_entry.handle(json.dumps({"text": greeting})))
+        assert out[0]["text"] == "Hello! Kaise ho?" and not ran
+    assert not chat_adapter._is_casual("2+2 kya hai?")
+    assert not chat_adapter._is_casual("explain photosynthesis")
+
+
+def test_casual_failure_falls_back_to_pipeline(monkeypatch):
+    import chat_adapter
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+
+    async def down(*a, **k):
+        raise llm.LLMError("down")
+
+    monkeypatch.setattr(chat_adapter, "chat", down)
+    out = json.loads(android_entry.handle(json.dumps({"text": "Hlo"})))
+    assert "Direct Core Truth" in out[0]["text"]  # fake pipeline models answer instead
+
+
+def test_manual_and_hybrid_sources(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    seen = {}
+    real_run = pipeline.run
+
+    async def spy(question, **kw):
+        seen.update(kw)
+        return await real_run(question, **kw)
+
+    monkeypatch.setattr(pipeline, "run", spy)
+    two = [{"source": "ChatGPT", "text": "Answer is 4."}, {"source": "Gemini", "text": "It is 4."}, {"source": "x", "text": "  "}]
+
+    out = json.loads(android_entry.handle(json.dumps({"text": "2+2 kya hai?", "source": "manual", "answers": two})))
+    assert seen["source"] == "manual" and len(seen["answers"]) == 2 and seen["use_guard"] is True
+    assert any(s.startswith("Source: manual (2 yours") for s in out[0]["steps"])
+
+    seen.clear()
+    json.loads(android_entry.handle(json.dumps({"text": "2+2 kya hai?", "source": "hybrid", "answers": two})))
+    assert seen["source"] == "hybrid"
+
+    # auto ignores stray answers (the pipeline would reject them) and does not run the guard
+    seen.clear()
+    json.loads(android_entry.handle(json.dumps({"text": "2+2 kya hai?", "source": "auto", "answers": two})))
+    assert seen["source"] == "auto" and seen["answers"] == [] and seen["use_guard"] is False
+
+
+def test_manual_without_answers_is_refused_and_greeting_not_casual(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    out = json.loads(android_entry.handle(json.dumps({"text": "hello", "source": "manual", "answers": []})))
+    assert "pasted answer" in out["text"]

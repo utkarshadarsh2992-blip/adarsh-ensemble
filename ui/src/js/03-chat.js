@@ -28,6 +28,7 @@ const Chat = (() => {
     thread = h('div', { class: 'scroll thread pad' }, col = h('div', { class: 'col' }));
     ta = h('textarea', { rows: 1, placeholder: 'Message Adarsh', 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
+    drawAtts();
     micBtn = h('button', { class: 'circ mic', 'aria-label': 'Dictate', on: { click: dictate } }, icon('mic'));
     sendBtn = h('button', { class: 'circ send', 'aria-label': 'Send', hidden: true, on: { click: () => (busy ? stop() : submit()) } }, icon('send'));
     voiceBtn = h('button', { class: 'circ voicebtn', 'aria-label': 'Voice mode', on: { click: () => Voice.open() } }, icon('voice'));
@@ -99,6 +100,45 @@ const Chat = (() => {
     return a;
   }
 
+  /* ---------- answer source: auto / manual / hybrid ---------- */
+  const SRC = {
+    auto: ['Auto', 'Six models, each with its own way of thinking (logic, research, code, first principles, business, planning), write the answers.'],
+    manual: ['Manual', 'You paste answers from other AIs such as ChatGPT, Gemini or Claude. Adarsh checks them against each other.'],
+    hybrid: ['Hybrid', 'Your pasted answers and the six models together.']
+  };
+  const MAX_ANSWERS = 8, MAX_ANSWER_CHARS = 12000;
+  let pasted = [];                       // [{source, text}] for the next question only. Never saved.
+  let lastExtra = { source: 'auto', answers: [] };
+  const srcMode = () => S.settings.source || 'auto';
+  const validAnswers = () => pasted.map(a => ({ source: (a.source || '').trim().slice(0, 60), text: (a.text || '').trim().slice(0, MAX_ANSWER_CHARS) })).filter(a => a.text);
+  function sourceSheet() {
+    sheet({ title: 'Where answers come from', tall: true, build(b, close) {
+      const host = h('div', { style: 'display:flex;flex-direction:column;gap:12px' }); b.append(host);
+      const draw = () => {
+        host.textContent = '';
+        const mode = srcMode();
+        host.append(h('div', { class: 'seg' }, Object.keys(SRC).map(k => h('button', { 'aria-pressed': String(mode === k), on: { click: () => {
+          S.settings.source = k; save();
+          if (k !== 'auto' && !pasted.length) pasted.push({ source: '', text: '' });
+          drawAtts(); draw();
+        } } }, SRC[k][0]))));
+        host.append(h('p', {}, SRC[mode][1]));
+        if (mode !== 'auto') {
+          pasted.forEach((a, i) => {
+            const name = h('input', { type: 'text', placeholder: 'Which AI? (ChatGPT, Gemini, Claude…)', value: a.source || '', 'aria-label': 'Answer ' + (i + 1) + ' source', maxlength: '60', on: { input: (e) => { a.source = e.target.value; } } });
+            const body = h('textarea', { class: 'ansbox', placeholder: 'Paste the full answer here', 'aria-label': 'Answer ' + (i + 1) + ' text', maxlength: String(MAX_ANSWER_CHARS), value: a.text || '', on: { input: (e) => { a.text = e.target.value; } } });
+            host.append(h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, name, body,
+              h('button', { class: 'btn ghost', on: { click: () => { pasted.splice(i, 1); drawAtts(); draw(); } } }, 'Remove answer ' + (i + 1))));
+          });
+          if (pasted.length < MAX_ANSWERS) host.append(h('button', { class: 'btn ghost', on: { click: () => { pasted.push({ source: '', text: '' }); draw(); } } }, 'Add another answer'));
+          host.append(h('p', { class: 'muted' }, 'Up to ' + MAX_ANSWERS + ' answers. Pasted text is checked for prompt injection and treated only as data. It is used for the next question and then cleared.'));
+        }
+        host.append(h('button', { class: 'btn pri', on: { click: () => { pasted = pasted.filter(a => (a.text || '').trim()); drawAtts(); close(); } } }, 'Done'));
+      };
+      draw();
+    } });
+  }
+
   /* ---------- composer ---------- */
   function onInput() {
     ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px';
@@ -114,7 +154,7 @@ const Chat = (() => {
   function addSheet() {
     sheet({ title: 'Add', build(b, close) {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
-      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()));
+      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()), row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
     } });
   }
   function addFile(f) {
@@ -125,6 +165,7 @@ const Chat = (() => {
   }
   function drawAtts() {
     atts.textContent = '';
+    if (srcMode() !== 'auto') atts.append(h('button', { class: 'srcchip', 'aria-label': 'Change answer source', on: { click: sourceSheet } }, icon('sliders', 's'), h('span', {}, SRC[srcMode()][0] + ' · ' + validAnswers().length + ' pasted')));
     pending.forEach(a => atts.append(h('div', { class: 'att' }, a.kind === 'image' ? h('img', { src: a.thumb, alt: '' }) : h('span', { class: 'ic' }, icon('file', 's')), h('span', {}, a.name),
       h('button', { 'aria-label': 'Remove ' + a.name, on: { click: () => { pending = pending.filter(x => x !== a); drawAtts(); onInput(); } } }, icon('x', 's')))));
   }
@@ -152,24 +193,28 @@ const Chat = (() => {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
     if (!meta && App.view !== 'chat') App.show('chat');
+    const typed = textOverride == null;
+    const answers = typed && srcMode() !== 'auto' ? validAnswers() : [];
+    if (typed && srcMode() !== 'auto' && !answers.length) { toast('Paste at least one answer first'); sourceSheet(); return; }
     const c = newChat();
     const um = { id: uid('m'), role: 'user', text, ts: Date.now(), atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
     pushUser(c, um);
-    if (textOverride == null) { ta.value = ''; pending = []; drawAtts(); onInput(); }
+    if (textOverride == null) { ta.value = ''; pending = []; pasted = []; drawAtts(); onInput(); }
     const attachments = await Promise.all(files.map(readAtt));
-    await runBackend(c, { text, attachments, meta });
+    await runBackend(c, { text, attachments, meta, source: typed ? srcMode() : 'auto', answers });
   }
   function pushUser(c, um) {
     if (!c.msgs.length && um.text) c.title = um.text.slice(0, 42);
     c.msgs.push(um); c.ts = Date.now(); save(); Bus.emit('chats:changed'); renderThread();
   }
-  async function runBackend(c, { text, attachments = [], meta }) {
+  async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [] }) {
+    lastExtra = { source, answers };
     busy = true; ctl = new AbortController(); const steps = [];
     const label = h('span', {}, 'Thinking'); thinkEl = h('div', { class: 'think', role: 'status' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), label);
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta },
+      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta, source, answers },
         { signal: ctl.signal, onProgress: (s) => { steps.push(s); label.textContent = s; } });
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
       arr.forEach((r, i) => { if (i === 0 && steps.length) r.steps = steps.slice(); deliver(c, r); });
@@ -200,7 +245,7 @@ const Chat = (() => {
     const c = cur(); if (!c || busy) return;
     while (c.msgs.length && c.msgs[c.msgs.length - 1].role === 'ai') c.msgs.pop();
     const lastU = c.msgs[c.msgs.length - 1]; if (!lastU || lastU.role !== 'user') return renderThread();
-    renderThread(); runBackend(c, { text: lastU.text || '' });
+    renderThread(); runBackend(c, { text: lastU.text || '', ...lastExtra });
   }
 
   /* structured-reply follow-ups */
@@ -225,7 +270,7 @@ const Chat = (() => {
   }
 
   return {
-    mount, renderThread, newChat, open, remove, cur, submit,
+    mount, renderThread, newChat, open, remove, cur, submit, sourceSheet,
     setDraft(t) { ta.value = t; onInput(); ta.focus(); }, addFile, isBusy: () => busy,
     push(r, { chatId } = {}) { const c = (chatId && S.chats.find(x => x.id === chatId)) || newChat(); deliver(c, normReply(r)); save(); Bus.emit('chats:changed'); renderThread(); }
   };
