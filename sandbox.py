@@ -60,6 +60,10 @@ def _status(returncode: int, stdout: str) -> str:
 
 def run_python(code: str, timeout: int = 10, mem_mb: int = 1024, max_output: int = 1500) -> dict:
     """Returns {"status": PASS|FAIL|ERROR|UNCLEAR|TIMEOUT|REJECTED, "output": str}."""
+    import config
+
+    if not config.CODE_EXEC_SUPPORTED:
+        return {"status": "UNSUPPORTED", "output": "code execution is not available on Android"}
     try:
         _check_ast(code)
     except SyntaxError as e:

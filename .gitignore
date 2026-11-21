@@ -1,4 +1,12 @@
 .env
 .usage.json
 __pycache__/
+*.py[cod]
 venv/
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+local.properties
+*.apk
+*.aab

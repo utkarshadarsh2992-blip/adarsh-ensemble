@@ -186,6 +186,12 @@ if PLAN_PROBLEMS:
     warnings.warn("Fallback plan problems: " + "; ".join(PLAN_PROBLEMS))
 
 # ----------------------------------------------------------------------------- knobs
+import sys
+
+# Android (Chaquopy): there is no usable `python` executable to spawn, so the code-proof sandbox
+# cannot run. Everything else (panel, falsifiers, judge, linter) is unchanged.
+ON_ANDROID = hasattr(sys, "getandroidapilevel") or sys.platform == "android" or "ANDROID_ARGUMENT" in os.environ
+CODE_EXEC_SUPPORTED = not ON_ANDROID
 MAX_DEBATE_ROUNDS = 2
 MAX_USER_ANSWERS = 8
 

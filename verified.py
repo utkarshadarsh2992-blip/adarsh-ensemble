@@ -243,7 +243,7 @@ async def run_verified(client, question, task, anon, lang, deep, run_code, error
         warnings += lint
 
     summary = {"total": len(proofs)}
-    for s in ("PASS", "FAIL", "ERROR", "TIMEOUT", "REJECTED", "UNCLEAR"):
+    for s in ("PASS", "FAIL", "ERROR", "TIMEOUT", "REJECTED", "UNCLEAR", "UNSUPPORTED"):
         n = sum(1 for p in proofs if p["status"] == s)
         if n:
             summary[s.lower()] = n

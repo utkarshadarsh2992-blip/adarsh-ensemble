@@ -72,12 +72,14 @@ async def handle(body: dict) -> dict | list[dict]:
         deep=config.CHAT_MODE == "deep",
         engine=config.CHAT_ENGINE,
         source="auto",
-        run_code=True,
+        run_code=config.CODE_EXEC_SUPPORTED,
         use_guard=False,  # nothing pasted from other AIs in plain chat
         debug=False,
     )
 
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
+    if not config.CODE_EXEC_SUPPORTED:
+        replies[0]["text"] += "\n\n*Python code proofs are off on Android. Steps are [REASONED], not [PROVEN by code].*"
     if body.get("attachments"):
         replies[0]["text"] += "\n\n*Attachments abhi ensemble tak nahi bheje jaate (sirf text).*"
     # shown folded under the answer as "Worked through N steps"

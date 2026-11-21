@@ -164,6 +164,7 @@ const App = (() => {
     st.append(h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
+      window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
       navItem('server', 'Connection', Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
     st.append(h('div', { class: 'grp' },
       navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
@@ -185,6 +186,25 @@ const App = (() => {
       b.append(swItem('speaker', 'Speak replies', 'Read answers aloud in voice mode and on tap', () => S.settings.speak, v => { S.settings.speak = v; }),
         h('label', { class: 'l' }, 'Recognition language'), seg, h('label', { class: 'l' }, 'Speaking speed'), rate,
         TTS.ok() ? h('button', { class: 'btn ghost', on: { click: () => TTS.speak('Namaste. Main Adarsh hoon.') } }, 'Test voice') : h('p', {}, 'This browser has no speech output.'));
+    } });
+  }
+  function keysSummary() {
+    const st = window.AdarshKeys.status(); const n = Object.values(st).filter(x => x && x.set).length;
+    return n ? n + ' of 3 providers set' : 'No keys yet. Add at least one to get answers';
+  }
+  function keysSheet() {
+    sheet({ title: 'API keys', tall: true, build(b, close) {
+      const K = window.AdarshKeys, st = K.status();
+      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'));
+      K.providers.forEach(p => {
+        const cur = st[p.id] || {};
+        const inp = h('input', { type: 'password', placeholder: cur.set ? 'Saved (' + cur.hint + '). Paste a new key to replace' : 'Paste ' + p.name + ' key', 'aria-label': p.name + ' API key', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+        const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+        b.append(h('label', { class: 'l' }, p.name + ' · ' + p.url), inp,
+          h('div', { class: 'frow' },
+            h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { const v = inp.value.trim(); if (!v) return toast('Paste a key first'); done(K.save(p.id, v), p.name + ' key saved'); } } }, 'Save'),
+            cur.set ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => done(K.remove(p.id), p.name + ' key deleted') } }, 'Delete') : null));
+      });
     } });
   }
   function connSheet() {

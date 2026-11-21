@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Adarsh</string>
+    <string name="loading">Starting the engine…</string>
+    <string name="load_failed">The app could not load its screen.</string>
+    <string name="retry">Try again</string>
+    <string name="notif_channel">Answering</string>
+    <string name="notif_title">Adarsh is working on your question</string>
+    <string name="notif_text">Models are being asked. This can take a few minutes.</string>
+</resources>
