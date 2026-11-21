@@ -1,0 +1,311 @@
+"""The ensemble pipeline.
+
+Where the drafts come from (`source`):
+  auto    -> our 6-model panel writes the drafts
+  manual  -> YOU paste answers from other AIs (ChatGPT, Gemini, Claude, ...)
+  hybrid  -> your pasted answers + our panel's drafts together
+
+Then:
+  [0] input guard on pasted answers (prompt-injection detector) + task classification
+  [1] diverse generation: 6 models x 6 thinking styles, in parallel
+  [2] drafts anonymised + shuffled (no brand bias, no position bias)
+  [3] engine "verified": tone-stripper -> Popper falsifiers -> Python proofs -> 3-part judge
+      engine "simple"  : plain debate -> synthesizer
+Every model call goes through llm.chat(), which fails over along the role's fallback chain.
+"""
+import asyncio
+import random
+import re
+import string
+import time
+
+import httpx
+
+import config
+import guard
+import health
+import prompts
+import verified
+from llm import LLMError, chat
+
+
+def _language_hint(question: str) -> str:
+    # Devanagari or common Hinglish markers -> answer in the user's style.
+    if re.search(r"[ऀ-ॿ]", question):
+        return "Reply in Hindi (Devanagari), keeping technical terms in English."
+    hinglish = r"\b(kya|kaise|kyun|kyu|hai|nahi|mujhe|chahiye|karna|batao|samjhao|ka|ki|ke)\b"
+    if len(re.findall(hinglish, question.lower())) >= 2:
+        return "Reply in Hinglish (Hindi written in Roman script), keeping technical terms in English."
+    return "Reply in the same language as the question."
+
+
+def _unique(label: str, taken) -> str:
+    out, n = label, 2
+    while out in taken:
+        out = f"{label} ({n})"
+        n += 1
+    return out
+
+
+async def classify(client: httpx.AsyncClient, question: str) -> str:
+    try:
+        out = await chat(
+            client,
+            config.CLASSIFIER,
+            [
+                {"role": "system", "content": prompts.CLASSIFIER_SYSTEM},
+                {"role": "user", "content": question[:1500]},
+            ],
+            temperature=0.0,
+            max_tokens=300,  # reasoning models spend some of this on thinking
+            timeout=40,
+            retries=0,
+        )
+    except LLMError:
+        return "general"
+    low = re.sub(r"[\s\-]+", "_", out.lower())
+    found = [(low.find(t), t) for t in prompts.TASK_TYPES if t in low]
+    return min(found)[1] if found else "general"
+
+
+async def _ask_member(client, spec, question, task, lang) -> tuple[str, str | None, str | None]:
+    # drafts are keyed by ROLE (unique per panel slot); health trace shows which model served it
+    try:
+        text = await asyncio.wait_for(
+            chat(
+                client,
+                spec,
+                prompts.panel_messages(question, spec.role, task, lang),
+                temperature=0.5,
+                max_tokens=config.PANEL_MAX_TOKENS,
+            ),
+            timeout=config.PANEL_TIMEOUT_S,
+        )
+        return spec.role, text, None
+    except (LLMError, asyncio.TimeoutError) as e:
+        return spec.role, None, str(e) or "timeout"
+
+
+async def _debater_turn(client, spec, question, drafts, others, lang):
+    try:
+        text = await asyncio.wait_for(
+            chat(
+                client,
+                spec,
+                prompts.debate_messages(question, drafts, others, lang),
+                temperature=0.3,
+                max_tokens=config.FALSIFIER_MAX_TOKENS,
+            ),
+            timeout=config.PANEL_TIMEOUT_S,
+        )
+        return text, None
+    except (LLMError, asyncio.TimeoutError) as e:
+        return None, str(e) or "timeout"
+
+
+async def _debate(client, question, drafts, rounds, lang, deep):
+    """Multi-round debate (simple engine). Returns (transcript, errors).
+    transcript = [ {"Debater 1": text, ...}, ... ] one dict per round."""
+    debaters = config.DEBATERS if deep else config.DEBATERS[:2]
+    names = [f"Debater {i + 1}" for i in range(len(debaters))]
+    transcript: list[dict[str, str]] = []
+    errors: dict[str, str] = {}
+    prev: dict[str, str] | None = None
+
+    for r in range(rounds):
+        results = await asyncio.gather(
+            *[
+                _debater_turn(
+                    client, d, question, drafts,
+                    None if prev is None else {k: v for k, v in prev.items() if k != names[i]},
+                    lang,
+                )
+                for i, d in enumerate(debaters)
+            ]
+        )
+        positions = {names[i]: t for i, (t, e) in enumerate(results) if t}
+        for i, (t, e) in enumerate(results):
+            if e:
+                errors[f"{names[i]}@round{r + 1}"] = e
+        if not positions:
+            break
+        transcript.append(positions)
+        prev = positions
+    return transcript, errors
+
+
+def _format_debate(transcript: list[dict[str, str]]) -> str | None:
+    if not transcript:
+        return None
+    parts = []
+    for i, positions in enumerate(transcript, 1):
+        body = "\n\n".join(f"#### {k}\n{v}" for k, v in positions.items())
+        parts.append(f"### Debate round {i}\n{body}")
+    return "\n\n".join(parts)
+
+
+async def _noop() -> dict:
+    return {}
+
+
+async def run(
+    question: str,
+    *,
+    deep: bool = True,
+    debug: bool = False,
+    answers: list[dict] | None = None,
+    source: str = "auto",
+    debate_rounds: int = 1,
+    engine: str = "verified",
+    run_code: bool = True,
+    use_guard: bool = True,
+) -> dict:
+    t0 = time.perf_counter()
+    trace = health.start_trace()
+    lang = _language_hint(question)
+    rounds = max(0, min(debate_rounds, config.MAX_DEBATE_ROUNDS))
+    errors: dict[str, str] = {}
+    warnings: list[str] = []
+
+    # Drafts provided by the user (from other AIs)
+    user_drafts: dict[str, str] = {}
+    if source in ("manual", "hybrid"):
+        for i, a in enumerate(answers or []):
+            label = _unique((a.get("source") or "").strip() or f"Answer {i + 1}", user_drafts)
+            user_drafts[label] = a["text"].strip()
+
+    async with httpx.AsyncClient() as client:
+        # [0] guard pasted answers + classify the question, concurrently
+        guard_report, task = await asyncio.gather(
+            guard.scan(client, user_drafts) if (use_guard and user_drafts) else _noop(),
+            classify(client, question),
+        )
+        for name, g in guard_report.items():
+            if g["flagged"]:
+                warnings.append(
+                    f"Pasted answer '{name}' was flagged by the injection detector "
+                    f"(score {g['max_score']:.2f}). It was still used, but treated strictly as data."
+                )
+            elif g["chunks"] and g["unavailable"] == g["chunks"]:
+                warnings.append(
+                    f"Pasted answer '{name}' was NOT scanned: no injection detector was reachable "
+                    "(Groq guard and the fallback LLM both failed)."
+                )
+            elif g["chunks"] and g["unparsed"] + g["unavailable"] == g["chunks"]:
+                warnings.append(
+                    f"Injection detector gave no readable score for '{name}' (output format differs?)."
+                )
+            elif "llm-fallback" in g["via"]:
+                warnings.append(
+                    f"'{name}' was scanned by the weaker LLM fallback detector (Groq guard unavailable)."
+                )
+
+        # [1] drafts written by our own panel
+        panel_drafts: dict[str, str] = {}
+        if source in ("auto", "hybrid"):
+            panel = config.PANEL if deep else config.PANEL[:3]
+            results = await asyncio.gather(
+                *[_ask_member(client, s, question, task, lang) for s in panel]
+            )
+            panel_drafts = {label: text for label, text, err in results if text}
+            errors.update({label: err for label, text, err in results if err})
+
+        all_drafts = dict(user_drafts)
+        for label, text in panel_drafts.items():
+            all_drafts[_unique(label, all_drafts)] = text
+
+        panel_failed = source == "auto" and len(panel_drafts) < config.MIN_PANEL_SUCCESS
+        if panel_failed or not all_drafts:
+            try:
+                answer = await chat(
+                    client,
+                    config.SYNTHESIZER,
+                    prompts.panel_messages(question, "step_solver", task, lang),
+                    max_tokens=config.FINAL_MAX_TOKENS,
+                )
+            except LLMError as e:
+                raise RuntimeError(f"Not enough models responded. Errors: {errors} | {e}")
+            return _pack(
+                answer, task, {}, {}, errors, [], t0, debug, 0, trace=trace, warnings=warnings,
+                guard_report=guard_report, fallback=True,
+            )
+
+        # [2] anonymise (A, B, C...) and shuffle: judges see no brand names and no fixed order
+        items = list(all_drafts.items())
+        random.shuffle(items)
+        letters = string.ascii_uppercase
+        anon = {letters[i]: text for i, (_, text) in enumerate(items)}
+        letter_to_name = {letters[i]: name for i, (name, _) in enumerate(items)}
+        flagged = {l for l, n in letter_to_name.items() if guard_report.get(n, {}).get("flagged")}
+
+        # [3] engine
+        if engine == "verified":
+            answer, extras = await verified.run_verified(
+                client, question, task, anon, lang, deep, run_code, errors, flagged
+            )
+            warnings += extras.get("warnings", [])
+            return _pack(
+                answer, task, user_drafts, panel_drafts, errors, [], t0, debug, 0,
+                trace=trace, warnings=warnings, guard_report=guard_report,
+                letter_to_name=letter_to_name, engine="verified", extras=extras,
+            )
+
+        # engine == "simple": plain debate + synthesis
+        transcript: list[dict[str, str]] = []
+        if rounds > 0:
+            transcript, debate_errors = await _debate(client, question, anon, rounds, lang, deep)
+            errors.update(debate_errors)
+        debate_text = _format_debate(transcript)
+
+        synth_args = (question, anon, debate_text, lang)
+        try:
+            answer = await chat(
+                client, config.SYNTHESIZER, prompts.synth_messages(*synth_args),
+                temperature=0.3, max_tokens=config.FINAL_MAX_TOKENS,
+            )
+        except LLMError as e:
+            errors["synthesizer"] = str(e)
+            answer = max(all_drafts.values(), key=len)
+            warnings.append("Final synthesis failed: returned the longest draft (unverified).")
+
+    return _pack(
+        answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, len(transcript),
+        trace=trace, warnings=warnings, guard_report=guard_report, letter_to_name=letter_to_name,
+    )
+
+
+def _pack(
+    answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, rounds_run, *,
+    trace, warnings, guard_report, fallback=False, letter_to_name=None, engine="simple", extras=None,
+) -> dict:
+    out = {
+        "answer": answer,
+        "engine": engine,
+        "task_type": task,
+        "user_answers_used": len(user_drafts),
+        "panel_answers_used": len(panel_drafts),
+        "debate_rounds_run": rounds_run,
+        "latency_s": round(time.perf_counter() - t0, 2),
+        "models_used": health.summarize(trace),  # which model actually answered, and how often
+    }
+    if extras:
+        out["proofs_summary"] = extras["proofs_summary"]
+    if guard_report:
+        out["guard"] = guard_report
+    if warnings:
+        out["warnings"] = warnings
+    if fallback:
+        out["note"] = "Panel failed; answered by a single model."
+    if debug:
+        out["debug"] = {
+            "user_drafts": user_drafts,
+            "panel_drafts": panel_drafts,
+            "draft_letters": letter_to_name or {},
+            "debate": transcript,
+            "errors": errors,
+            "model_trace": trace,  # asked -> used (shows every fail-over)
+            "usage": health.snapshot(),
+        }
+        if extras:
+            out["debug"].update(extras["debug"])
+    return out

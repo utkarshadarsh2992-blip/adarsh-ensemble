@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="edge">
+<title>ADARSH</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="phone" id="phone">
+  <section class="view on" id="v-chat"></section>
+  <section class="view" id="v-today"></section>
+  <section class="view" id="v-tasks"></section>
+  <section class="view" id="v-missions"></section>
+  <section class="view" id="v-library"></section>
+  <section class="view" id="v-abilities"></section>
+  <section class="view" id="v-settings"></section>
+  <aside class="drawer" id="drawer" aria-label="Menu"></aside>
+  <div class="voice" id="voice" data-state="idle" hidden></div>
+  <div class="banners" id="banners"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="lock" id="lock" hidden></div>
+</div>
+<input type="file" id="f-any" multiple hidden>
+<input type="file" id="f-img" accept="image/*" hidden>
+<input type="file" id="f-import" accept="application/json" hidden>
+<script src="js/01-core.js"></script>
+<script src="js/02-render.js"></script>
+<script src="js/03-chat.js"></script>
+<script src="js/04-views.js"></script>
+<script src="js/05-voice.js"></script>
+<script src="js/06-lock.js"></script>
+<script src="js/07-backend.js"></script>
+<script src="js/08-boot.js"></script>
+</body>
+</html>

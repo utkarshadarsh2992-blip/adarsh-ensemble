@@ -1,0 +1,1653 @@
+<title>ADARSH</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* =====================================================================================
+   ADARSH UI : app.css
+   Layout: one phone-width app (max 480px, centred on wide screens). Full-height drawer for navigation.
+   Dark-first: near-black ground, soft grey cards, one clay-orange accent (identity), one blue (selection).
+   ===================================================================================== */
+:root{
+  --outer:#E9E6E0; --bg:#FAF9F6; --card:#F0EEE8; --card2:#E7E4DC; --fg:#1D1C1A; --muted:#78746B; --line:#E1DDD4;
+  --accent:#D0623A; --accent-fg:#FFFFFF; --sel:#2F6FD8; --user:#E9E5DC;
+  --good:#2C7A4B; --warn:#A8690F; --bad:#B03A2A; --info:#32679A;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --serif:'Newsreader','Iowan Old Style',Georgia,serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --body:var(--sans);
+  --shadow:0 4px 22px rgba(0,0,0,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --outer:#0A0A0A; --bg:#111111; --card:#1E1E1E; --card2:#2A2A2A; --fg:#EDEDED; --muted:#8F8F8F; --line:#2C2C2C;
+    --accent:#DA7551; --accent-fg:#1B1410; --sel:#4C8DF0; --user:#2A2A2A;
+    --good:#58B67F; --warn:#D9A24A; --bad:#E5705E; --info:#6FA6D8; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --outer:#0A0A0A; --bg:#111111; --card:#1E1E1E; --card2:#2A2A2A; --fg:#EDEDED; --muted:#8F8F8F; --line:#2C2C2C;
+  --accent:#DA7551; --accent-fg:#1B1410; --sel:#4C8DF0; --user:#2A2A2A;
+  --good:#58B67F; --warn:#D9A24A; --bad:#E5705E; --info:#6FA6D8; color-scheme:dark;
+}
+:root[data-font="serif"]{--body:var(--serif)}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--outer);color:var(--fg);font:16px/1.55 var(--body);overflow:hidden;-webkit-font-smoothing:antialiased}
+:root[data-font="serif"] body{font-size:17px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
+button:disabled{cursor:default}
+textarea,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--sel);outline-offset:2px;border-radius:8px}
+svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.i.s{width:18px;height:18px}
+svg.i.chev{width:16px;height:16px;color:var(--muted);transition:transform .15s}
+details[open]>summary svg.i.chev{transform:rotate(90deg)}
+.pad{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.muted{color:var(--muted);font-size:13.5px}
+.center{text-align:center}
+.mono{font-family:var(--mono)}
+
+.phone{height:100%;max-width:480px;margin:0 auto;position:relative;overflow:hidden;background:var(--bg)}
+@media (min-width:520px){.phone{border-inline:1px solid var(--line)}}
+.view{position:absolute;inset:0;display:none;flex-direction:column;min-height:0}
+.view.on{display:flex}
+.scroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.stack{display:flex;flex-direction:column;gap:16px;padding-top:6px;padding-bottom:40px}
+
+/* ---------- header ---------- */
+.hdr{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;min-height:64px;padding-top:6px;padding-bottom:6px}
+.hdr h1{margin:0;text-align:center;font:500 20px/1.2 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding:0 6px}
+.hdr h1.wm{font:500 22px/1 var(--serif);letter-spacing:.02em}
+.ib{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;color:var(--fg)}
+.ib:active{background:var(--card)}
+.tag{font:500 10.5px/1 var(--mono);letter-spacing:.06em;padding:4px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tag.demo{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.status{display:inline-flex;gap:7px;align-items:center;font:500 12px var(--mono);color:var(--muted);letter-spacing:.03em}
+.status i{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.status.demo i{background:var(--warn)}
+
+/* ---------- buttons / chips ---------- */
+.btn{height:44px;padding:0 22px;border-radius:22px;font-weight:500;background:var(--fg);color:var(--bg);display:inline-flex;align-items:center;justify-content:center;gap:8px;text-align:center}
+.btn.pri{background:var(--accent);color:var(--accent-fg)}
+.btn.ghost{background:var(--card2);color:var(--fg)}
+.btn.danger{background:var(--bad);color:#fff}
+.btn:disabled{opacity:.35}
+.link{color:var(--muted);font-size:14px;padding:8px 10px;border-radius:10px}
+.link:active{background:var(--card2)}
+.chip{font:500 11px var(--mono);padding:3px 7px;border-radius:7px;background:var(--card2);color:var(--muted)}
+.chip.ok{color:var(--good)}.chip.no{color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.pill{display:inline-flex;align-items:center;gap:5px;font:500 10.5px/1 var(--mono);letter-spacing:.04em;padding:5px 8px;border-radius:999px;white-space:nowrap;flex:none}
+.pill.good{color:var(--good);background:color-mix(in srgb,var(--good) 15%,transparent)}
+.pill.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
+.pill.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 15%,transparent)}
+.pill.info{color:var(--info);background:color-mix(in srgb,var(--info) 15%,transparent)}
+.pill.mute{color:var(--muted);background:var(--card2)}
+.seg{display:flex;background:var(--card2);border-radius:14px;padding:3px;gap:3px}
+.seg button{flex:1;padding:9px 6px;border-radius:11px;text-align:center;font-size:14px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--bg);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sw{width:54px;height:32px;border-radius:16px;background:var(--card2);position:relative;flex:none;transition:background .15s;display:block}
+.sw::after{content:"";position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .15s}
+[aria-checked="true"]>.sw{background:var(--sel)}
+[aria-checked="true"]>.sw::after{transform:translateX(22px)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+
+/* ---------- chat ---------- */
+.thread{scroll-behavior:smooth;display:flex;flex-direction:column}
+.col{display:flex;flex-direction:column;gap:22px;padding:8px 0 28px;width:100%}
+.col.empty{flex:1;justify-content:center}
+.hello{display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding-bottom:10vh}
+.mark{width:52px;height:52px;border-radius:16px;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font:500 26px/1 var(--serif)}
+.mark.sm{width:30px;height:30px;border-radius:9px;font-size:16px}
+.hello h2{margin:0;font:400 clamp(32px,9vw,42px)/1.1 var(--serif);letter-spacing:-.01em}
+.hello p{margin:0;color:var(--muted)}
+.msg{display:flex;flex-direction:column;gap:8px;min-width:0}
+.msg.user{align-items:flex-end}
+.bubble{background:var(--user);padding:10px 16px;border-radius:22px 22px 6px 22px;max-width:88%;white-space:pre-wrap;overflow-wrap:anywhere}
+.bubble .thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.bubble .thumbs img{width:96px;height:96px;object-fit:cover;border-radius:12px}
+.bubble .fchip{display:inline-flex;align-items:center;gap:6px;font:500 12px var(--mono);color:var(--muted);background:var(--card2);padding:5px 9px;border-radius:9px}
+.ans{background:var(--user);border-radius:20px 20px 6px 20px;max-width:92%;padding:10px 16px;font-size:14.5px}
+.ans .k{font:500 10.5px var(--mono);letter-spacing:.09em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px}
+.ans div+div{margin-top:4px}.ans b{font-weight:500;color:var(--muted)}
+.decision{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;font-size:14px;background:var(--user)}
+.decision.allow{color:var(--good)}.decision.deny{color:var(--bad)}
+.prose{overflow-wrap:anywhere}
+.prose p{margin:0 0 .8em}.prose p:last-child{margin-bottom:0}
+.prose ul,.prose ol{margin:0 0 .8em;padding-left:1.3em}.prose li{margin:.2em 0}
+.prose h4{margin:.9em 0 .3em;font:500 18px var(--serif)}
+.prose code{font:500 .86em var(--mono);background:var(--card);padding:.14em .4em;border-radius:6px}
+.prose pre{margin:.2em 0 .9em;background:var(--card);border-radius:14px;padding:12px 14px;overflow-x:auto}
+.prose pre code{background:none;padding:0;font-size:13px;line-height:1.55}
+.actions{display:flex;flex-wrap:wrap;gap:4px;align-items:center;color:var(--muted);min-height:32px}
+.actions button{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:16px;font:400 13px var(--sans)}
+.actions button:active{background:var(--card)}
+.actions button[aria-pressed="true"]{color:var(--accent)}
+.think{display:flex;align-items:center;gap:10px;color:var(--muted);font:400 14.5px var(--sans)}
+.dots{display:inline-flex;gap:4px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:pulse 1.2s infinite ease-in-out}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes pulse{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+.steps{background:var(--card);border-radius:14px;font-family:var(--sans)}
+.steps>summary{display:flex;gap:8px;align-items:center;padding:10px 14px;font-size:13px;color:var(--muted);cursor:pointer;list-style:none}
+.steps>summary::-webkit-details-marker{display:none}
+.steps .st-row{padding:2px 14px 2px 38px;font-size:13px;color:var(--muted)}
+.steps .st-row:last-child{padding-bottom:10px}
+
+.dock{padding-top:6px;padding-bottom:10px}
+.box{background:var(--card);border-radius:28px;padding:12px 12px 10px 18px}
+.box textarea{width:100%;resize:none;border:0;outline:0;background:transparent;line-height:1.5;max-height:180px;min-height:28px;padding:2px 0;display:block}
+.box textarea::placeholder{color:var(--muted)}
+.box .row{display:flex;align-items:center;gap:4px;margin-top:6px;margin-left:-8px}
+.box .row .sp{flex:1}
+.circ{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;flex:none}
+.circ.plus{color:var(--fg)}.circ.plus:active{background:var(--card2)}
+.circ.mic{color:var(--fg)}.circ.mic:active{background:var(--card2)}
+.circ.mic.live{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.circ.send{background:var(--accent);color:var(--accent-fg)}
+.circ.voicebtn{background:var(--fg);color:var(--bg)}
+.fine{text-align:center;color:var(--muted);font:400 12px var(--sans);margin:8px 0 0}
+.atts{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px -4px}
+.atts:empty{display:none}
+.att{position:relative;display:flex;align-items:center;gap:8px;background:var(--card2);border-radius:14px;padding:5px 32px 5px 5px;max-width:100%}
+.att img,.att .ic{width:40px;height:40px;border-radius:10px;object-fit:cover;flex:none}
+.att .ic{background:var(--card);display:grid;place-items:center;color:var(--muted)}
+.att span{font-size:13px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att button{position:absolute;right:3px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}
+
+/* ---------- structured cards ---------- */
+.card{background:var(--card);border-radius:22px;overflow:hidden;max-width:100%;font-family:var(--sans);font-size:14.5px}
+.card-h{display:flex;align-items:flex-start;gap:10px;padding:16px 18px 12px;flex-wrap:wrap}
+.card-h .k,.sec>.k{font:500 10.5px var(--mono);letter-spacing:.09em;color:var(--muted);text-transform:uppercase;display:block}
+.card-h .k{margin-bottom:4px}
+.card-h h3{margin:0;font:500 20px/1.25 var(--serif)}
+.card-h .grow{flex:1;min-width:0}
+.sec{padding:12px 18px;border-top:1px solid var(--line)}
+.sec>.k{margin-bottom:6px}
+.sec p{margin:0}
+.note{display:flex;gap:9px;padding:10px 12px;border-radius:12px;font-size:13.5px;line-height:1.5;margin-top:10px;background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.kvr{display:flex;gap:12px;padding:10px 18px;border-top:1px solid var(--line);font-size:14px}
+.kvr b{font:500 12px var(--mono);color:var(--muted);width:72px;flex:none;padding-top:2px}
+.kvr span{flex:1;min-width:0;overflow-wrap:anywhere}
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+.claim{border-top:1px solid var(--line)}
+.claim>summary{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-start;padding:12px 18px}
+.claim .n{font:500 12px var(--mono);color:var(--muted);padding-top:3px;width:16px;flex:none}
+.claim .ct{flex:1 1 60%;min-width:0;overflow-wrap:anywhere}
+.claim svg.i.chev{margin-top:4px}
+.claim .pill{margin-left:26px}
+.checks{padding:0 18px 14px 44px;display:flex;flex-direction:column;gap:8px}
+.check{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;font-size:13px;color:var(--muted)}
+.check b{font:500 12px var(--mono);color:var(--fg)}
+.src{padding:8px 0;border-top:1px solid var(--line);font-size:13.5px}
+.src:first-child{border-top:0}
+.src b{font:500 12px var(--mono);color:var(--accent);margin-right:6px}
+.src small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
+.fold{border-top:1px solid var(--line)}
+.fold>summary{display:flex;align-items:center;gap:8px;padding:13px 18px;font-weight:500;font-size:14px}
+.fold>.in{padding:0 18px 14px;font-size:13.5px;color:var(--muted);display:flex;flex-direction:column;gap:5px}
+.duo>div{padding:14px 18px;border-top:1px solid var(--line);min-width:0}
+.duo .who{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:600;font-size:13px}
+.duo .who span{font:400 11px var(--mono);color:var(--muted)}
+.verdict{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.stage{display:flex;gap:12px;align-items:center;padding:11px 18px;border-top:1px solid var(--line);font-size:14px}
+.stage .st{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;border:1.8px solid var(--card2);color:#fff}
+.stage.completed .st{background:var(--good);border-color:var(--good)}
+.stage.failed .st{background:var(--bad);border-color:var(--bad)}
+.stage.running .st{border-color:var(--accent);border-top-color:transparent;animation:spin .9s linear infinite}
+.stage .st svg{width:12px;height:12px;stroke-width:2.8}
+.stage .lbl{flex:1;min-width:0}.stage .s{font:500 11px var(--mono);color:var(--muted)}
+.stage.pending{color:var(--muted)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bar{height:5px;background:var(--card2);border-radius:5px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
+.card-btns{display:flex;gap:8px;padding:12px 18px 16px;border-top:1px solid var(--line)}
+.sbtn{padding:9px 16px;border-radius:999px;background:var(--card2);font:500 13.5px var(--sans)}
+.pat{padding:14px 18px;border-top:1px solid var(--line)}
+.pat .head{display:flex;gap:10px;align-items:flex-start;margin-bottom:6px}.pat .head p{flex:1;margin:0;font-weight:500}
+.pat ul{list-style:none;margin:0 0 6px;padding:0;color:var(--muted);font-size:13px}
+.pat ul li{padding:2px 0;overflow-wrap:anywhere}.pat ul b{font:500 11.5px var(--mono);color:var(--fg);margin-right:6px}
+.pat .meta{font-size:13px;color:var(--muted)}.pat .meta b{color:var(--fg);font-weight:500}
+.chain{font:500 13px var(--mono);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin-bottom:6px}.chain em{font-style:normal;color:var(--muted)}
+.tw{overflow-x:auto}
+table.roles{width:100%;border-collapse:collapse;font-size:13.5px}
+table.roles td,table.roles th{padding:11px 18px;text-align:left;border-top:1px solid var(--line);vertical-align:top}
+table.roles th{font:500 10.5px var(--mono);letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+table.roles td:first-child{font:500 12.5px var(--mono);white-space:nowrap}
+table.roles .arrow{color:var(--muted);margin:0 4px}
+
+/* ask (structured question) */
+.ask .card-h{padding-bottom:4px}
+.ask .q{padding:4px 18px 12px;display:flex;flex-direction:column;gap:8px}
+.ask .hd{align-self:flex-start;font:500 11px var(--mono);letter-spacing:.06em;background:var(--card2);color:var(--muted);padding:4px 8px;border-radius:7px;text-transform:uppercase}
+.ask .qt{margin:0;font:500 20px/1.3 var(--serif)}
+.opts{display:flex;flex-direction:column;gap:8px;padding:0 14px 6px}
+.opt{display:flex;gap:12px;align-items:flex-start;padding:13px 14px;border-radius:16px;background:var(--card2);border:1.5px solid transparent;width:100%;text-align:left}
+.opt.on{border-color:var(--sel);background:color-mix(in srgb,var(--sel) 10%,var(--card2))}
+.opt .mk{width:22px;height:22px;border-radius:50%;border:1.8px solid var(--muted);flex:none;margin-top:1px;display:grid;place-items:center;color:#fff}
+.opt .mk.sq{border-radius:7px}
+.opt.on .mk{background:var(--sel);border-color:var(--sel)}
+.opt .mk svg{width:14px;height:14px;stroke-width:3}
+.opt .ot{display:flex;flex-direction:column;min-width:0}
+.opt .ot b{font-weight:500}
+.opt .ot small{color:var(--muted);font-size:13.5px;line-height:1.35}
+.opt.other{align-items:center;cursor:text}
+.opt.other input{flex:1;min-width:0;background:transparent;border:0;outline:0;padding:0}
+.opt.other input::placeholder{color:var(--muted)}
+.ask-foot{display:flex;align-items:center;gap:8px;padding:10px 14px 16px}
+.ask-foot .sp{flex:1}
+.pg{display:flex;gap:5px;align-items:center}
+.pg i{width:6px;height:6px;border-radius:50%;background:var(--card2)}
+.pg i.on{background:var(--accent)}
+.approve .decided{display:flex;gap:8px;align-items:center;padding:12px 18px 16px;border-top:1px solid var(--line);font-size:14px}
+.approve .decided.allow{color:var(--good)}.approve .decided.deny{color:var(--bad)}.approve .decided.expired{color:var(--muted)}
+.approve.risk-high{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--bad) 55%,transparent)}
+.chipcard{display:flex;gap:12px;align-items:center;background:var(--card);border-radius:18px;padding:12px 14px;max-width:100%;font-family:var(--sans)}
+.chipcard .ci{width:36px;height:36px;border-radius:50%;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);display:grid;place-items:center;flex:none}
+.chipcard .ct{flex:1;min-width:0;display:flex;flex-direction:column;font-size:14.5px}
+.chipcard .ct b{font-weight:500}.chipcard .ct span{color:var(--muted);overflow-wrap:anywhere}
+.chipcard.gone{opacity:.6}
+
+/* ---------- drawer ---------- */
+.drawer{position:absolute;top:0;bottom:0;left:0;width:100%;background:var(--bg);z-index:21;transform:translateX(-100%);transition:transform .24s ease;display:flex;flex-direction:column;min-height:0;visibility:hidden}
+.open .drawer{transform:none;visibility:visible}
+.d-top{display:flex;align-items:center;min-height:72px;gap:4px;padding-top:6px}
+.d-top .wm{font:500 34px/1 var(--serif);flex:1;letter-spacing:.01em}
+.d-top input{flex:1;min-width:0;border:0;outline:0;background:var(--card);border-radius:999px;padding:11px 18px}
+.d-nav{display:flex;flex-direction:column}
+.d-nav button{display:flex;align-items:center;gap:20px;padding:12px 8px;font-size:17px;width:100%}
+.d-nav button svg{color:var(--muted)}
+.d-nav button[aria-current="true"]{color:var(--accent)}
+.d-nav button[aria-current="true"] svg{color:var(--accent)}
+.d-nav .badge{margin-left:auto;color:var(--muted);font:500 12px var(--mono)}
+.rule{height:1px;background:var(--line);margin:8px 0 14px}
+.d-label{color:var(--muted);padding:0 8px 8px;font-size:15px}
+.d-list{flex:1;min-height:0;overflow-y:auto;padding-bottom:100px}
+.rc{display:flex;align-items:center;gap:16px;border-radius:18px;padding:13px 14px;font-size:16.5px;width:100%;cursor:pointer}
+.rc span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc>svg{color:var(--muted)}
+.rc[aria-current="true"]{background:var(--card2)}
+.rc .del{flex:none;width:32px;height:32px;display:grid;place-items:center;border-radius:50%;color:var(--muted);margin:-6px -6px -6px 0}
+.rc .del:active{background:var(--line);color:var(--bad)}
+.d-empty{color:var(--muted);padding:8px 14px}
+.d-foot{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;padding-top:40px;padding-bottom:16px;background:linear-gradient(to top,var(--bg) 55%,transparent);pointer-events:none}
+.d-foot>*{pointer-events:auto}
+.avatar{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font:600 17px var(--sans)}
+.fab{height:56px;padding:0 24px;border-radius:28px;background:var(--fg);color:var(--bg);display:flex;align-items:center;gap:10px;font-weight:500;font-size:17px;box-shadow:var(--shadow)}
+
+/* ---------- list screens ---------- */
+.grp{display:flex;flex-direction:column;gap:3px}
+.item{background:var(--card);border-radius:8px;padding:0 18px;min-height:60px;display:flex;align-items:center;gap:18px;width:100%}
+.item:first-child{border-radius:26px 26px 8px 8px}.item:last-child{border-radius:8px 8px 26px 26px}.item:only-child{border-radius:26px}
+button.item:active{background:var(--card2)}
+.item>.t{flex:1;min-width:0;display:flex;flex-direction:column;padding:12px 0}
+.item>.t small{color:var(--muted);font-size:14.5px;line-height:1.3}
+.item>svg.i{color:var(--fg)}
+.item.col2{flex-direction:column;align-items:stretch;gap:14px;padding:18px}
+.item.col2 .tt{display:flex;align-items:center;gap:18px}
+.prof{display:flex;align-items:center;gap:14px;padding:14px 0;width:100%}
+.prof .avatar{width:48px;height:48px}
+.prof .t{flex:1;min-width:0}.prof .t b{display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis}
+.prof .t small{color:var(--muted)}
+.themes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.themes button{display:flex;flex-direction:column;align-items:center;gap:10px;color:var(--muted);font-size:15.5px}
+.tile{width:100%;aspect-ratio:1.5;border-radius:20px;padding:9px;border:3px solid transparent;display:block}
+.tile i{display:block;width:100%;height:100%;border-radius:12px;position:relative;border:1px solid rgba(128,128,128,.35)}
+.tile i::before{content:"";position:absolute;left:12px;top:12px;width:44%;height:4px;border-radius:4px;background:#8885;box-shadow:0 9px 0 0 #8885}
+.tile i::after{content:"";position:absolute;right:10px;bottom:10px;width:14px;height:14px;border-radius:50%;background:#D0623A}
+.tl .tile{background:#F3F1EC}.tl i{background:#fff}
+.td .tile{background:#111}.td i{background:#1E1E1E}
+.ts .tile{background:linear-gradient(135deg,#F3F1EC 50%,#111 50%)}.ts i{background:linear-gradient(135deg,#fff 50%,#1E1E1E 50%)}
+.themes button[aria-pressed="true"]{color:var(--sel)}
+.themes button[aria-pressed="true"] .tile{border-color:var(--sel)}
+.mem{display:flex;gap:12px;align-items:flex-start;background:var(--card);border-radius:20px;padding:14px 8px 14px 18px}
+.mem .id{font:500 12px var(--mono);color:var(--muted);padding-top:4px;flex:none}
+.mem p{margin:0;flex:1;min-width:0;overflow-wrap:anywhere}
+.mem button{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--muted);flex:none;margin-top:-4px}
+.mem button:active{background:var(--card2);color:var(--bad)}
+.mem button[aria-pressed="true"]{color:var(--accent)}
+.empty{color:var(--muted);text-align:center;padding:40px 20px;display:flex;flex-direction:column;gap:14px;align-items:center}
+.addbar{display:flex;gap:8px;padding-top:8px;padding-bottom:12px}
+.addbar input,.sheet input[type=text],.sheet input[type=password],.sheet input[type=url],.sheet input[type=datetime-local],.search{flex:1;min-width:0;border:0;outline:0;background:var(--card);border-radius:999px;padding:13px 18px;width:100%}
+.addbar .go,.sheet .go{background:var(--accent);color:var(--accent-fg);border-radius:999px;padding:0 20px;font-weight:500;height:48px;flex:none}
+
+/* today */
+.today-hero{padding:8px 0 2px;display:flex;flex-direction:column;gap:8px}
+.today-hero h2{font:400 clamp(30px,8vw,38px)/1.1 var(--serif);margin:0;letter-spacing:-.01em}
+.today-hero p{color:var(--muted);margin:0}
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.qbtn{background:var(--card);border-radius:20px;padding:16px;display:flex;flex-direction:column;gap:10px;min-height:92px;text-align:left}
+.qbtn:active{background:var(--card2)}
+.qbtn svg{color:var(--accent)}
+.qbtn b{font-weight:500}
+.sech{display:flex;align-items:center;justify-content:space-between;margin:8px 4px -6px;color:var(--muted);font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.sech button{color:var(--sel);font:500 13px var(--sans);text-transform:none;letter-spacing:0}
+.sug .t small{display:block}
+.sug>svg.i:last-child{color:var(--muted)}
+
+/* tasks */
+.task{display:flex;gap:14px;align-items:center;background:var(--card);padding:10px 6px 10px 16px;border-radius:8px;min-height:62px}
+.task:first-child{border-radius:26px 26px 8px 8px}.task:last-child{border-radius:8px 8px 26px 26px}.task:only-child{border-radius:26px}
+.cb{width:26px;height:26px;border-radius:50%;border:2px solid var(--muted);display:grid;place-items:center;color:#fff;flex:none}
+.cb.on{background:var(--good);border-color:var(--good)}
+.cb svg{width:15px;height:15px;stroke-width:3}
+.task .tt{flex:1;min-width:0;display:flex;flex-direction:column;text-align:left}
+.task .tt b{font-weight:500;overflow-wrap:anywhere}
+.task.done .tt b{text-decoration:line-through;color:var(--muted)}
+.due{font:500 12px var(--mono);color:var(--muted)}.due.bad{color:var(--bad)}.due.warn{color:var(--warn)}
+.task .del{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--muted);flex:none}
+.task .del:active{background:var(--card2);color:var(--bad)}
+
+/* abilities */
+.abil{align-items:flex-start;padding-top:14px;padding-bottom:14px}
+.abil .ico{width:40px;height:40px;border-radius:12px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);display:grid;place-items:center;flex:none}
+.abil .t{padding:0}
+.abil .t b{font-weight:500}
+.abil .t small{display:block;margin-top:2px}
+.abil .try{align-self:flex-start;margin-top:8px;font:500 12px var(--mono);color:var(--sel);background:color-mix(in srgb,var(--sel) 12%,transparent);padding:6px 10px;border-radius:10px;text-align:left;max-width:100%;overflow-wrap:anywhere}
+.abil .tag{margin-left:6px;vertical-align:2px}
+.abil .swb{padding-top:6px}
+
+/* ---------- toast / banner ---------- */
+.toasts{position:absolute;left:0;right:0;bottom:104px;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;z-index:35;padding:0 16px}
+.toast{pointer-events:auto;background:var(--fg);color:var(--bg);padding:10px 10px 10px 18px;border-radius:999px;display:flex;gap:10px;align-items:center;box-shadow:var(--shadow);font-size:14.5px;max-width:100%;animation:up .2s ease}
+.toast .tbtn{font-weight:600;padding:6px 12px;border-radius:999px;color:var(--accent)}
+.banners{position:absolute;top:8px;left:0;right:0;z-index:50;display:flex;flex-direction:column;gap:8px;pointer-events:none;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+.banner{pointer-events:auto;background:var(--card2);border-radius:20px;padding:12px 14px;display:flex;gap:12px;align-items:center;box-shadow:var(--shadow);animation:down .25s ease}
+.banner svg{color:var(--accent)}
+.banner .bt{flex:1;min-width:0;display:flex;flex-direction:column}.banner .bt small{color:var(--muted)}
+.banner .sbtn{background:var(--bg)}
+@keyframes up{from{transform:translateY(10px);opacity:0}to{transform:none;opacity:1}}
+@keyframes down{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
+
+/* ---------- sheets ---------- */
+.shade{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.5);display:flex;align-items:flex-end}
+.shade.top{z-index:70}
+.sheet{background:var(--bg);border-radius:28px 28px 0 0;width:100%;max-height:90%;display:flex;flex-direction:column;padding-top:8px;animation:up .22s ease}
+.sheet.tall{height:90%}
+.sheet .grab{width:40px;height:4px;border-radius:4px;background:var(--card2);margin:0 auto 6px}
+.sh-h{display:flex;align-items:center;justify-content:space-between}
+.sh-h h3{margin:0;font:500 22px var(--serif);padding:4px 0}
+.sh-h .ib{width:40px;height:40px;margin-right:-8px}
+.sheet .body{overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:8px 0 max(18px,env(safe-area-inset-bottom,0px))}
+.sheet label.l{font:500 12px var(--mono);letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+.sheet form,.frow{display:flex;gap:8px;align-items:center}
+.sheet p{margin:0;color:var(--muted);font-size:14.5px}
+.kv{display:flex;gap:10px;align-items:center;background:var(--card);border-radius:16px;padding:10px 8px 10px 16px}
+.kv b{font:500 12px var(--mono);color:var(--muted)}.kv span{flex:1;min-width:0;overflow-wrap:anywhere}
+.kv button{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;color:var(--muted)}
+.danger{background:var(--card);color:var(--bad);border-radius:18px;padding:16px 18px;font-weight:500;width:100%}
+.danger.arm{background:var(--bad);color:#fff}
+.opt-row{display:flex;gap:14px;align-items:center;width:100%;background:var(--card);border-radius:18px;padding:14px 16px;text-align:left}
+.opt-row:active{background:var(--card2)}
+.opt-row svg{color:var(--accent)}
+.opt-row .t{flex:1;display:flex;flex-direction:column}.opt-row small{color:var(--muted)}
+.lib-view{overflow-y:auto}
+
+/* ---------- voice mode ---------- */
+.voice{position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;background:radial-gradient(120% 70% at 50% 28%,color-mix(in srgb,var(--accent) 16%,var(--bg)),var(--bg) 72%)}
+.v-top{display:flex;align-items:center;justify-content:space-between;min-height:64px;padding-top:6px}
+.v-mid{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:0 24px}
+.orb{position:relative;width:min(56vw,236px);aspect-ratio:1;border-radius:50%;display:block;flex:none}
+.orb .r{position:absolute;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--accent) 65%,transparent)}
+.orb .r1{inset:16%}.orb .r2{inset:6%;opacity:.7}.orb .r3{inset:-6%;opacity:.4}
+.orb .core{position:absolute;inset:28%;border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--accent) 65%,#fff),var(--accent) 55%,color-mix(in srgb,var(--accent) 55%,#000));box-shadow:0 0 50px color-mix(in srgb,var(--accent) 55%,transparent),inset 0 0 18px rgba(255,255,255,.25)}
+.orb .arc{position:absolute;inset:9%;border-radius:50%;border:3px solid transparent;border-top-color:var(--accent);border-right-color:color-mix(in srgb,var(--accent) 35%,transparent);opacity:0}
+.voice[data-state="idle"] .core{animation:breathe 4.2s ease-in-out infinite}
+.voice[data-state="listening"] .r{animation:ping 1.6s ease-out infinite}
+.voice[data-state="listening"] .r2{animation-delay:.35s}.voice[data-state="listening"] .r3{animation-delay:.7s}
+.voice[data-state="listening"] .core{animation:breathe 1.6s ease-in-out infinite}
+.voice[data-state="thinking"] .arc{opacity:1;animation:spin 1.1s linear infinite}
+.voice[data-state="speaking"] .core{animation:talk .45s ease-in-out infinite alternate}
+.voice[data-state="speaking"] .r{animation:wave 1s ease-in-out infinite alternate}
+.voice[data-state="speaking"] .r2{animation-delay:.2s}.voice[data-state="speaking"] .r3{animation-delay:.4s}
+@keyframes breathe{0%,100%{transform:scale(.96)}50%{transform:scale(1.05)}}
+@keyframes ping{0%{transform:scale(.92);opacity:.7}100%{transform:scale(1.22);opacity:0}}
+@keyframes talk{from{transform:scale(.93)}to{transform:scale(1.1)}}
+@keyframes wave{from{transform:scale(.97)}to{transform:scale(1.07)}}
+.v-state{font:500 24px/1.2 var(--serif);margin:0;text-align:center}
+.v-cap{max-width:36ch;text-align:center;color:var(--muted);min-height:64px;max-height:28vh;overflow-y:auto;font-size:16px;display:flex;flex-direction:column;gap:8px}
+.v-cap .u{color:var(--fg)}
+.v-foot{display:flex;flex-direction:column;gap:12px;padding-top:8px;padding-bottom:14px}
+.v-type{display:flex;gap:8px;align-items:center}
+.v-type input{flex:1;min-width:0;border:0;outline:0;background:var(--card);border-radius:999px;padding:13px 18px}
+.v-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.chipbtn{font:500 13px var(--sans);padding:8px 14px;border-radius:999px;background:var(--card);color:var(--muted)}
+.chipbtn[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+
+/* ---------- lock ---------- */
+.lock{position:absolute;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px}
+.lock h2{margin:0;font:500 28px var(--serif);letter-spacing:.02em}
+.lock .lk-msg{margin:0;color:var(--muted);min-height:1.5em;text-align:center}
+.lock .link{margin-top:4px}
+.pinhost{display:flex;flex-direction:column;align-items:center;gap:26px}
+.pin-dots{display:flex;gap:16px;height:16px}
+.pin-dots i{width:15px;height:15px;border-radius:50%;border:2px solid var(--muted)}
+.pin-dots i.on{background:var(--fg);border-color:var(--fg)}
+.pin-dots.shake{animation:shake .35s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(10px)}60%{transform:translateX(-7px)}80%{transform:translateX(7px)}}
+.keypad{display:grid;grid-template-columns:repeat(3,72px);gap:14px 22px}
+.key{width:72px;height:72px;border-radius:50%;background:var(--card);font:500 26px var(--sans);display:grid;place-items:center;text-align:center}
+.key:active{background:var(--card2)}
+.key.blank{background:none}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}
+
+</style>
+<div class="phone" id="phone">
+  <section class="view on" id="v-chat"></section>
+  <section class="view" id="v-today"></section>
+  <section class="view" id="v-tasks"></section>
+  <section class="view" id="v-missions"></section>
+  <section class="view" id="v-library"></section>
+  <section class="view" id="v-abilities"></section>
+  <section class="view" id="v-settings"></section>
+  <aside class="drawer" id="drawer" aria-label="Menu"></aside>
+  <div class="voice" id="voice" data-state="idle" hidden></div>
+  <div class="banners" id="banners"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="lock" id="lock" hidden></div>
+</div>
+<input type="file" id="f-any" multiple hidden>
+<input type="file" id="f-img" accept="image/*" hidden>
+<input type="file" id="f-import" accept="application/json" hidden>
+<script>
+'use strict';
+/* 01-core.js : helpers, icons, state store, event bus, toast, sheet, markdown-lite */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+const IC = {
+  menu: 'M4 7h16M4 12h16M4 17h16', plus: 'M12 5v14M5 12h14', x: 'M6 6l12 12M18 6L6 18',
+  send: 'M12 19V5M6 11l6-6 6 6', mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4',
+  voice: 'M5 10v4M9 7v10M13 4v16M17 8v8M21 11v2', check: 'M5 12.5l4.5 4.5L19 7.5', chev: 'M9 6l6 6-6 6',
+  back: 'M15 6l-6 6 6 6', copy: 'M9 9h10v11H9zM5 15V4h10', refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6',
+  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5',
+  tasks: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2',
+  brain: 'M12 3a4 4 0 0 0-4 4 3 3 0 0 0-2 5 3 3 0 0 0 2 5 4 4 0 0 0 8 0 3 3 0 0 0 2-5 3 3 0 0 0-2-5 4 4 0 0 0-4-4zM12 3v18',
+  flag: 'M5 21V4M5 4h12l-2 4 2 4H5', book: 'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11',
+  bolt: 'M13 3L5 14h6l-1 7 8-11h-6z', sliders: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M8 15v4',
+  trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13', chat: 'M5 5h14v10H9l-4 4z', search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
+  lock: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3', attach: 'M20 11l-8 8a5 5 0 0 1-7-7l8-8a3 3 0 0 1 4 4l-8 8a1 1 0 0 1-2-2l7-7',
+  file: 'M7 3h7l4 4v14H7zM14 3v4h4', image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01', star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+  bell: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4', shield: 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z',
+  ask: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5M12 17v.2',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  speaker: 'M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6', stop: 'M7 7h10v10H7z', dot: 'M12 12h.01',
+  pin: 'M12 3l4 6-2 2 1 5-3-2-3 2 1-5-2-2zM12 16v5', edit: 'M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3',
+  cal: 'M5 6h14v14H5zM5 10h14M9 4v4M15 4v4', globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18',
+  kbd: 'M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M8 14h8', warn: 'M12 4l9 16H3zM12 10v4M12 17v.1',
+  up: 'M7 11l5-5 5 5M12 6v13', thumbup: 'M7 11v9H4v-9zM7 11l4-8c2 0 3 1 3 3l-.5 3H19a2 2 0 0 1 2 2.3l-1 6A2 2 0 0 1 18 19H7',
+  thumbdn: 'M7 13V4H4v9zM7 13l4 8c2 0 3-1 3-3l-.5-3H19a2 2 0 0 0 2-2.3l-1-6A2 2 0 0 0 18 5H7',
+  user: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21a8 8 0 0 1 16 0', server: 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
+  download: 'M12 4v11M7 11l5 5 5-5M5 20h14', upload: 'M12 16V5M7 9l5-5 5 5M5 20h14', target: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+  search2: 'M3 12h4l3-8 4 16 3-8h4'
+};
+function icon(n, cls = '') {
+  const s = document.createElementNS(SVGNS, 'svg');
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('class', 'i ' + cls); s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('d', IC[n] || IC.dot); s.appendChild(p); return s;
+}
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'on') for (const [e, f] of Object.entries(v)) el.addEventListener(e, f);
+    else if (k === 'value' || k === 'disabled' || k === 'hidden' || k === 'checked') el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  const add = (c) => {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) c.forEach(add);
+    else el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+  };
+  kids.forEach(add);
+  return el;
+}
+const ibtn = (name, label, fn, cls = '') => h('button', { class: 'ib ' + cls, 'aria-label': label, on: { click: fn } }, icon(name));
+const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function vibe(ms = 8) { try { if (S.settings.haptics && navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+/* ---------- event bus ---------- */
+const Bus = (() => {
+  const m = {};
+  return {
+    on(e, f) { (m[e] = m[e] || []).push(f); return () => { m[e] = (m[e] || []).filter(x => x !== f); }; },
+    emit(e, d) { (m[e] || []).slice().forEach(f => { try { f(d); } catch (err) { console.error(e, err); } }); }
+  };
+})();
+
+/* ---------- state ---------- */
+const KEY = 'adarsh.ui.v3';
+const DEFAULTS = () => ({
+  chats: [], cur: null, memories: [], tasks: [], missions: [],
+  settings: { theme: 'system', font: 'sans', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30 },
+  lock: null, abilities: {}, conn: { url: '', token: '' }
+});
+const S = DEFAULTS();
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY); if (!raw) return;
+    const d = JSON.parse(raw); const base = DEFAULTS();
+    Object.assign(S, base, d, { settings: { ...base.settings, ...(d.settings || {}) }, conn: { ...base.conn, ...(d.conn || {}) } });
+  } catch (e) { console.warn('load failed', e); }
+}
+let _st = 0;
+function save() { clearTimeout(_st); _st = setTimeout(saveNow, 250); }
+function saveNow() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' ? undefined : v)));
+  } catch (e) { console.warn('save failed', e); }
+}
+window.addEventListener('pagehide', saveNow);
+
+/* ---------- toast / banner ---------- */
+function toast(msg, o = {}) {
+  const box = $('#toasts');
+  const t = h('div', { class: 'toast', role: 'status' }, h('span', {}, msg));
+  const kill = () => t.remove();
+  if (o.action) t.appendChild(h('button', { class: 'tbtn', on: { click: () => { o.action(); kill(); } } }, o.label || 'Undo'));
+  box.appendChild(t);
+  setTimeout(kill, o.ms || 3600);
+}
+function banner({ title, text, label = 'Open', onOpen, ms = 9000 }) {
+  const b = h('div', { class: 'banner', role: 'alert' }, icon('bell'),
+    h('div', { class: 'bt' }, h('b', {}, title), text ? h('small', {}, text) : null),
+    onOpen ? h('button', { class: 'sbtn', on: { click: () => { onOpen(); b.remove(); } } }, label) : null,
+    h('button', { class: 'ib', style: 'width:36px;height:36px', 'aria-label': 'Dismiss', on: { click: () => b.remove() } }, icon('x', 's')));
+  $('#banners').appendChild(b);
+  if (ms) setTimeout(() => b.remove(), ms);
+}
+
+/* ---------- sheet ---------- */
+function sheet({ title, tall = false, top = false, build }) {
+  const shade = h('div', { class: 'shade' + (top ? ' top' : ''), on: { click: (e) => { if (e.target === shade) close(); } } });
+  const body = h('div', { class: 'body pad' });
+  const sh = h('div', { class: 'sheet' + (tall ? ' tall' : ''), role: 'dialog', 'aria-label': title },
+    h('div', { class: 'grab' }),
+    h('div', { class: 'sh-h pad' }, h('h3', {}, title), h('button', { class: 'ib', 'aria-label': 'Close', on: { click: () => close() } }, icon('x'))),
+    body);
+  shade.appendChild(sh);
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  function close() { document.removeEventListener('keydown', onKey); shade.remove(); }
+  build(body, close);
+  $('#phone').appendChild(shade);
+  return close;
+}
+function confirmSheet({ title, text, label = 'Confirm', danger = false, top = false, onYes }) {
+  sheet({
+    title, top, build(b, close) {
+      b.append(h('p', {}, text), h('div', { class: 'frow' },
+        h('button', { class: 'btn ghost', style: 'flex:1', on: { click: close } }, 'Cancel'),
+        h('button', { class: 'btn ' + (danger ? 'danger' : 'pri'), style: 'flex:1', on: { click: () => { close(); onYes(); } } }, label)));
+    }
+  });
+}
+
+/* ---------- markdown-lite (safe: builds nodes, never innerHTML) ---------- */
+function inline(text) {
+  const out = []; const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const t = m[0];
+    if (t[0] === '`') out.push(h('code', {}, t.slice(1, -1)));
+    else if (t.startsWith('**')) out.push(h('strong', {}, t.slice(2, -2)));
+    else if (t[0] === '*') out.push(h('em', {}, t.slice(1, -1)));
+    else { const mm = /\[([^\]]+)\]\((.+)\)/.exec(t); out.push(h('a', { href: mm[2], target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1])); }
+    last = m.index + t.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+function md(src) {
+  const root = h('div', { class: 'prose' }); const lines = String(src || '').replace(/\r/g, '').split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    const ln = lines[i];
+    if (/^```/.test(ln)) {
+      const buf = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
+      i++; root.appendChild(h('pre', {}, h('code', {}, buf.join('\n')))); continue;
+    }
+    if (/^#{1,4}\s/.test(ln)) { root.appendChild(h('h4', {}, inline(ln.replace(/^#+\s*/, '')))); i++; continue; }
+    if (/^\s*([-*•]|\d+[.)])\s+/.test(ln)) {
+      const ord = /^\s*\d+[.)]/.test(ln); const list = h(ord ? 'ol' : 'ul');
+      while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) { list.appendChild(h('li', {}, inline(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, '')))); i++; }
+      root.appendChild(list); continue;
+    }
+    if (!ln.trim()) { i++; continue; }
+    const buf = [];
+    while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|\s*([-*•]|\d+[.)])\s+)/.test(lines[i])) buf.push(lines[i++]);
+    const p = h('p'); buf.forEach((b, k) => { if (k) p.appendChild(document.createElement('br')); inline(b).forEach(n => p.append(n)); });
+    root.appendChild(p);
+  }
+  return root;
+}
+const stripMd = (s) => String(s || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
+
+/* ---------- time ---------- */
+function fmtDue(ts) {
+  if (!ts) return { t: '', c: '' };
+  const d = new Date(ts), now = new Date(); const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(now)) / 864e5);
+  const tm = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const lbl = diff === 0 ? 'Today' : diff === 1 ? 'Tomorrow' : diff === -1 ? 'Yesterday' : d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  return { t: lbl + ', ' + tm, c: ts < Date.now() ? 'bad' : diff === 0 ? 'warn' : '' };
+}
+function greeting() { const hr = new Date().getHours(); return hr < 5 ? 'Still up' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : hr < 21 ? 'Good evening' : 'Good night'; }
+
+'use strict';
+/* 02-render.js : reply-type renderers. One function per reply type.
+   Contract: RENDER[type](data, ctx) -> Node.  ctx = { msg, redraw() }.  See ARCHITECTURE.md for each shape. */
+
+const VERDICT = {
+  SUPPORTED_BY_MULTIPLE_SOURCES: ['good', 'Multiple sources'], SUPPORTED_BY_ONE_SOURCE: ['info', 'One source'],
+  PARTIALLY_SUPPORTED: ['warn', 'Partial'], CONTESTED: ['warn', 'Contested'], UNVERIFIED_NO_JUDGE: ['mute', 'Unverified'],
+  CONTRADICTED_BY_SOURCE: ['bad', 'Contradicted'], UNSUPPORTED_NO_VALID_EVIDENCE: ['bad', 'No evidence'], UNSUPPORTED_UNRELATED: ['bad', 'Unrelated']
+};
+const pill = (v) => { const [c, l] = VERDICT[v] || ['mute', String(v || '').replace(/_/g, ' ').toLowerCase() || '—']; return h('span', { class: 'pill ' + c }, l); };
+const head = (kind, title, extra) => h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, kind), title ? h('h3', {}, title) : null), extra);
+const sec = (k, ...c) => h('div', { class: 'sec' }, k ? h('span', { class: 'k' }, k) : null, ...c);
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u || ''; } };
+
+const RENDER = {
+  text: (d) => md(d.text),
+
+  research: (d) => {
+    const card = h('div', { class: 'card' });
+    card.append(head('Research', d.question, d.confidence != null ? h('span', { class: 'chip' }, Math.round(d.confidence * 100) + '% confidence') : null));
+    if (d.summary) card.append(sec('Answer', md(d.summary)));
+    (d.claims || []).forEach((c, i) => {
+      card.append(h('details', { class: 'claim' },
+        h('summary', {}, h('span', { class: 'n' }, String(i + 1)), h('span', { class: 'ct' }, c.text), icon('chev', 'chev'), pill(c.verdict)),
+        h('div', { class: 'checks' }, (c.checks || []).map(k => h('div', { class: 'check' }, h('b', {}, k.source), pill(k.verdict), k.note ? h('span', {}, k.note) : null)))));
+    });
+    if (d.sources && d.sources.length) card.append(h('details', { class: 'fold' }, h('summary', {}, icon('link', 's'), 'Sources (' + d.sources.length + ')', h('span', { style: 'flex:1' }), icon('chev', 'chev')),
+      h('div', { class: 'in' }, d.sources.map(s => h('div', { class: 'src' }, h('b', {}, '[' + s.n + ']'), s.url ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(s.url)) : (s.title || ''), s.url ? h('small', {}, hostOf(s.url)) : null)))));
+    if (d.caveat) card.append(sec('', h('div', { class: 'note' }, icon('warn', 's'), d.caveat)));
+    return card;
+  },
+
+  debate: (d) => {
+    const side = (name, tag, text) => h('div', {}, h('div', { class: 'who' }, name, h('span', {}, tag)), md(text));
+    return h('div', { class: 'card duo' },
+      head('Debate', d.topic), side('For', 'debater_pro', d.pro), side('Against', 'debater_con', d.con),
+      h('div', { class: 'verdict' }, side('Moderator', 'verdict', d.verdict)));
+  },
+
+  patterns: (d) => {
+    const card = h('div', { class: 'card' }, head('Patterns', d.title || 'Patterns found'));
+    (d.patterns || []).forEach(p => card.append(h('div', { class: 'pat' },
+      h('div', { class: 'head' }, h('p', {}, p.claim), p.strength ? h('span', { class: 'pill ' + (p.strength === 'strong' ? 'good' : p.strength === 'weak' ? 'mute' : 'info') }, p.strength) : null),
+      p.evidence ? h('ul', {}, p.evidence.map((e, i) => h('li', {}, h('b', {}, 'E' + (i + 1)), e))) : null,
+      p.so_what ? h('div', { class: 'meta' }, h('b', {}, 'So what: '), p.so_what) : null)));
+    return card;
+  },
+
+  links: (d) => {
+    const card = h('div', { class: 'card' }, head('Connections', d.title || 'Connections'));
+    (d.chains || []).forEach(c => card.append(h('div', { class: 'pat' },
+      h('div', { class: 'chain' }, c.nodes.flatMap((n, i) => i ? [h('em', {}, '→'), n] : [n])), c.why ? h('div', { class: 'meta' }, c.why) : null)));
+    return card;
+  },
+
+  mission: (d, ctx) => {
+    const st = d.stages || []; const done = st.filter(s => s.status === 'completed').length;
+    const card = h('div', { class: 'card' }, head('Mission', d.title, h('span', { class: 'pill ' + (d.status === 'completed' ? 'good' : d.status === 'failed' ? 'bad' : 'info') }, d.status || 'running')),
+      sec('', h('div', { class: 'muted' }, done + ' of ' + st.length + ' stages'), h('div', { class: 'bar' }, h('i', { style: 'width:' + (st.length ? done / st.length * 100 : 0) + '%' }))));
+    st.forEach(s => card.append(h('div', { class: 'stage ' + (s.status || 'pending') },
+      h('span', { class: 'st' }, s.status === 'completed' ? icon('check') : s.status === 'failed' ? icon('x') : null), h('span', { class: 'lbl' }, s.label), h('span', { class: 's' }, s.status || 'pending'))));
+    if (d.status !== 'completed' && d.status !== 'cancelled') card.append(h('div', { class: 'card-btns' },
+      h('button', { class: 'sbtn', on: { click: () => Bus.emit('mission:action', { id: d.id, action: d.status === 'paused' ? 'resume' : 'pause' }) } }, d.status === 'paused' ? 'Resume' : 'Pause'),
+      h('button', { class: 'sbtn', on: { click: () => Bus.emit('mission:action', { id: d.id, action: 'cancel' }) } }, 'Cancel')));
+    return card;
+  },
+
+  /* ---------- structured question from the AI ---------- */
+  ask: (d, ctx) => {
+    const qs = d.questions || [];
+    const card = h('div', { class: 'card ask' });
+    if (d.answered) {
+      card.append(head('Question answered', null));
+      d.answered.forEach(a => card.append(h('div', { class: 'kvr' }, h('b', {}, a.header || 'Q'), h('span', {}, a.answer || 'Skipped'))));
+      return card;
+    }
+    const dr = d.draft = d.draft || { page: 0, sel: qs.map(() => []), other: qs.map(() => '') };
+    const q = qs[dr.page]; const multi = !!q.multi; const last = dr.page === qs.length - 1;
+    const hasAns = (i) => dr.sel[i].length > 0 || (dr.other[i] || '').trim();
+    card.append(head('Adarsh needs your input', null, qs.length > 1 ? h('div', { class: 'pg', 'aria-label': 'Question ' + (dr.page + 1) + ' of ' + qs.length }, qs.map((_, i) => h('i', { class: i === dr.page ? 'on' : '' }))) : null));
+    card.append(h('div', { class: 'q' }, q.header ? h('span', { class: 'hd' }, q.header) : null, h('p', { class: 'qt' }, q.question)));
+    const opts = h('div', { class: 'opts', role: multi ? 'group' : 'radiogroup' });
+    (q.options || []).forEach((o, oi) => {
+      const on = dr.sel[dr.page].includes(oi);
+      opts.append(h('button', { class: 'opt' + (on ? ' on' : ''), role: multi ? 'checkbox' : 'radio', 'aria-checked': String(on), on: {
+        click: () => {
+          const a = dr.sel[dr.page];
+          if (multi) { const k = a.indexOf(oi); k >= 0 ? a.splice(k, 1) : a.push(oi); } else { dr.sel[dr.page] = [oi]; dr.other[dr.page] = ''; }
+          vibe(); ctx.redraw();
+        }
+      } }, h('span', { class: 'mk' + (multi ? ' sq' : '') }, on ? icon('check') : null),
+      h('span', { class: 'ot' }, h('b', {}, o.label), o.description ? h('small', {}, o.description) : null)));
+    });
+    if (q.allowOther !== false) {
+      const inp = h('input', { type: 'text', placeholder: 'Something else…', value: dr.other[dr.page] || '', 'aria-label': 'Other answer', on: { input: () => { dr.other[dr.page] = inp.value; if (!multi && inp.value) dr.sel[dr.page] = []; foot.sub.disabled = !hasAns(dr.page); } } });
+      opts.append(h('label', { class: 'opt other' }, h('span', { class: 'mk' + (multi ? ' sq' : '') }, icon('edit', 's')), inp));
+    }
+    card.append(opts);
+    const sub = h('button', { class: 'btn pri', disabled: !hasAns(dr.page), on: { click: () => (last ? submit(false) : (dr.page++, ctx.redraw())) } }, last ? 'Submit' : 'Next');
+    const foot = { sub };
+    card.append(h('div', { class: 'ask-foot' },
+      dr.page > 0 ? h('button', { class: 'link', on: { click: () => { dr.page--; ctx.redraw(); } } }, 'Back') : h('button', { class: 'link', on: { click: () => submit(true) } }, 'Skip'),
+      h('span', { class: 'sp' }), sub));
+    function submit(skip) {
+      d.answered = skip ? qs.map(x => ({ header: x.header, question: x.question, answer: '' })) : qs.map((x, i) => ({
+        header: x.header, question: x.question,
+        answer: [...dr.sel[i].map(k => x.options[k].label), (dr.other[i] || '').trim()].filter(Boolean).join(', ')
+      }));
+      delete d.draft; save(); ctx.redraw(); Bus.emit('ask:answer', { msg: ctx.msg, askId: d.id, answers: d.answered, skipped: skip });
+    }
+    return card;
+  },
+
+  /* ---------- permission request ---------- */
+  approve: (d, ctx) => {
+    const risk = d.risk || 'medium';
+    const card = h('div', { class: 'card approve' + (risk === 'high' ? ' risk-high' : '') },
+      head('Permission needed', d.title, h('span', { class: 'pill ' + (risk === 'high' ? 'bad' : risk === 'low' ? 'good' : 'warn') }, risk + ' risk')));
+    if (d.detail) card.append(sec('', h('p', {}, d.detail)));
+    if (d.action) card.append(h('div', { class: 'kvr' }, h('b', {}, 'Action'), h('span', { class: 'mono', style: 'font-size:13px' }, d.action)));
+    if (d.scope) card.append(h('div', { class: 'kvr' }, h('b', {}, 'Scope'), h('span', {}, d.scope)));
+    if (d.decision) {
+      card.append(h('div', { class: 'decided ' + d.decision }, icon(d.decision === 'allow' ? 'check' : 'x', 's'),
+        d.decision === 'allow' ? 'Allowed' : d.decision === 'deny' ? 'Denied' : 'Expired'));
+    } else {
+      const go = (decision) => { d.decision = decision; save(); ctx.redraw(); Bus.emit('approve:decide', { msg: ctx.msg, id: d.id, decision, title: d.title }); };
+      card.append(h('div', { class: 'card-btns' },
+        h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => go('deny') } }, 'Deny'),
+        h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => go('allow') } }, 'Allow')));
+    }
+    return card;
+  },
+
+  memory: (d, ctx) => h('div', { class: 'chipcard' + (d.gone ? ' gone' : '') }, h('span', { class: 'ci' }, icon('brain', 's')),
+    h('span', { class: 'ct' }, h('b', {}, d.gone ? 'Removed from memory' : 'Saved to memory'), h('span', {}, d.text)),
+    d.gone ? null : h('button', { class: 'link', on: { click: () => { Bus.emit('memory:undo', { msg: ctx.msg }); ctx.redraw(); } } }, 'Undo')),
+
+  task: (d, ctx) => { const f = fmtDue(d.due); return h('div', { class: 'chipcard' + (d.gone ? ' gone' : '') }, h('span', { class: 'ci' }, icon('tasks', 's')),
+    h('span', { class: 'ct' }, h('b', {}, d.gone ? 'Task removed' : 'Task added'), h('span', {}, d.title + (f.t ? ' · ' + f.t : ''))),
+    d.gone ? null : h('button', { class: 'link', on: { click: () => { Bus.emit('task:undo', { msg: ctx.msg }); ctx.redraw(); } } }, 'Undo')); }
+};
+
+/* unknown reply type: degrade to text rather than crash */
+function renderReply(d, ctx) {
+  try { return (RENDER[d.type] || RENDER.text)(RENDER[d.type] ? d : { text: d.text || JSON.stringify(d, null, 2) }, ctx); }
+  catch (e) { console.error('render', d.type, e); return md('Could not display this reply (' + d.type + ').'); }
+}
+
+/* what the voice mode reads out loud for each reply type */
+function speechOf(d) {
+  switch (d.type) {
+    case 'text': return stripMd(d.text);
+    case 'research': return stripMd(d.summary || d.question);
+    case 'debate': return stripMd(d.verdict);
+    case 'ask': return (d.questions && d.questions[0] && d.questions[0].question) || 'I have a question.';
+    case 'approve': return 'Permission needed. ' + (d.title || '') + '. Should I go ahead?';
+    case 'memory': return 'Saved to memory.';
+    case 'task': return 'Task added: ' + (d.title || '');
+    case 'mission': return 'Mission ' + (d.title || '') + ' is ' + (d.status || 'running') + '.';
+    default: return '';
+  }
+}
+
+'use strict';
+/* 03-chat.js : chat screen, composer, send pipeline, side-effects of structured replies */
+
+const Chat = (() => {
+  let thread, col, ta, sendBtn, voiceBtn, micBtn, atts, titleEl, statusEl;
+  let busy = false, ctl = null, pending = [], thinkEl = null;
+  const thumbs = new Map(); // attachment id -> object URL (session only)
+
+  const cur = () => S.chats.find(c => c.id === S.cur);
+  function newChat() {
+    const c0 = cur(); if (c0 && !c0.msgs.length) return c0;
+    const c = { id: uid('c'), title: 'New chat', ts: Date.now(), msgs: [] };
+    S.chats.unshift(c); S.cur = c.id; save(); return c;
+  }
+  function open(id) { S.cur = id; save(); App.show('chat'); renderThread(); }
+  function remove(id) {
+    const i = S.chats.findIndex(c => c.id === id); if (i < 0) return;
+    const [gone] = S.chats.splice(i, 1);
+    if (S.cur === id) S.cur = S.chats[0] ? S.chats[0].id : null;
+    save(); renderThread(); Bus.emit('chats:changed');
+    toast('Chat deleted', { action: () => { S.chats.splice(i, 0, gone); save(); Bus.emit('chats:changed'); renderThread(); } });
+  }
+
+  /* ---------- build ---------- */
+  function mount(root) {
+    titleEl = h('h1', { class: 'wm' }, 'ADARSH');
+    statusEl = h('span', { class: 'status' }, h('i'), h('span', {}, ''));
+    thread = h('div', { class: 'scroll thread pad' }, col = h('div', { class: 'col' }));
+    ta = h('textarea', { rows: 1, placeholder: 'Message Adarsh', 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
+    atts = h('div', { class: 'atts' });
+    micBtn = h('button', { class: 'circ mic', 'aria-label': 'Dictate', on: { click: dictate } }, icon('mic'));
+    sendBtn = h('button', { class: 'circ send', 'aria-label': 'Send', hidden: true, on: { click: () => (busy ? stop() : submit()) } }, icon('send'));
+    voiceBtn = h('button', { class: 'circ voicebtn', 'aria-label': 'Voice mode', on: { click: () => Voice.open() } }, icon('voice'));
+    const plus = h('button', { class: 'circ plus', 'aria-label': 'Add', on: { click: addSheet } }, icon('plus'));
+    root.append(
+      h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { style: 'text-align:center;min-width:0' }, titleEl, h('div', {}, statusEl)),
+        ibtn('plus', 'New chat', () => { newChat(); renderThread(); ta.focus(); })),
+      thread,
+      h('div', { class: 'dock pad' }, h('div', { class: 'box' }, atts, ta, h('div', { class: 'row' }, plus, h('span', { class: 'sp' }), micBtn, sendBtn, voiceBtn)),
+        h('p', { class: 'fine' }, 'Adarsh can make mistakes. Check important info.')));
+    Bus.on('ask:answer', onAsk); Bus.on('approve:decide', onApprove);
+    Bus.on('memory:undo', ({ msg }) => { const r = msg.reply; S.memories = S.memories.filter(m => m.id !== r.memId); r.gone = true; save(); });
+    Bus.on('task:undo', ({ msg }) => { const r = msg.reply; S.tasks = S.tasks.filter(t => t.id !== r.taskId); r.gone = true; save(); });
+    Bus.on('mission:action', onMission);
+    Bus.on('backend:status', setStatus);
+    renderThread();
+  }
+  function setStatus(s) {
+    statusEl.className = 'status' + (s.demo ? ' demo' : ''); statusEl.lastChild.textContent = s.label;
+    statusEl.firstChild.style.background = s.ok === false ? 'var(--bad)' : '';
+  }
+
+  /* ---------- thread ---------- */
+  function renderThread() {
+    const c = cur(); col.textContent = '';
+    if (!c || !c.msgs.length) {
+      col.className = 'col empty';
+      col.append(h('div', { class: 'hello' }, h('div', { class: 'mark' }, 'A'), h('h2', {}, greeting() + ', ' + (S.settings.name || 'Adarsh')),
+        h('p', {}, 'What are we working on?'),
+        h('div', { class: 'chips', style: 'justify-content:center;margin-top:8px' },
+          ['Brief me on today', 'Research something', 'Add a task'].map(t => h('button', { class: 'chipbtn', on: { click: () => { ta.value = t === 'Research something' ? 'Research ' : t === 'Add a task' ? 'Remind me to ' : t; onInput(); if (t === 'Brief me on today') submit(); else ta.focus(); } } }, t)))));
+    } else {
+      col.className = 'col';
+      c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
+    }
+    if (busy) col.append(thinkEl);
+    scroll();
+  }
+  const scroll = () => requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
+
+  function msgEl(m, isLast) {
+    if (m.role === 'user') {
+      if (m.answer) return h('div', { class: 'msg user' }, h('div', { class: 'ans' }, h('span', { class: 'k' }, 'Your answer'), m.answer.map(a => h('div', {}, h('b', {}, (a.header || 'Q') + ': '), a.answer || 'Skipped'))));
+      if (m.decision) return h('div', { class: 'msg user' }, h('div', { class: 'decision ' + m.decision }, icon(m.decision === 'allow' ? 'check' : 'x', 's'), (m.decision === 'allow' ? 'Allowed: ' : 'Denied: ') + (m.title || '')));
+      const b = h('div', { class: 'bubble' });
+      if (m.atts && m.atts.length) {
+        const imgs = m.atts.filter(a => a.kind === 'image' && thumbs.get(a.id)); const rest = m.atts.filter(a => !imgs.includes(a));
+        if (imgs.length) b.append(h('div', { class: 'thumbs' }, imgs.map(a => h('img', { src: thumbs.get(a.id), alt: a.name }))));
+        rest.forEach(a => b.append(h('div', { class: 'fchip' }, icon('file', 's'), a.name), ' '));
+        if (m.text) b.append(h('div', { style: 'margin-top:6px' }, m.text));
+      } else b.textContent = m.text;
+      return h('div', { class: 'msg user' }, b);
+    }
+    const wrap = h('div', { class: 'msg', 'data-id': m.id });
+    const ctx = { msg: m, redraw: () => { wrap.replaceWith(msgEl(m, isLast)); } };
+    const r = m.reply;
+    if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    wrap.append(renderReply(r, ctx));
+    if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
+    return wrap;
+  }
+  function actionsEl(m, isLast) {
+    const txt = () => stripMd(speechOf(m.reply)) || '';
+    const a = h('div', { class: 'actions' });
+    a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { try { await navigator.clipboard.writeText(m.reply.text || speechOf(m.reply)); toast('Copied'); } catch (e) { toast('Copy not available here'); } } } }, icon('copy', 's')));
+    if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => TTS.speak(txt()) } }, icon('speaker', 's')));
+    ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
+    if (isLast) a.append(h('button', { 'aria-label': 'Retry', on: { click: retry } }, icon('refresh', 's'), 'Retry'));
+    return a;
+  }
+
+  /* ---------- composer ---------- */
+  function onInput() {
+    ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px';
+    const has = ta.value.trim() || pending.length;
+    sendBtn.hidden = !(has || busy); voiceBtn.hidden = !!(has || busy); micBtn.hidden = !!(has && !busy);
+  }
+  function onKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey && matchMedia('(pointer:fine)').matches) { e.preventDefault(); if (!busy) submit(); }
+  }
+  function onPaste(e) {
+    const fs = [...(e.clipboardData ? e.clipboardData.files : [])]; if (fs.length) { e.preventDefault(); fs.forEach(addFile); }
+  }
+  function addSheet() {
+    sheet({ title: 'Add', build(b, close) {
+      const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
+      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()));
+    } });
+  }
+  function addFile(f) {
+    if (f.size > 8 * 1024 * 1024) return toast(f.name + ' is over 8 MB');
+    const a = { id: uid('a'), name: f.name || 'pasted', kind: f.type.startsWith('image/') ? 'image' : 'file', type: f.type, size: f.size, file: f };
+    if (a.kind === 'image') { a.thumb = URL.createObjectURL(f); thumbs.set(a.id, a.thumb); }
+    pending.push(a); drawAtts(); onInput();
+  }
+  function drawAtts() {
+    atts.textContent = '';
+    pending.forEach(a => atts.append(h('div', { class: 'att' }, a.kind === 'image' ? h('img', { src: a.thumb, alt: '' }) : h('span', { class: 'ic' }, icon('file', 's')), h('span', {}, a.name),
+      h('button', { 'aria-label': 'Remove ' + a.name, on: { click: () => { pending = pending.filter(x => x !== a); drawAtts(); onInput(); } } }, icon('x', 's')))));
+  }
+  const readAtt = (a) => new Promise(res => { const r = new FileReader(); r.onload = () => res({ id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size, dataUrl: r.result }); r.onerror = () => res({ id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size }); r.readAsDataURL(a.file); });
+
+  let dictating = false;
+  function dictate() {
+    if (dictating) { STT.stop(); return; }
+    let base = ta.value;
+    const ok = STT.start({
+      onPartial: (t) => { ta.value = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); onInput(); },
+      onFinal: (t) => { base = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); ta.value = base; onInput(); },
+      onEnd: () => { dictating = false; micBtn.classList.remove('live'); },
+      onError: (msg) => toast(msg)
+    });
+    if (ok) { dictating = true; micBtn.classList.add('live'); } else toast('Voice typing isn’t supported in this browser. Use Voice mode’s typed input or your keyboard mic.');
+  }
+
+  /* ---------- send pipeline ---------- */
+  function stop() { if (ctl) ctl.abort(); }
+  function histText() {
+    return (cur() ? cur().msgs : []).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
+  }
+  async function submit(textOverride, meta) {
+    const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
+    if ((!text && !files.length) || busy) return;
+    if (!meta && App.view !== 'chat') App.show('chat');
+    const c = newChat();
+    const um = { id: uid('m'), role: 'user', text, ts: Date.now(), atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
+    pushUser(c, um);
+    if (textOverride == null) { ta.value = ''; pending = []; drawAtts(); onInput(); }
+    const attachments = await Promise.all(files.map(readAtt));
+    await runBackend(c, { text, attachments, meta });
+  }
+  function pushUser(c, um) {
+    if (!c.msgs.length && um.text) c.title = um.text.slice(0, 42);
+    c.msgs.push(um); c.ts = Date.now(); save(); Bus.emit('chats:changed'); renderThread();
+  }
+  async function runBackend(c, { text, attachments = [], meta }) {
+    busy = true; ctl = new AbortController(); const steps = [];
+    const label = h('span', {}, 'Thinking'); thinkEl = h('div', { class: 'think', role: 'status' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), label);
+    sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
+    Bus.emit('busy', true);
+    try {
+      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta },
+        { signal: ctl.signal, onProgress: (s) => { steps.push(s); label.textContent = s; } });
+      const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
+      arr.forEach((r, i) => { if (i === 0 && steps.length) r.steps = steps.slice(); deliver(c, r); });
+    } catch (e) {
+      if (ctl.signal.aborted) toast('Stopped');
+      else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
+    } finally {
+      busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save();
+      Bus.emit('busy', false);
+    }
+  }
+  const normReply = (r) => (typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
+  function deliver(c, r) {
+    if (r.type === 'memory') { const m = { id: uid('mem'), text: r.text, pin: false, ts: Date.now() }; S.memories.unshift(m); r.memId = m.id; }
+    if (r.type === 'task') { const t = { id: uid('t'), title: r.title, due: r.due || null, done: false, ts: Date.now() }; S.tasks.push(t); r.taskId = t.id; }
+    if (r.type === 'mission') upsertMission(r);
+    const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r };
+    c.msgs.push(m); c.ts = Date.now();
+    Bus.emit('reply', { chat: c, msg: m });
+    if (document.hidden && S.settings.notif && window.Notification && Notification.permission === 'granted') { try { new Notification('Adarsh', { body: speechOf(r).slice(0, 120) }); } catch (e) {} }
+  }
+  function upsertMission(r) {
+    const i = S.missions.findIndex(m => m.id === r.id);
+    const rec = { id: r.id || uid('ms'), title: r.title, status: r.status || 'running', stages: r.stages || [], ts: Date.now() };
+    r.id = rec.id; if (i >= 0) S.missions[i] = rec; else S.missions.unshift(rec);
+  }
+  function retry() {
+    const c = cur(); if (!c || busy) return;
+    while (c.msgs.length && c.msgs[c.msgs.length - 1].role === 'ai') c.msgs.pop();
+    const lastU = c.msgs[c.msgs.length - 1]; if (!lastU || lastU.role !== 'user') return renderThread();
+    renderThread(); runBackend(c, { text: lastU.text || '' });
+  }
+
+  /* structured-reply follow-ups */
+  function onAsk({ askId, answers, skipped }) {
+    const c = cur(); if (!c) return;
+    pushUser(c, { id: uid('m'), role: 'user', answer: answers, ts: Date.now() });
+    runBackend(c, { text: skipped ? '(skipped the question)' : answers.map(a => a.header + ': ' + a.answer).join('\n'), meta: { answer: { askId, answers, skipped } } });
+  }
+  function onApprove({ id, decision, title }) {
+    const c = cur(); if (!c) return;
+    pushUser(c, { id: uid('m'), role: 'user', decision, title, ts: Date.now() });
+    runBackend(c, { text: (decision === 'allow' ? 'Allowed: ' : 'Denied: ') + title, meta: { approval: { id, decision } } });
+  }
+  async function onMission({ id, action }) {
+    try {
+      const r = Backend.missionAction ? await Backend.missionAction(id, action) : null;
+      const rec = S.missions.find(m => m.id === id); if (!rec) return;
+      if (r && r.status) { rec.status = r.status; if (r.stages) rec.stages = r.stages; } else rec.status = action === 'cancel' ? 'cancelled' : action === 'pause' ? 'paused' : 'running';
+      S.chats.forEach(ch => ch.msgs.forEach(m => { if (m.reply && m.reply.type === 'mission' && m.reply.id === id) { m.reply.status = rec.status; m.reply.stages = rec.stages; } }));
+      save(); renderThread(); Bus.emit('missions:changed');
+    } catch (e) { toast('Mission update failed'); }
+  }
+
+  return {
+    mount, renderThread, newChat, open, remove, cur, submit,
+    setDraft(t) { ta.value = t; onInput(); ta.focus(); }, addFile, isBusy: () => busy,
+    push(r, { chatId } = {}) { const c = (chatId && S.chats.find(x => x.id === chatId)) || newChat(); deliver(c, normReply(r)); save(); Bus.emit('chats:changed'); renderThread(); }
+  };
+})();
+
+'use strict';
+/* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Missions, Memory, Abilities, Settings */
+
+const ABILITIES = [
+  { id: 'research', ic: 'globe', name: 'Research & verify', desc: 'Searches several sources and checks each claim before answering.', try: 'Research whether intermittent fasting really improves focus' },
+  { id: 'debate', ic: 'chat', name: 'Debate', desc: 'Argues both sides, then a moderator gives a verdict.', try: 'Debate: should I learn Rust or Go first?' },
+  { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Finds patterns across notes, chats and memories and links related ideas.', try: 'What patterns do you see in my last week of notes?' },
+  { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Long jobs broken into stages that keep running while you are away.', try: 'Start a mission: compare the best budget laptops for coding' },
+  { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Remembers things you tell it and uses them later.', try: 'Remember that I prefer short answers in Hinglish' },
+  { id: 'tasks', ic: 'tasks', name: 'Tasks & reminders', desc: 'Turns “remind me…” into tasks with due times.', try: 'Remind me to call the bank tomorrow 11am' },
+  { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Morning briefing, due-task nudges and alerts pushed to you.', try: 'Brief me on today' },
+  { id: 'selfeng', ic: 'bolt', name: 'Self-engineering', desc: 'Proposes changes to its own code in a staging copy. Always asks your permission before deploy.', try: 'Audit your own code and propose one improvement', approval: true }
+];
+const isOn = (id) => S.abilities[id] !== false;
+const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
+
+const App = (() => {
+  let view = 'chat'; const root = () => $('#phone');
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
+  const TITLES = { today: 'Today', tasks: 'Tasks', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
+  const BUILD = {};
+  let q = '';
+
+  function applyTheme() {
+    const r = document.documentElement; const t = S.settings.theme;
+    if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t); else r.removeAttribute('data-theme');
+    r.setAttribute('data-font', S.settings.font);
+  }
+  function show(name) {
+    view = name; $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + name));
+    drawer(false); if (name !== 'chat') build(name); else Chat.renderThread();
+    drawerList();
+  }
+  function build(name) {
+    const el = $('#v-' + name); el.textContent = '';
+    const body = h('div', { class: 'scroll pad' }, h('div', { class: 'stack' }));
+    const stack = body.firstChild;
+    el.append(h('header', { class: 'hdr pad' }, ibtn('back', 'Back to chat', () => show('chat')), h('h1', {}, TITLES[name]), name === 'settings' ? h('span') : ibtn('sliders', 'Settings', () => show('settings'))), body);
+    BUILD[name](stack, () => build(name));
+  }
+  function drawer(open) {
+    root().classList.toggle('open', open);
+    if (open) { drawerList(); } else q = '';
+  }
+  function buildDrawer() {
+    const d = $('#drawer'); d.textContent = '';
+    const top = h('div', { class: 'd-top pad' });
+    const searching = () => top.classList.contains('s');
+    const draw = () => {
+      top.textContent = '';
+      if (searching()) {
+        const inp = h('input', { type: 'text', placeholder: 'Search chats', 'aria-label': 'Search chats', value: q, on: { input: () => { q = inp.value; drawerList(); } } });
+        top.append(inp, ibtn('x', 'Close search', () => { top.classList.remove('s'); q = ''; draw(); drawerList(); })); setTimeout(() => inp.focus(), 30);
+      } else top.append(h('span', { class: 'wm' }, 'ADARSH'), ibtn('search', 'Search chats', () => { top.classList.add('s'); draw(); }), ibtn('x', 'Close menu', () => drawer(false)));
+    };
+    draw();
+    const nav = h('nav', { class: 'd-nav pad' }, NAV.map(([id, ic, t]) => h('button', { 'data-nav': id, on: { click: () => show(id) } }, icon(ic), t,
+      id === 'tasks' ? h('span', { class: 'badge', id: 'bg-tasks' }) : id === 'missions' ? h('span', { class: 'badge', id: 'bg-ms' }) : null)));
+    d.append(top, nav, h('div', { class: 'rule pad' }), h('div', { class: 'd-label pad' }, 'Recents'), h('div', { class: 'd-list pad', id: 'd-list' }),
+      h('div', { class: 'd-foot pad' }, h('button', { class: 'avatar', 'aria-label': 'Settings', on: { click: () => show('settings') } }, (S.settings.name || 'A')[0].toUpperCase()),
+        h('button', { class: 'fab', on: { click: () => { Chat.newChat(); show('chat'); Chat.renderThread(); } } }, icon('plus'), 'New chat')));
+  }
+  function drawerList() {
+    const list = $('#d-list'); if (!list) return; list.textContent = '';
+    $$('#drawer [data-nav]').forEach(b => b.setAttribute('aria-current', String(b.dataset.nav === view)));
+    const openT = S.tasks.filter(t => !t.done).length, liveM = S.missions.filter(m => m.status === 'running').length;
+    const bt = $('#bg-tasks'), bm = $('#bg-ms'); if (bt) bt.textContent = openT || ''; if (bm) bm.textContent = liveM || '';
+    const cs = S.chats.filter(c => c.msgs.length && (!q || c.title.toLowerCase().includes(q.toLowerCase())));
+    if (!cs.length) list.append(h('div', { class: 'd-empty' }, q ? 'No chats match.' : 'No chats yet.'));
+    cs.forEach(c => list.append(h('div', { class: 'rc', role: 'button', tabindex: '0', 'aria-current': String(c.id === S.cur && view === 'chat'), on: { click: () => Chat.open(c.id), keydown: (e) => { if (e.key === 'Enter') Chat.open(c.id); } } },
+      icon('chat'), h('span', {}, c.title), h('button', { class: 'del', 'aria-label': 'Delete chat', on: { click: (e) => { e.stopPropagation(); Chat.remove(c.id); } } }, icon('trash', 's')))));
+  }
+  /* run something in chat from anywhere */
+  const ask = (text) => { show('chat'); Chat.submit(text); };
+  const draft = (text) => { show('chat'); Chat.setDraft(text); };
+  Bus.on('chats:changed', drawerList); Bus.on('missions:changed', drawerList);
+  Bus.on('reply', () => drawerList());
+
+  /* ================= Today ================= */
+  BUILD.today = (st) => {
+    const now = new Date();
+    st.append(h('div', { class: 'today-hero' }, h('h2', {}, greeting() + ', ' + (S.settings.name || 'Adarsh')), h('p', {}, now.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }))));
+    const Q = (ic, t, fn) => h('button', { class: 'qbtn', on: { click: fn } }, icon(ic), h('b', {}, t));
+    st.append(h('div', { class: 'qgrid' },
+      Q('sun', 'Brief me', () => ask('Brief me on today')), Q('cal', 'Plan my day', () => ask('Plan my day around my open tasks')),
+      Q('globe', 'Research', () => draft('Research ')), Q('flag', 'New mission', () => draft('Start a mission: '))));
+    const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)).slice(0, 4);
+    st.append(h('div', { class: 'sech' }, 'Due soon', h('button', { on: { click: () => show('tasks') } }, 'See all')));
+    st.append(open.length ? h('div', { class: 'grp' }, open.map(t => { const f = fmtDue(t.due); return h('button', { class: 'item', on: { click: () => show('tasks') } }, icon('tasks'), h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, t.title), f.t ? h('small', {}, f.t) : null)); }))
+      : h('div', { class: 'item' }, h('span', { class: 't', style: 'color:var(--muted)' }, 'Nothing due. Say “remind me to…” in chat.')));
+    const pins = S.memories.filter(m => m.pin).slice(0, 3);
+    if (pins.length) { st.append(h('div', { class: 'sech' }, 'Pinned memory')); st.append(h('div', { class: 'grp' }, pins.map(m => h('div', { class: 'item' }, icon('pin'), h('span', { class: 't' }, m.text))))); }
+    const sugg = Backend.suggestions ? Backend.suggestions() : [];
+    if (sugg.length) {
+      st.append(h('div', { class: 'sech' }, 'Suggested', Backend.isDemo() ? h('span', { class: 'tag demo' }, 'DEMO') : null));
+      st.append(h('div', { class: 'grp' }, sugg.map(s => h('button', { class: 'item sug', on: { click: () => ask(s.prompt) } }, icon(s.ic || 'bolt'), h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, s.title), h('small', {}, s.sub)), icon('chev', 'chev')))));
+    }
+  };
+
+  /* ================= Tasks ================= */
+  BUILD.tasks = (st, redraw) => {
+    const inp = h('input', { type: 'text', placeholder: 'Add a task', 'aria-label': 'Task title' }); const due = h('input', { type: 'datetime-local', 'aria-label': 'Due (optional)' });
+    const add = () => { const t = inp.value.trim(); if (!t) return; S.tasks.push({ id: uid('t'), title: t, due: due.value ? new Date(due.value).getTime() : null, done: false, ts: Date.now() }); save(); Bus.emit('missions:changed'); redraw(); };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    st.append(h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Add')),
+      h('div', { class: 'addbar', style: 'padding:0;align-items:center' }, h('span', { class: 'muted', style: 'flex:none' }, 'Due'), due)));
+    const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)), done = S.tasks.filter(t => t.done);
+    const row = (t) => { const f = fmtDue(t.due); return h('div', { class: 'task' + (t.done ? ' done' : '') },
+      h('button', { class: 'cb' + (t.done ? ' on' : ''), role: 'checkbox', 'aria-checked': String(t.done), 'aria-label': 'Done: ' + t.title, on: { click: () => { t.done = !t.done; vibe(); save(); Bus.emit('missions:changed'); redraw(); } } }, t.done ? icon('check') : null),
+      h('div', { class: 'tt' }, h('b', {}, t.title), f.t ? h('span', { class: 'due ' + (t.done ? '' : f.c) }, f.t) : null),
+      h('button', { class: 'del', 'aria-label': 'Delete ' + t.title, on: { click: () => { S.tasks = S.tasks.filter(x => x !== t); save(); Bus.emit('missions:changed'); redraw(); } } }, icon('trash', 's'))); };
+    if (!S.tasks.length) st.append(h('div', { class: 'empty' }, icon('tasks'), h('div', {}, 'No tasks yet.'), h('div', { class: 'muted' }, 'Add one here or just tell Adarsh in chat.')));
+    if (open.length) st.append(h('div', { class: 'grp' }, open.map(row)));
+    if (done.length) st.append(h('details', {}, h('summary', { class: 'muted', style: 'padding:8px 4px' }, 'Completed (' + done.length + ')'), h('div', { class: 'grp', style: 'margin-top:8px' }, done.map(row))));
+  };
+
+  /* ================= Missions ================= */
+  BUILD.missions = (st, redraw) => {
+    if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'No missions yet.'), h('div', { class: 'muted' }, 'A mission is a long job split into stages. Describe the goal in chat.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
+    S.missions.forEach(m => st.append(renderReply({ type: 'mission', ...m }, { msg: {}, redraw })));
+  };
+  Bus.on('missions:changed', () => { if (view === 'missions') build('missions'); if (view === 'tasks') build('tasks'); });
+
+  /* ================= Memory ================= */
+  BUILD.library = (st, redraw) => {
+    const inp = h('input', { type: 'text', placeholder: 'Add something to remember', 'aria-label': 'New memory' });
+    const add = () => { const t = inp.value.trim(); if (!t) return; S.memories.unshift({ id: uid('mem'), text: t, pin: false, ts: Date.now() }); save(); redraw(); };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+    st.append(h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Save')));
+    st.append(h('p', { class: 'muted' }, 'Adarsh uses these in every chat. Say “remember that…” in chat to add one.'));
+    if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Nothing remembered yet.')));
+    const sorted = [...S.memories].sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
+    sorted.forEach((m, i) => st.append(h('div', { class: 'mem' }, h('span', { class: 'id' }, '#' + (S.memories.length - S.memories.indexOf(m))), h('p', {}, m.text),
+      h('button', { 'aria-label': m.pin ? 'Unpin' : 'Pin', 'aria-pressed': String(!!m.pin), on: { click: () => { m.pin = !m.pin; save(); redraw(); } } }, icon('pin', 's')),
+      h('button', { 'aria-label': 'Delete memory', on: { click: () => { const k = S.memories.indexOf(m); S.memories.splice(k, 1); save(); redraw(); toast('Memory deleted', { action: () => { S.memories.splice(k, 0, m); save(); if (view === 'library') redraw(); } }); } } }, icon('trash', 's')))));
+  };
+
+  /* ================= Abilities ================= */
+  BUILD.abilities = (st, redraw) => {
+    st.append(h('p', { class: 'muted' }, 'No commands to learn. Just say what you want in normal language and Adarsh picks the right ability. Switch off the ones you don’t want.'));
+    st.append(h('div', { class: 'grp' }, ABILITIES.map(a => {
+      const on = isOn(a.id);
+      return h('div', { class: 'item abil col2' },
+        h('div', { class: 'tt' }, h('span', { class: 'ico' }, icon(a.ic)), h('span', { class: 't', style: 'padding:0' }, h('b', {}, a.name, a.approval ? h('span', { class: 'tag' }, 'ASKS FIRST') : null), h('small', {}, a.desc)),
+          h('button', { class: 'swb', role: 'switch', 'aria-checked': String(on), 'aria-label': a.name, on: { click: () => { S.abilities[a.id] = !on; save(); redraw(); } } }, h('span', { class: 'sw' }))),
+        h('button', { class: 'try', on: { click: () => draft(a.try) } }, 'Try: “' + a.try + '”'));
+    })));
+  };
+
+  /* ================= Settings ================= */
+  const swItem = (ic, title, sub, get, set) => h('button', { class: 'item', role: 'switch', 'aria-checked': String(!!get()), on: { click: (e) => { set(!get()); save(); e.currentTarget.setAttribute('aria-checked', String(!!get())); } } },
+    icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), h('span', { class: 'sw' }));
+  const navItem = (ic, title, sub, fn) => h('button', { class: 'item', on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
+  BUILD.settings = (st, redraw) => {
+    st.append(h('button', { class: 'prof', on: { click: nameSheet } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()), h('span', { class: 't' }, h('b', {}, S.settings.name || 'Adarsh'), h('small', {}, 'Personal · private to this device')), icon('chev', 'chev')));
+    const seg = (opts, get, set) => h('div', { class: 'seg' }, opts.map(([v, l]) => h('button', { 'aria-pressed': String(get() === v), on: { click: () => { set(v); save(); redraw(); } } }, l)));
+    st.append(h('div', { class: 'd-label', style: 'padding:0 4px' }, 'Color mode'),
+      h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
+      h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Chat font'), seg([['sans', 'Default'], ['serif', 'Serif']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
+    st.append(h('div', { class: 'grp' },
+      navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet),
+      swItem('bell', 'Notifications', 'Alert me when a reply or reminder arrives', () => S.settings.notif, async (v) => { S.settings.notif = v; if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} } }),
+      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; })));
+    st.append(h('div', { class: 'grp' },
+      navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
+      S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
+      navItem('server', 'Connection', Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
+    st.append(h('div', { class: 'grp' },
+      navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
+      navItem('upload', 'Import data', 'Restore from an export', () => $('#f-import').click()),
+      navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Clear all chats?', text: 'This removes every chat on this device. Memory and tasks stay.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
+    st.append(h('div', { class: 'center muted' }, 'ADARSH UI v3 · frontend only'));
+  };
+  function nameSheet() {
+    sheet({ title: 'Your name', build(b, close) {
+      const i = h('input', { type: 'text', value: S.settings.name || '', 'aria-label': 'Name' });
+      b.append(i, h('button', { class: 'btn pri', on: { click: () => { S.settings.name = i.value.trim() || 'Adarsh'; save(); close(); buildDrawer(); drawerList(); build('settings'); } } }, 'Save'));
+    } });
+  }
+  function voiceSheet() {
+    sheet({ title: 'Voice & language', build(b, close) {
+      const langs = [['hi-IN', 'Hindi'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']];
+      const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.1', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
+      const seg = h('div', { class: 'seg' }, langs.map(([v, l]) => h('button', { 'aria-pressed': String(S.settings.lang === v), on: { click: (e) => { S.settings.lang = v; save(); $$('.seg button', b).forEach(x => x.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } } }, l)));
+      b.append(swItem('speaker', 'Speak replies', 'Read answers aloud in voice mode and on tap', () => S.settings.speak, v => { S.settings.speak = v; }),
+        h('label', { class: 'l' }, 'Recognition language'), seg, h('label', { class: 'l' }, 'Speaking speed'), rate,
+        TTS.ok() ? h('button', { class: 'btn ghost', on: { click: () => TTS.speak('Namaste. Main Adarsh hoon.') } }, 'Test voice') : h('p', {}, 'This browser has no speech output.'));
+    } });
+  }
+  function connSheet() {
+    sheet({ title: 'Connection', tall: true, build(b, close) {
+      const url = h('input', { type: 'text', placeholder: 'https://your-server.example/api/chat', value: S.conn.url, 'aria-label': 'Backend URL', autocapitalize: 'off', autocomplete: 'off' });
+      const tok = h('input', { type: 'password', placeholder: 'Secret token', value: S.conn.token, 'aria-label': 'Secret token', autocomplete: 'off' });
+      const out = h('p', {});
+      b.append(h('p', {}, 'Point the app at your ADARSH backend. The token is sent as a Bearer header; your server must verify it and keep its own allow-list (the Telegram CHAT_ID check). Leave empty for the demo.'),
+        h('label', { class: 'l' }, 'Backend URL'), url, h('label', { class: 'l' }, 'Secret token'), tok, out,
+        h('div', { class: 'frow' }, h('button', { class: 'btn ghost', style: 'flex:1', on: { click: async () => { S.conn.url = url.value.trim(); S.conn.token = tok.value; out.textContent = 'Testing…'; const r = await Backend.ping(); out.textContent = r.ok ? '✓ ' + r.label : '✗ ' + r.label; } } }, 'Test'),
+          h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { S.conn.url = url.value.trim(); S.conn.token = tok.value; save(); Backend.refresh(); close(); if (view === 'settings') build('settings'); toast('Connection saved'); } } }, 'Save')),
+        h('p', {}, 'Or from code: set window.ADARSH_BACKEND = { send, missionAction?, ping? } before the app loads. See ARCHITECTURE.md.'));
+    } });
+  }
+  function exportSheet() {
+    sheet({ title: 'Export data', tall: true, build(b) {
+      const data = JSON.stringify({ chats: S.chats, memories: S.memories, tasks: S.tasks, missions: S.missions, settings: S.settings, abilities: S.abilities }, null, 1);
+      const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
+      b.append(h('p', {}, 'Copy this JSON and keep it somewhere safe. It does not include your PIN or token.'), ta,
+        h('button', { class: 'btn pri', on: { click: async () => { try { await navigator.clipboard.writeText(data); toast('Copied'); } catch (e) { ta.select(); toast('Select all and copy'); } } } }, 'Copy JSON'));
+    } });
+  }
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.id === 'f-import' && t.files[0]) {
+      t.files[0].text().then(txt => {
+        const d = JSON.parse(txt); confirmSheet({ title: 'Replace data?', text: 'Imported chats, memory and tasks replace what is on this device.', label: 'Import', onYes: () => { ['chats', 'memories', 'tasks', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; }); S.cur = S.chats[0] ? S.chats[0].id : null; save(); Chat.renderThread(); drawerList(); toast('Imported'); } });
+      }).catch(() => toast('That file is not valid JSON')); t.value = '';
+    }
+    if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
+  });
+
+  return { show, drawer, buildDrawer, drawerList, applyTheme, ask, draft, get view() { return view; } };
+})();
+
+'use strict';
+/* 05-voice.js : speech-to-text (platform dictation capability, else Web Speech), text-to-speech, voice-mode overlay */
+
+const TTS = {
+  ok: () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined',
+  speak(text, onEnd) {
+    if (!this.ok() || !text) { if (onEnd) onEnd(); return; }
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text.slice(0, 1200)); u.lang = S.settings.lang; u.rate = S.settings.rate || 1;
+      const v = speechSynthesis.getVoices().find(x => x.lang === S.settings.lang) || speechSynthesis.getVoices().find(x => x.lang.startsWith(S.settings.lang.slice(0, 2)));
+      if (v) u.voice = v;
+      u.onend = u.onerror = () => { if (onEnd) onEnd(); };
+      speechSynthesis.speak(u);
+    } catch (e) { if (onEnd) onEnd(); }
+  },
+  stop() { try { if (this.ok()) speechSynthesis.cancel(); } catch (e) {} }
+};
+
+const STT = {
+  dict: null, _stop: null,
+  supported() { return !!(this.dict || window.SpeechRecognition || window.webkitSpeechRecognition); },
+  /* Must be called synchronously from a click. Returns false when nothing can listen. */
+  start(o) {
+    if (this.dict) {
+      const d = this.dict; const offs = [];
+      offs.push(d.onPartial(e => o.onPartial && o.onPartial(e.text)));
+      offs.push(d.onFinal(e => o.onFinal && o.onFinal(e.text)));
+      offs.push(d.onState(e => { if (e.state === 'idle') { offs.forEach(f => f()); this._stop = null; if (o.onEnd) o.onEnd(e.reason); } }));
+      this._stop = () => d.stop().catch(() => {});
+      d.start({}).catch(err => {
+        if (err && err.code === 'stopped') return;
+        offs.forEach(f => f()); this._stop = null;
+        if (o.onError) o.onError(err && err.code === 'not_granted' ? 'Microphone permission was declined.' : 'Voice typing failed. Please type instead.');
+        if (o.onEnd) o.onEnd('error');
+      });
+      return true;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return false;
+    const r = new SR(); r.lang = S.settings.lang; r.interimResults = true; r.continuous = false; let got = false;
+    r.onresult = (e) => {
+      let part = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) { got = true; if (o.onFinal) o.onFinal(' ' + t.trim()); } else part += t;
+      }
+      if (part && o.onPartial) o.onPartial(part);
+    };
+    r.onerror = (e) => { if (o.onError) o.onError(e.error === 'not-allowed' || e.error === 'service-not-allowed' ? 'Microphone is blocked here. Type instead, or allow the mic in browser settings.' : e.error === 'no-speech' ? 'Didn’t catch anything.' : 'Voice input error: ' + e.error); };
+    r.onend = () => { this._stop = null; if (o.onEnd) o.onEnd(got ? 'final' : 'empty'); };
+    try { r.start(); } catch (e) { return false; }
+    this._stop = () => { try { r.stop(); } catch (e) {} };
+    return true;
+  },
+  stop() { if (this._stop) this._stop(); }
+};
+
+const Voice = (() => {
+  let el, orb, stateEl, cap, inp, handsfree = true, speakOn = true, openFlag = false, collected = [], micBtn;
+  const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…' };
+  const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s]; if (micBtn) micBtn.textContent = s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
+  const caption = (u, a) => { cap.textContent = ''; if (u) cap.append(h('div', { class: 'u' }, u)); if (a) cap.append(h('div', {}, a)); cap.scrollTop = cap.scrollHeight; };
+
+  function build() {
+    el = $('#voice'); el.textContent = '';
+    orb = h('button', { class: 'orb', 'aria-label': 'Talk to Adarsh', on: { click: toggle } }, h('span', { class: 'r r3' }), h('span', { class: 'r r2' }), h('span', { class: 'r r1' }), h('span', { class: 'arc' }), h('span', { class: 'core' }));
+    stateEl = h('p', { class: 'v-state', 'aria-live': 'polite' }, LABEL.idle); cap = h('div', { class: 'v-cap' });
+    inp = h('input', { type: 'text', placeholder: 'Or type here', 'aria-label': 'Type a message', on: { keydown: (e) => { if (e.key === 'Enter') typed(); } } });
+    micBtn = h('button', { class: 'chipbtn', on: { click: toggle } }, 'Talk');
+    const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
+    const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
+    el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, 'VOICE · ' + S.settings.lang), ibtn('x', 'Close voice mode', close)),
+      h('div', { class: 'v-mid' }, orb, stateEl, cap),
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+  }
+  function open() {
+    if (openFlag) return; openFlag = true; build(); el.hidden = false; setState('idle');
+    caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
+    document.addEventListener('keydown', onEsc);
+  }
+  function close() {
+    if (!openFlag) return; openFlag = false; STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
+  }
+  const onEsc = (e) => { if (e.key === 'Escape') close(); };
+  function toggle() {
+    const s = el.dataset.state;
+    if (s === 'listening') return STT.stop();
+    if (s === 'speaking') { TTS.stop(); setState('idle'); return; }
+    if (s === 'thinking') return;
+    listen();
+  }
+  function listen() {
+    let text = '';
+    const ok = STT.start({
+      onPartial: (t) => { if (openFlag) caption((text + ' ' + t).trim()); },
+      onFinal: (t) => { text = (text + t).trim(); caption(text); },
+      onEnd: () => { if (!openFlag) return; if (text) say(text); else setState('idle'); },
+      onError: (m) => { caption('', m); }
+    });
+    if (!ok) { caption('', 'Speech input isn’t available here. Type below.'); return; }
+    setState('listening'); vibe();
+  }
+  function typed() { const t = inp.value.trim(); if (!t) return; inp.value = ''; STT.stop(); TTS.stop(); say(t); }
+
+  async function say(text) {
+    setState('thinking'); caption(text); collected = [];
+    const un = Bus.on('reply', ({ msg }) => collected.push(msg.reply));
+    try { await Chat.submit(text); } finally { un(); }
+    if (!openFlag) return;
+    const structured = collected.find(r => r.type === 'ask' || r.type === 'approve');
+    const spoken = collected.map(speechOf).filter(Boolean).join(' ');
+    caption(text, spoken || 'Done.');
+    if (structured) {
+      if (speakOn) TTS.speak(spoken); toast('Adarsh needs your answer in chat');
+      setTimeout(close, speakOn ? 1800 : 400); return;
+    }
+    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!openFlag) return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
+    else { setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
+  }
+  return { open, close };
+})();
+
+'use strict';
+/* 06-lock.js : local PIN lock. A convenience screen lock for this device only.
+   The real protection is the backend token + allow-list; a PIN stored in the browser cannot protect against someone with devtools. */
+
+const Lock = (() => {
+  const enc = new TextEncoder();
+  const hex = (buf) => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  const unhex = (s) => new Uint8Array(s.match(/../g).map(x => parseInt(x, 16)));
+  async function derive(pin, saltHex, alg) {
+    if (alg !== 'weak' && window.crypto && crypto.subtle) {
+      const k = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveBits']);
+      return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unhex(saltHex), iterations: 150000, hash: 'SHA-256' }, k, 256));
+    }
+    let x = 5381; const s = saltHex + pin; for (let i = 0; i < s.length; i++) x = ((x << 5) + x + s.charCodeAt(i)) >>> 0; return x.toString(16);
+  }
+  async function make(pin) {
+    const salt = hex(crypto.getRandomValues(new Uint8Array(16))); const alg = window.crypto && crypto.subtle ? 'pbkdf2' : 'weak';
+    return { salt, alg, hash: await derive(pin, salt, alg), len: pin.length };
+  }
+  const verify = async (pin) => S.lock && (await derive(pin, S.lock.salt, S.lock.alg)) === S.lock.hash;
+
+  let activePad = null, fails = 0, until = 0, hiddenAt = 0;
+  document.addEventListener('keydown', (e) => {
+    if (!activePad) return;
+    if (/^\d$/.test(e.key)) activePad.press(e.key); else if (e.key === 'Backspace') activePad.press('b');
+  });
+
+  function pinPad(len, onDone) {
+    let v = '', busy = false;
+    const dots = h('div', { class: 'pin-dots', role: 'img', 'aria-label': len + ' digit PIN' }, Array.from({ length: len }, () => h('i')));
+    const draw = () => $$('i', dots).forEach((d, i) => d.classList.toggle('on', i < v.length));
+    const press = async (k) => {
+      if (busy) return;
+      if (k === 'b') v = v.slice(0, -1); else if (v.length < len) v += k; else return;
+      vibe(); draw();
+      if (v.length === len) { busy = true; const pin = v; try { await onDone(pin, pad); } finally { busy = false; v = ''; draw(); } }
+    };
+    const key = (k, label) => h('button', { class: 'key', 'aria-label': k === 'b' ? 'Delete' : k, on: { click: () => press(k) } }, label || k);
+    const el = h('div', { class: 'pinhost' }, dots, h('div', { class: 'keypad' }, '123456789'.split('').map(k => key(k)), h('span', { class: 'key blank' }), key('0'), key('b', icon('back'))));
+    const pad = { el, press, shake() { dots.classList.remove('shake'); void dots.offsetWidth; dots.classList.add('shake'); } };
+    return pad;
+  }
+
+  /* ----- full-screen lock ----- */
+  function lockNow() {
+    if (!S.lock) return; Voice.close(); const root = $('#lock'); root.textContent = ''; root.hidden = false;
+    const msg = h('p', { class: 'lk-msg', role: 'status' }, 'Enter your PIN');
+    const pad = pinPad(S.lock.len || 4, async (pin, p) => {
+      if (Date.now() < until) { p.shake(); msg.textContent = 'Too many tries. Wait ' + Math.ceil((until - Date.now()) / 1000) + 's.'; return; }
+      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; return; }
+      fails++; p.shake(); vibe(30);
+      if (fails >= 5) { until = Date.now() + 30000; fails = 0; msg.textContent = 'Too many tries. Locked for 30 s.'; } else msg.textContent = 'Wrong PIN. ' + (5 - fails) + ' tries left.';
+    });
+    activePad = pad;
+    root.append(h('div', { class: 'mark' }, 'A'), h('h2', {}, 'ADARSH'), msg, pad.el,
+      h('button', { class: 'link', on: { click: forgot } }, 'Forgot PIN?'));
+  }
+  function forgot() {
+    confirmSheet({ title: 'Reset this device?', top: true, text: 'The PIN can’t be recovered. Resetting removes the PIN and ALL chats, memory and tasks stored on this device. Your backend data is not touched.', label: 'Erase and reset', danger: true,
+      onYes: () => { Object.assign(S, DEFAULTS()); saveNow(); activePad = null; const r = $('#lock'); r.hidden = true; r.textContent = ''; App.applyTheme(); App.buildDrawer(); App.drawerList(); Chat.renderThread(); toast('Device reset'); } });
+  }
+
+  /* ----- setup / change / remove (inside sheets) ----- */
+  function pinSheet(title, prompt, check) {
+    return new Promise((resolve) => {
+      let done = false;
+      const close = sheet({ title, build(b, closeFn) {
+        const msg = h('p', { class: 'center', role: 'status' }, prompt);
+        const pad = pinPad(4, async (pin, p) => {
+          const r = await check(pin);
+          if (r === false) { p.shake(); msg.textContent = 'Not right, try again.'; return; }
+          done = true; activePad = null; closeFn(); resolve(pin);
+        });
+        activePad = pad; b.append(msg, h('div', { style: 'display:flex;justify-content:center;padding:6px 0 10px' }, pad.el));
+      } });
+      const mo = new MutationObserver(() => { if (!document.querySelector('.shade [role=dialog][aria-label="' + title + '"]')) { mo.disconnect(); activePad = null; if (!done) resolve(null); } });
+      mo.observe($('#phone'), { childList: true });
+    });
+  }
+  async function setup(after) {
+    const first = await pinSheet('Set a PIN', 'Choose a 4-digit PIN', () => true); if (!first) return;
+    const again = await pinSheet('Confirm PIN', 'Enter it once more', (p) => p === first ? true : false); if (!again) return;
+    S.lock = await make(first); save(); toast('PIN lock is on'); if (after) after();
+  }
+  async function manage(after) {
+    if (!S.lock) return setup(after);
+    sheet({ title: 'App lock', build(b, close) {
+      const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
+      b.append(row('lock', 'Change PIN', 'Enter current PIN first', async () => { const ok = await pinSheet('Current PIN', 'Enter your current PIN', verify); if (ok) { const old = S.lock; S.lock = null; await setup(after); if (!S.lock) S.lock = old; } }),
+        row('x', 'Remove PIN', 'Turn the lock off', async () => { const ok = await pinSheet('Current PIN', 'Enter your current PIN', verify); if (ok) { S.lock = null; save(); toast('PIN lock is off'); if (after) after(); } }),
+        h('p', {}, 'This lock only hides the app on this device. Real protection is your backend token and allow-list.'));
+    } });
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hiddenAt = Date.now();
+    else if (S.lock && S.settings.lockOnHide && hiddenAt && Date.now() - hiddenAt > (S.settings.lockAfter || 30) * 1000) lockNow();
+  });
+  return { lockNow, manage, setup };
+})();
+
+'use strict';
+/* 07-backend.js : the adapter seam.
+   The UI only ever calls Backend.send(). Plug in your architecture by either
+     (a) defining  window.ADARSH_BACKEND = { send(req,{onProgress,signal}), missionAction?, ping?, suggestions? }  before this script, or
+     (b) filling Settings > Connection with an HTTP endpoint (JSON in / JSON out, see ARCHITECTURE.md).
+   With neither, a clearly-labelled demo backend runs so every screen can be tried. */
+
+const DemoBackend = (() => {
+  const wait = (ms, signal) => new Promise((res, rej) => {
+    const t = setTimeout(res, ms); if (signal) signal.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('Aborted', 'AbortError')); });
+  });
+  function parseDue(t) {
+    const d = new Date(); let hit = false;
+    if (/\b(tomorrow|kal)\b/i.test(t)) { d.setDate(d.getDate() + 1); hit = true; } else if (/\b(today|aaj)\b/i.test(t)) hit = true;
+    const m = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i.exec(t);
+    if (m) { let hr = +m[1] % 12; if (/pm/i.test(m[3])) hr += 12; d.setHours(hr, +(m[2] || 0), 0, 0); hit = true; } else d.setHours(9, 0, 0, 0);
+    return hit ? d.getTime() : null;
+  }
+  async function steps(list, o) { for (const s of list) { o.onProgress(s); await wait(420, o.signal); } }
+
+  async function send(req, o) {
+    const t = (req.text || '').trim(), m = req.meta || {};
+    if (m.answer) {
+      await steps(['Reading your answers', 'Building the plan'], o);
+      const a = m.answer.answers || []; const get = (k) => (a.find(x => x.header === k) || {}).answer || 'anything';
+      const open = S.tasks.filter(x => !x.done).slice(0, 3).map(x => '- ' + x.title);
+      return { type: 'text', text: '**Plan for today** (' + get('Focus') + ', ' + get('Time') + ')\n\n1. Start with the one thing that matters most.\n2. Block the first slot for deep work, no phone.\n3. Review open tasks.\n\n' + (open.length ? open.join('\n') : '- nothing open yet') + '\n\n*Demo reply: your real backend writes this.*' };
+    }
+    if (m.approval) {
+      await steps(['Applying your decision'], o);
+      return m.approval.decision === 'allow'
+        ? { type: 'text', text: 'Done. I staged the change in a copy, ran the checks and nothing live was touched. *(demo)*' }
+        : { type: 'text', text: 'Okay, I won’t do that. Tell me if you want a different approach.' };
+    }
+    if (/brief|briefing|aaj ka din|good morning/i.test(t)) {
+      await steps(['Checking tasks', 'Checking memory'], o);
+      const due = S.tasks.filter(x => !x.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)).slice(0, 4);
+      return { type: 'text', text: '**' + greeting() + ', ' + (S.settings.name || 'Adarsh') + '.**\n\n' + (due.length ? 'Open tasks:\n' + due.map(x => '- ' + x.title + (x.due ? ' (' + fmtDue(x.due).t + ')' : '')).join('\n') : 'No open tasks. A clear day.') + '\n\n' + (S.memories.length ? 'I’m keeping ' + S.memories.length + ' things in memory.' : 'Nothing in memory yet. Say “remember that…”.') + '\n\n*Demo briefing built from this device’s data.*' };
+    }
+    if (/plan (my )?day|plan karo|schedule my/i.test(t)) {
+      await steps(['Looking at your open tasks'], o);
+      return { type: 'ask', id: uid('ask'), questions: [
+        { header: 'Focus', question: 'What should today be about?', options: [{ label: 'Deep work', description: 'One big thing, no meetings' }, { label: 'Catch-up', description: 'Clear small pending items' }, { label: 'Balanced' }] },
+        { header: 'Time', question: 'How much time do you have?', multi: false, options: [{ label: '2 hours' }, { label: 'Half a day' }, { label: 'Full day' }] }
+      ] };
+    }
+    if (/\b(remind|yaad dila|reminder)\b/i.test(t)) {
+      const title = t.replace(/^(please\s+)?(remind me|yaad dila(na)?)( to)?/i, '').replace(/\b(tomorrow|today|kal|aaj)\b/ig, '').replace(/\d{1,2}(:\d{2})?\s*(am|pm)/ig, '').replace(/\s+/g, ' ').trim() || 'Reminder';
+      await steps(['Understanding the time'], o);
+      return [{ type: 'task', title: title.charAt(0).toUpperCase() + title.slice(1), due: parseDue(t) }, { type: 'text', text: 'Added. I’ll nudge you when it’s due.' }];
+    }
+    if (/\b(remember|yaad rakh)\b/i.test(t)) {
+      const mem = t.replace(/^.*?\b(remember( that)?|yaad rakh(na)?)\b\s*/i, '').trim() || t;
+      return [{ type: 'memory', text: mem }, { type: 'text', text: 'Got it. I’ll use that from now on.' }];
+    }
+    if (/self|audit your|your own code|improve yourself|deploy/i.test(t)) {
+      await steps(['Inspecting own source (read-only)', 'Preparing a staged proposal'], o);
+      return [{ type: 'text', text: 'I found one safe improvement: tighten the retry logic in the LLM router. I’d stage it in a copy and run the tests first.' },
+        { type: 'approve', id: uid('ap'), title: 'Stage a change to adarsh/llm_router.py', detail: 'Creates a staged copy, runs compile + tests. Nothing goes live until you approve a deploy.', action: 'self_engineering.propose("tighten retry logic")', scope: 'Staging copy only', risk: 'medium' }];
+    }
+    if (/delete|send (an )?email|post |purchase|buy /i.test(t)) {
+      await steps(['Checking what this touches'], o);
+      return { type: 'approve', id: uid('ap'), title: 'Do this on your behalf?', detail: 'This action changes something outside the chat: “' + t.slice(0, 90) + '”.', action: 'external_action()', scope: 'One time only', risk: 'high' };
+    }
+    if (/debate/i.test(t)) {
+      await steps(['Pro side', 'Con side', 'Moderator'], o);
+      return { type: 'debate', topic: t.replace(/^debate:?\s*/i, ''), pro: 'Start with **Rust**: it forces you to understand memory and ownership, and that knowledge transfers to every language afterwards.', con: 'Start with **Go**: you ship something useful in a weekend, and motivation matters more than depth in the first month.', verdict: 'If your goal is shipping tools quickly, Go first. If your goal is systems depth, Rust first. For most people, Go then Rust works best. *(demo)*' };
+    }
+    if (/pattern/i.test(t)) {
+      await steps(['Reading recent notes', 'Looking for repeats'], o);
+      return { type: 'patterns', title: 'Patterns in your week', patterns: [{ claim: 'You plan late at night and slip the next morning.', strength: 'strong', evidence: ['3 tasks created after 11 pm', '2 of them missed their due time'], so_what: 'Plan before 9 pm or set a morning checkpoint.' }, { claim: 'Research tasks outlive everything else.', strength: 'moderate', evidence: ['Oldest open task is a research item'], so_what: 'Time-box research to 45 minutes.' }] };
+    }
+    if (/connect|link the dots|related/i.test(t)) {
+      await steps(['Mapping ideas'], o);
+      return { type: 'links', title: 'How these connect', chains: [{ nodes: ['Sleep', 'Focus', 'Output'], why: 'Poor sleep lowers focus, which shows up as less output.' }, { nodes: ['Notes', 'Memory', 'Briefing'], why: 'What you note becomes what I remember and surface in the briefing.' }] };
+    }
+    if (/mission/i.test(t)) {
+      await steps(['Splitting into stages'], o);
+      return { type: 'mission', id: uid('ms'), title: t.replace(/^start a mission:?\s*/i, '') || 'Mission', status: 'running', stages: [{ label: 'Understand the goal', status: 'completed' }, { label: 'Gather sources', status: 'completed' }, { label: 'Analyse and compare', status: 'running' }, { label: 'Verify claims', status: 'pending' }, { label: 'Write the report', status: 'pending' }, { label: 'Final check', status: 'pending' }] };
+    }
+    if (/research|verify|fact|sach|true/i.test(t)) {
+      await steps(['Planning searches', 'Reading sources', 'Checking each claim', 'Judging the evidence'], o);
+      return { type: 'research', question: t.replace(/^research( whether)?\s*/i, '') || t, confidence: 0.72, summary: 'Short-term studies show a small benefit for alertness, but results on lasting focus are mixed.',
+        claims: [{ text: 'Fasting can improve alertness in the short term.', verdict: 'SUPPORTED_BY_MULTIPLE_SOURCES', checks: [{ source: 'Source 1', verdict: 'SUPPORTED_BY_ONE_SOURCE', note: 'Small trial, 40 adults' }, { source: 'Source 2', verdict: 'SUPPORTED_BY_ONE_SOURCE' }] },
+          { text: 'It improves long-term concentration.', verdict: 'CONTESTED', checks: [{ source: 'Source 3', verdict: 'CONTRADICTED_BY_SOURCE', note: 'No effect after 8 weeks' }] },
+          { text: 'It works for everyone.', verdict: 'UNSUPPORTED_NO_VALID_EVIDENCE', checks: [] }],
+        sources: [{ n: 1, title: 'Example journal article', url: 'https://example.org/a' }, { n: 2, title: 'Example review', url: 'https://example.org/b' }, { n: 3, title: 'Example trial', url: 'https://example.org/c' }], caveat: 'Demo data: nothing here was actually searched.' };
+    }
+    await steps(['Thinking'], o);
+    return { type: 'text', text: 'You said: “' + t + '”.\n\nThis is the **demo backend**, so I can only show how replies look. Try: *research…*, *debate…*, *remind me to… tomorrow 5pm*, *remember that…*, *plan my day*, *start a mission…*, *delete…* (permission card).' };
+  }
+  const missionAction = async (id, action) => ({ status: action === 'cancel' ? 'cancelled' : action === 'pause' ? 'paused' : 'running' });
+  const suggestions = () => [
+    { ic: 'sun', title: 'Morning briefing', sub: 'Tasks, memory and what needs you', prompt: 'Brief me on today' },
+    { ic: 'cal', title: 'Plan my day', sub: 'Adarsh will ask two quick questions', prompt: 'Plan my day around my open tasks' }
+  ];
+  return { send, missionAction, suggestions, ping: async () => ({ ok: true, label: 'Demo backend (no server)' }) };
+})();
+
+const connUrl = () => S.conn.url || (window.ADARSH_SAME_ORIGIN ? '/api/chat' : '');
+
+const HttpBackend = {
+  async send(req, o) {
+    const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+    o.onProgress('Contacting Adarsh');
+    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, abilities: req.abilities, lang: req.lang }) });
+    if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
+    if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
+    const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
+    const j = await r.json(); return Array.isArray(j) ? j : j.replies || j.reply || j;
+  },
+  async ping() {
+    try {
+      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ ping: true }) });
+      return r.ok ? { ok: true, label: 'Connected (' + new URL(connUrl(), location.href).hostname + ')' } : { ok: false, label: 'HTTP ' + r.status };
+    } catch (e) { return { ok: false, label: 'Cannot reach the server (' + (e && e.message ? e.message : 'network') + ')' }; }
+  }
+};
+
+const Backend = (() => {
+  const custom = () => window.ADARSH_BACKEND;
+  const impl = () => custom() || (connUrl() ? HttpBackend : DemoBackend);
+  return {
+    isDemo: () => !custom() && !connUrl(),
+    send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; return impl().send(req, o); },
+    missionAction(id, a) { const b = impl(); return b.missionAction ? b.missionAction(id, a) : Promise.resolve(null); },
+    suggestions() { const b = impl(); return b.suggestions ? b.suggestions() : []; },
+    async ping() { const b = impl(); return b.ping ? b.ping() : { ok: true, label: 'Custom backend' }; },
+    async refresh() {
+      if (this.isDemo()) return Bus.emit('backend:status', { label: 'Demo mode', demo: true });
+      Bus.emit('backend:status', { label: 'Connecting…' });
+      const r = await this.ping(); Bus.emit('backend:status', { label: r.ok ? 'Connected' : 'Offline', ok: r.ok });
+    }
+  };
+})();
+
+'use strict';
+/* 08-boot.js : start-up + the public hook object your backend can use to push things into the UI */
+(function boot() {
+  load();
+  App.applyTheme();
+  App.buildDrawer();
+  Chat.mount($('#v-chat'));
+  App.drawerList();
+
+  /* Public surface for the architecture you add later:
+       ADARSH_UI.push(reply[, {chatId}])  deliver an AI message (proactive alert, finished mission, question) into a chat
+       ADARSH_UI.banner({title,text,onOpen}) top banner;  ADARSH_UI.toast(msg);  ADARSH_UI.send(text) type as the user */
+  window.ADARSH_UI = {
+    push: (r, o) => Chat.push(r, o), banner, toast, send: (t) => App.ask(t), open: (v) => App.show(v),
+    on: Bus.on, version: 3
+  };
+
+  Backend.refresh();
+
+  /* platform dictation (Chromium tabs / desktop app); Web Speech is the fallback inside STT */
+  try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || null; }).catch(() => {}); } catch (e) {}
+
+  if (S.lock) Lock.lockNow();
+})();
+
+</script>
