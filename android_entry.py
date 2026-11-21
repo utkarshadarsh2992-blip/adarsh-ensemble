@@ -17,7 +17,7 @@ def init(files_dir: str) -> str:
     global _ready
     os.makedirs(files_dir, exist_ok=True)
     os.environ["USAGE_FILE"] = os.path.join(files_dir, "usage.json")
-    os.environ.setdefault("CHAT_MODE", "fast")  # phone default: fewer models, less quota; change in env if wanted
+    os.environ.setdefault("CHAT_MODE", "fast")  # phone default: fewer models, less quota
     _ready = True
     return "ok"
 
@@ -40,6 +40,10 @@ def _scrub(text: str) -> str:
     return text
 
 
+def _text(msg: str) -> str:
+    return json.dumps({"type": "text", "text": _scrub(msg)[:3000]})
+
+
 def status() -> str:
     import config
 
@@ -55,9 +59,55 @@ def status() -> str:
     )
 
 
-def handle(request_json: str) -> str:
-    """UI request JSON in, reply JSON (object or list) out. Never raises, never logs keys."""
+def diagnose() -> str:
+    """One cheap GET /models per provider that has a key: checks key, network, TLS and that our model IDs exist."""
+    import httpx
+
+    import config
+
+    lines = []
+    for name, prov in config.PROVIDERS.items():
+        if not prov.api_key:
+            lines.append(f"{name}: key nahi hai")
+            continue
+        try:
+            r = httpx.get(
+                f"{prov.base_url}/models", headers={"Authorization": f"Bearer {prov.api_key}"}, timeout=20
+            )
+        except Exception as e:  # network, DNS, TLS
+            lines.append(f"{name}: NETWORK FAIL {type(e).__name__}: {str(e)[:120]}")
+            continue
+        if r.status_code in (401, 403):
+            lines.append(f"{name}: key reject hui (HTTP {r.status_code})")
+            continue
+        if r.status_code != 200:
+            lines.append(f"{name}: HTTP {r.status_code} {r.text[:80]}")
+            continue
+        try:
+            ids = {str(m.get("id", "")).removeprefix("models/") for m in r.json().get("data", [])}
+        except Exception:
+            lines.append(f"{name}: OK (HTTP 200), par model list padh nahi paya")
+            continue
+        ours = [m for m in config.REGISTRY.values() if m.provider == name]
+        missing = [m.model for m in ours if m.model not in ids]
+        line = f"{name}: key OK, {len(ours) - len(missing)}/{len(ours)} configured models mile"
+        if missing:
+            line += ". Nahi mile: " + ", ".join(missing)
+        lines.append(line)
+    return _text("**Connection test**\n\n" + "\n".join("- " + ln for ln in lines))
+
+
+async def _run(body: dict, progress):
     import chat_adapter
+    import config
+
+    config.PROGRESS.set(progress)
+    return await chat_adapter.handle(body)
+
+
+def handle(request_json: str, progress=None) -> str:
+    """UI request JSON in, reply JSON (object or list) out. Never raises, never logs keys.
+    `progress` is an optional Java Consumer<String> (stage text for the UI)."""
     import config
 
     try:
@@ -65,15 +115,24 @@ def handle(request_json: str) -> str:
         if not isinstance(body, dict):
             raise ValueError("request must be an object")
     except ValueError:
-        return json.dumps({"type": "text", "text": "Request samajh nahi aaya."})
+        return _text("Request samajh nahi aaya.")
+
+    if body.get("diagnose"):
+        return diagnose()
 
     if not body.get("ping") and not any(v.api_key for v in config.PROVIDERS.values()):
-        return json.dumps(
-            {"type": "text", "text": "Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini ya OpenRouter)."}
-        )
+        return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini ya OpenRouter).")
+
+    cb = (lambda m: progress.accept(m)) if progress is not None else None
+    limit = float(os.getenv("ANDROID_TIMEOUT_S", "300"))
     try:
-        return json.dumps(asyncio.run(chat_adapter.handle(body)))
+        return json.dumps(asyncio.run(asyncio.wait_for(_run(body, cb), timeout=limit)))
+    except asyncio.TimeoutError:
+        return _text(
+            f"{int(limit)} second me jawab nahi aaya, isliye rok diya. Models ya network bahut slow hain. "
+            "Settings > API keys > **Test connection** chalao, wahan se pata chalega ki key, network ya model ID me kya galat hai."
+        )
     except RuntimeError as e:
-        return json.dumps({"type": "text", "text": _scrub(f"Models se jawab nahi mila: {e}")[:1500]})
+        return _text(f"Models se jawab nahi mila: {e}")
     except Exception as e:  # keep the app alive whatever a provider does
-        return json.dumps({"type": "text", "text": _scrub(f"Engine error ({type(e).__name__}): {e}")[:1500]})
+        return _text(f"Engine error ({type(e).__name__}): {e}")

@@ -4,11 +4,15 @@ import android.webkit.JavascriptInterface
 import org.json.JSONObject
 
 /** The only door between the page and the engine. Exposed to JS as `AdarshNative`. */
-class AdarshBridge(private val keys: SecureKeys, private val deliver: (String, String?, String?) -> Unit) {
+class AdarshBridge(
+    private val keys: SecureKeys,
+    private val progress: (String, String) -> Unit,
+    private val deliver: (String, String?, String?) -> Unit
+) {
 
     @JavascriptInterface
     fun send(id: String, requestJson: String) {
-        Engine.submit(id, requestJson) { result, error -> deliver(id, result, error) }
+        Engine.submit(id, requestJson, { msg -> progress(id, msg) }) { result, error -> deliver(id, result, error) }
     }
 
     @JavascriptInterface

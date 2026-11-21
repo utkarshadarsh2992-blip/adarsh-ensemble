@@ -205,6 +205,12 @@ const App = (() => {
             h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { const v = inp.value.trim(); if (!v) return toast('Paste a key first'); done(K.save(p.id, v), p.name + ' key saved'); } } }, 'Save'),
             cur.set ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => done(K.remove(p.id), p.name + ' key deleted') } }, 'Delete') : null));
       });
+      const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
+      b.append(h('button', { class: 'btn ghost', on: { click: async () => {
+        res.textContent = 'Testing…';
+        try { const r = await window.ADARSH_BACKEND.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); }
+        catch (e) { res.textContent = 'Test failed: ' + e.message; }
+      } } }, 'Test connection'), res);
     } });
   }
   function connSheet() {

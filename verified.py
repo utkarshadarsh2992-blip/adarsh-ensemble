@@ -212,6 +212,7 @@ async def _judge(client, question, map_text, fals_text, proofs_text, lang, error
 
 async def run_verified(client, question, task, anon, lang, deep, run_code, errors, flagged=None):
     """Returns (answer, extras). Never raises."""
+    config.emit("Drafts ko claims me tod raha hu")
     claim_map = await strip_to_claims(client, question, anon, flagged)
     if claim_map:
         full_text = format_map(claim_map)
@@ -221,6 +222,7 @@ async def run_verified(client, question, task, anon, lang, deep, run_code, error
         full_text = format_raw(anon)
         compact_text = format_raw(anon, limit=1200)
 
+    config.emit("Falsifiers galtiyan dhoondh rahe hain")
     reports, fal_errors = await falsify(client, question, compact_text, lang, deep)
     errors.update(fal_errors)
     fals_text = (
@@ -234,6 +236,7 @@ async def run_verified(client, question, task, anon, lang, deep, run_code, error
     proofs_text = format_proofs(proofs)
 
     warnings: list[str] = []
+    config.emit("Final judge jawab likh raha hai")
     answer = await _judge(client, question, full_text, fals_text, proofs_text, lang, errors)
     if answer is None:
         answer = max(anon.values(), key=len)

@@ -61,7 +61,7 @@ object Engine {
         entry?.callAttr("set_key", name, value)
     }
 
-    fun submit(id: String, requestJson: String, onDone: (String?, String?) -> Unit) {
+    fun submit(id: String, requestJson: String, onProgress: (String) -> Unit, onDone: (String?, String?) -> Unit) {
         if (inFlight.getAndIncrement() == 0) setForeground(true)
         pool.execute {
             var result: String? = null
@@ -69,7 +69,8 @@ object Engine {
             try {
                 started.await()
                 val e = entry ?: throw IllegalStateException(startError ?: "Engine did not start")
-                result = e.callAttr("handle", requestJson).toString()
+                val progress = java.util.function.Consumer<String> { msg -> onProgress(msg) }
+                result = e.callAttr("handle", requestJson, progress).toString()
             } catch (t: Throwable) {
                 // Never include the request body here: it can contain the user's text.
                 error = "Engine error: " + (t.message ?: t.javaClass.simpleName)

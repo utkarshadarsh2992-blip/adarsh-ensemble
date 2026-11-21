@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::deliver), "AdarshNative")
+        web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
 
         // Back never closes the app mid-request: it sends it to the background.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -134,6 +134,17 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val HOST = "appassets.androidplatform.net"
         @Volatile var current: MainActivity? = null
+
+        /** Stage text ("Falsifiers galtiyan dhoondh rahe hain") shown under Thinking. Dropped if no screen is attached. */
+        fun progress(id: String, msg: String) {
+            current?.let { a ->
+                a.runOnUiThread {
+                    if (!a.destroyed) a.web.evaluateJavascript(
+                        "window.__adarshProgress(${JSONObject.quote(id)},${JSONObject.quote(msg)})", null
+                    )
+                }
+            }
+        }
 
         /** Engine thread -> page. Parked in Engine.undelivered if no screen is attached; flushed on the next resume. */
         fun deliver(id: String, result: String?, err: String?) {

@@ -118,3 +118,47 @@ def test_network_failure_falls_back_to_error_reply(monkeypatch):
     monkeypatch.setattr(verified, "chat", down)
     out = json.loads(android_entry.handle(json.dumps({"text": "hello world"})))
     assert out["type"] == "text" if isinstance(out, dict) else out[0]["type"] == "text"
+
+
+def test_progress_callback_and_timeout(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    seen = []
+
+    class CB:
+        def accept(self, m):
+            seen.append(m)
+
+    out = json.loads(android_entry.handle(json.dumps({"text": "2+2 kya hai?"}), CB()))
+    assert out[0]["type"] == "text" and any("draft" in m for m in seen)
+
+    async def slow(*a, **k):
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(pipeline, "run", slow)
+    monkeypatch.setenv("ANDROID_TIMEOUT_S", "0.2")
+    out = json.loads(android_entry.handle(json.dumps({"text": "hello world"})))
+    assert "Test connection" in out["text"]
+
+
+def test_diagnose_reports_network_key_and_missing_models(monkeypatch):
+    import httpx
+
+    for k in android_entry.KEY_NAMES:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    monkeypatch.setenv("GEMINI_API_KEY", "g_test_123456")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or_test_123456")
+
+    def fake_get(url, **kw):
+        if "groq" in url:
+            return httpx.Response(200, json={"data": [{"id": "openai/gpt-oss-120b"}]}, request=httpx.Request("GET", url))
+        if "openrouter" in url:
+            return httpx.Response(401, json={}, request=httpx.Request("GET", url))
+        raise httpx.ConnectError("dns fail")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    text = json.loads(android_entry.diagnose())["text"]
+    assert "groq: key OK, 1/" in text and "Nahi mile" in text
+    assert "openrouter: key reject" in text
+    assert "gemini: NETWORK FAIL ConnectError" in text
+    assert "gsk_test_123456" not in text

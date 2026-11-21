@@ -186,7 +186,21 @@ if PLAN_PROBLEMS:
     warnings.warn("Fallback plan problems: " + "; ".join(PLAN_PROBLEMS))
 
 # ----------------------------------------------------------------------------- knobs
+import contextvars
 import sys
+
+# Stage progress for UIs (set per request by android_entry; a no-op everywhere else)
+PROGRESS: contextvars.ContextVar = contextvars.ContextVar("progress", default=None)
+
+
+def emit(msg: str) -> None:
+    cb = PROGRESS.get()
+    if cb:
+        try:
+            cb(msg)
+        except Exception:
+            pass
+
 
 # Android (Chaquopy): there is no usable `python` executable to spawn, so the code-proof sandbox
 # cannot run. Everything else (panel, falsifiers, judge, linter) is unchanged.

@@ -175,6 +175,7 @@ async def run(
             user_drafts[label] = a["text"].strip()
 
     async with httpx.AsyncClient() as client:
+        config.emit("Sawaal samajh raha hu")
         # [0] guard pasted answers + classify the question, concurrently
         guard_report, task = await asyncio.gather(
             guard.scan(client, user_drafts) if (use_guard and user_drafts) else _noop(),
@@ -204,6 +205,7 @@ async def run(
         panel_drafts: dict[str, str] = {}
         if source in ("auto", "hybrid"):
             panel = config.PANEL if deep else config.PANEL[:3]
+            config.emit(f"{len(panel)} models se draft likhwa raha hu")
             results = await asyncio.gather(
                 *[_ask_member(client, s, question, task, lang) for s in panel]
             )
