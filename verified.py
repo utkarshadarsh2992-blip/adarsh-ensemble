@@ -6,7 +6,9 @@
   [3a] Popper falsifiers -> attack conflicts AND consensus (shared blind spots)
   [3b] executable truth  -> LLM writes Python checks, sandbox runs them
   [4] final judge        -> Direct Core Truth / Verified Mechanism / Trap Warning
-  [5] contract linter    -> plain Python (no LLM): no "[PROVEN by code]" without a PASS proof
+  [5] contract linter    -> plain Python (no LLM): no "[PROVEN by code]" without a PASS proof; a missing
+                            section triggers a re-ask (repair loop) before anything is shown
+  [6] audit + revise     -> a different model fact-checks the final answer; high/medium errors are rewritten
 
 Falsifiers and the script-writer get a COMPACT map (consensus + conflicts) so their input
 fits the small Groq per-minute token limit; the judge gets the full per-draft claims.
@@ -108,6 +110,15 @@ def format_proofs(results: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
+SOLVE_SECTIONS = ("Direct Core Truth", "Verified Mechanism", "Trap Warning")
+EXPLAIN_SECTIONS = ("Short answer", "Explanation", "Common mistake")
+
+
+def missing_sections(answer: str, style: str) -> list[str]:
+    low = re.sub(r"\s+", " ", answer.lower())
+    return [s for s in (EXPLAIN_SECTIONS if style == "explain" else SOLVE_SECTIONS) if s.lower() not in low]
+
+
 _TAG_RE = re.compile(r"\s*\[(?:PROVEN by code|REASONED|UNVERIFIED)\]", re.IGNORECASE)
 
 
@@ -117,7 +128,7 @@ def lint_answer(answer: str, proofs: list[dict], style: str = "solve") -> tuple[
     if style == "explain":
         # Nothing was run as code for an explanation, so proof tags would only suggest certainty that is not there.
         answer = _TAG_RE.sub("", answer)
-        missing = [s for s in ("Short answer", "Explanation", "Common mistake") if s.lower() not in answer.lower()]
+        missing = missing_sections(answer, style)
         if missing:
             warnings.append("Final answer is missing section(s): " + ", ".join(missing))
         return answer, warnings
@@ -126,9 +137,7 @@ def lint_answer(answer: str, proofs: list[dict], style: str = "solve") -> tuple[
     if passed == 0 and re.search(r"\[PROVEN by code\]", answer, re.IGNORECASE):
         answer = re.sub(r"\[PROVEN by code\]", "[REASONED]", answer, flags=re.IGNORECASE)
         warnings.append("Judge wrote [PROVEN by code] but no code check passed: downgraded to [REASONED].")
-    missing = [
-        s for s in ("Direct Core Truth", "Verified Mechanism", "Trap Warning") if s.lower() not in answer.lower()
-    ]
+    missing = missing_sections(answer, style)
     if missing:
         warnings.append("Final answer is missing section(s): " + ", ".join(missing))
     if failed:
@@ -228,20 +237,107 @@ async def verify_with_code(client, question, task, map_text, fals_text, errors) 
     ]
 
 
-async def _judge(client, question, map_text, fals_text, proofs_text, lang, errors, style="solve") -> str | None:
-    messages = (
-        prompts.judge_explain_messages(question, map_text, fals_text, lang)
-        if style == "explain"
-        else prompts.judge_messages(question, map_text, fals_text, proofs_text, lang)
-    )
+def _judge_messages(question, map_text, fals_text, proofs_text, lang, style) -> list[dict]:
+    if style == "explain":
+        return prompts.judge_explain_messages(question, map_text, fals_text, lang)
+    return prompts.judge_messages(question, map_text, fals_text, proofs_text, lang)
+
+
+async def _judge(client, messages, errors) -> str | None:
     try:  # SYNTHESIZER already carries its own fallback chain
-        return await chat(
-            client, config.SYNTHESIZER,
-            messages,
-            temperature=0.2, max_tokens=config.FINAL_MAX_TOKENS,
-        )
+        return await chat(client, config.SYNTHESIZER, messages, temperature=0.2, max_tokens=config.FINAL_MAX_TOKENS)
     except LLMError as e:
         errors["judge"] = str(e)
+        return None
+
+
+async def _repair(client, base_messages, answer, missing, attempt, errors) -> str | None:
+    """The judge dropped required headings. Show it its own answer and ask for the complete answer again.
+    Attempt 2 starts on a different model, because the same one may keep making the same mistake."""
+    spec = config.SYNTHESIZER if attempt == 0 else config.rotated(config.SYNTHESIZER)
+    messages = base_messages + [
+        {"role": "assistant", "content": answer},
+        {
+            "role": "user",
+            "content": "Format error: your answer is missing the required section heading(s): "
+            + ", ".join(missing)
+            + ". Write the COMPLETE answer again with exactly the required sections and heading names, in the "
+            "required order. Keep the content (change it only if you notice a mistake). Do not mention this correction.",
+        },
+    ]
+    try:
+        return await chat(client, spec, messages, temperature=0.1, max_tokens=config.FINAL_MAX_TOKENS)
+    except LLMError as e:
+        errors[f"repair{attempt + 1}"] = str(e)
+        return None
+
+
+async def enforce_format(client, base_messages, answer, proofs, style, errors) -> tuple[str, list[str], int]:
+    """Lint, and while required sections are missing re-ask (up to MAX_REPAIRS) BEFORE the user sees anything.
+    Returns (answer, lint warnings for the FINAL text, repair attempts used)."""
+    answer, lint = lint_answer(answer, proofs, style)
+    repairs = 0
+    while repairs < config.MAX_REPAIRS:
+        missing = missing_sections(answer, style)
+        if not missing:
+            break
+        config.emit("Format theek kar raha hu")
+        fixed = await _repair(client, base_messages, answer, missing, repairs, errors)
+        repairs += 1
+        if fixed:
+            answer, lint = lint_answer(fixed, proofs, style)
+    missing = missing_sections(answer, style)
+    if missing and repairs:
+        lint = [w for w in lint if not w.startswith("Final answer is missing")] + [
+            f"Format check failed after {repairs} repair attempt(s): missing {', '.join(missing)}."
+        ]
+    return answer, lint, repairs
+
+
+# ------------------------------------------------------------------ audit
+
+def _norm(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[*_`#>]|\[(?:PROVEN by code|REASONED|UNVERIFIED)\]", "", text)).strip().lower()
+
+
+async def audit_answer(client, question, answer, lang, errors) -> dict:
+    """A different model fact-checks the FINAL answer. Returns {"ran": bool, "issues": [...]}.
+    An issue whose quote cannot be found in the answer is capped at low confidence (it may be invented)."""
+    config.emit("Audit: facts dobara check ho rahe hain")
+    try:
+        out = await chat(
+            client, config.AUDITOR, prompts.audit_messages(question, answer, lang),
+            temperature=0.1, max_tokens=1500,
+        )
+    except LLMError as e:
+        errors["auditor"] = str(e)
+        return {"ran": False, "issues": []}
+    data = _extract_json(out)
+    if not isinstance(data, dict) or not isinstance(data.get("issues"), list):
+        errors["auditor"] = "unreadable output"
+        return {"ran": False, "issues": []}
+    haystack, issues = _norm(answer), []
+    for it in data["issues"][: config.AUDIT_MAX_ISSUES]:
+        if not isinstance(it, dict):
+            continue
+        quote, problem, fix = (str(it.get(k) or "").strip() for k in ("quote", "problem", "fix"))
+        conf = str(it.get("confidence") or "low").strip().lower()
+        if not (problem and fix):
+            continue
+        if conf not in ("high", "medium", "low"):
+            conf = "low"
+        nq = _norm(quote)[:80]
+        if conf != "low" and (not nq or nq not in haystack):
+            conf = "low"
+        issues.append({"quote": quote[:300], "problem": problem[:400], "fix": fix[:400], "confidence": conf})
+    return {"ran": True, "issues": issues}
+
+
+async def revise_answer(client, messages, errors) -> str | None:
+    try:
+        return await chat(client, config.SYNTHESIZER, messages, temperature=0.1, max_tokens=config.FINAL_MAX_TOKENS)
+    except LLMError as e:
+        errors["reviser"] = str(e)
         return None
 
 
@@ -276,12 +372,34 @@ async def run_verified(
 
     warnings: list[str] = []
     config.emit("Final judge jawab likh raha hai")
-    answer = await _judge(client, question, full_text, fals_text, proofs_text, judge_hint or lang, errors, style)
+    hint = judge_hint or lang
+    judge_msgs = _judge_messages(question, full_text, fals_text, proofs_text, hint, style)
+    answer = await _judge(client, judge_msgs, errors)
+    repairs = 0
+    audit = {"enabled": config.AUDIT_ENABLED, "ran": False, "issues": [], "applied": [], "unsure": []}
     if answer is None:
         answer = max(anon.values(), key=len)
         warnings.append("Judge failed: returned the longest draft (unverified).")
     else:
-        answer, lint = lint_answer(answer, proofs, style)
+        answer, lint, repairs = await enforce_format(client, judge_msgs, answer, proofs, style, errors)
+
+        if config.AUDIT_ENABLED and not missing_sections(answer, style):
+            res = await audit_answer(client, question, answer, lang, errors)
+            audit["ran"], issues = res["ran"], res["issues"]
+            audit["issues"] = issues
+            actionable = [i for i in issues if i["confidence"] in ("high", "medium")]
+            if actionable:
+                config.emit("Galtiyan sudhar raha hu")
+                rev_msgs = prompts.revise_messages(question, answer, actionable, hint)
+                revised = await revise_answer(client, rev_msgs, errors)
+                if revised:
+                    r_answer, r_lint, r_repairs = await enforce_format(client, rev_msgs, revised, proofs, style, errors)
+                    # never end up worse than before: a rewrite that lost its sections is thrown away
+                    if not missing_sections(r_answer, style):
+                        answer, lint, repairs = r_answer, r_lint, repairs + r_repairs
+                        audit["applied"] = actionable
+            applied_ids = {id(i) for i in audit["applied"]}
+            audit["unsure"] = [i for i in issues if id(i) not in applied_ids]
         warnings += lint
 
     summary = {"total": len(proofs)}
@@ -292,6 +410,8 @@ async def run_verified(
     extras = {
         "proofs_summary": summary,
         "falsifier_notes": falsifier_notes(reports),
+        "repairs": repairs,
+        "audit": audit,
         "warnings": warnings,
         "debug": {
             "claims_map": claim_map,

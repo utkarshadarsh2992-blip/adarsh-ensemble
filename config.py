@@ -149,9 +149,18 @@ VERIFIER = use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "
 # final judge / synthesizer: big context (claims + reports + proofs) -> Gemini first, not Groq (8K TPM).
 JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", "or-free-router"])
 SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", "or-free-router"])
+# fact auditor: a DIFFERENT model family from the judge (Gemini) so they do not share blind spots. Its input is only the
+# question + final answer, so it fits Groq's 8K tokens/min.
+AUDITOR = use("gpt-oss-120b", "judge", ["nemotron-ultra", "gemini-3.8-flash", "qwen3.8-27b"])
 
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
 # images; the tts / live / translate / lyria / recraft / rerank models are not chat models.
+
+
+def rotated(spec: ModelSpec) -> ModelSpec:
+    """Same chain, but starting at its first fallback (another provider/family). Used for a second repair attempt."""
+    first = REGISTRY[spec.fallbacks[0]]
+    return replace(first, role=spec.role, extra=first.extra, fallbacks=tuple(spec.fallbacks[1:]) + (spec.label,))
 
 
 def chain_of(spec: ModelSpec) -> list[ModelSpec]:
@@ -161,7 +170,7 @@ def chain_of(spec: ModelSpec) -> list[ModelSpec]:
 def all_roles() -> list[tuple[str, ModelSpec]]:
     rows = [(f"panel:{s.role}", s) for s in PANEL]
     rows += [(f"falsifier{i + 1}", s) for i, s in enumerate(DEBATERS)]
-    for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER"):
+    for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "AUDITOR"):
         rows.append((name.lower(), globals()[name]))
     return rows
 
@@ -214,6 +223,12 @@ VERIFY_TASKS = {"math", "science", "coding", "first_principles"}
 # Concept questions ("what is math", "kya hota hai ...") get a plain explanation instead of the
 # Direct Core Truth / Verified Mechanism / Trap Warning format. EXPLAIN_STYLE=0 restores the old behaviour.
 EXPLAIN_STYLE = os.getenv("EXPLAIN_STYLE", "1") == "1"
+# If the judge drops a required section, ask again (second attempt on another model) before showing anything.
+MAX_REPAIRS = int(os.getenv("MAX_REPAIRS", "2"))
+# After the judge, a different model fact-checks the answer; high/medium-confidence errors are fixed by a rewrite.
+# AUDIT=0 skips it (saves 1-2 model calls per question).
+AUDIT_ENABLED = os.getenv("AUDIT", "1") == "1"
+AUDIT_MAX_ISSUES = 6
 MAX_CHECKS = 4
 SANDBOX_TIMEOUT_S = int(os.getenv("SANDBOX_TIMEOUT_S", "10"))
 SANDBOX_MEM_MB = int(os.getenv("SANDBOX_MEM_MB", "1024"))

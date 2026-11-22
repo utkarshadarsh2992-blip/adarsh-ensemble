@@ -31,3 +31,19 @@ UI kisi aur jagah host ki ho to Connection URL = `https://<server>/api/chat`.
 - Deep verified answer me minute lag sakte hain, aur free quota kharch hota hai. Roz ki chat ke liye `CHAT_MODE=fast`.
 - Ensemble sirf text reply deta hai. UI ke `research / debate / ask / approve / mission` cards abhi backend se nahi aate; attachments ignore hote hain.
 - Voice, memory, tasks UI me hi (localStorage) rehte hain.
+
+
+## Answer quality passes (verified engine)
+1. **Format repair.** The judge must write fixed section headings (`Direct Core Truth / Verified Mechanism / Trap Warning`,
+   or `Short answer / Explanation / Common mistake` for concept questions). If any is missing, the judge is asked again
+   (attempt 2 on another model) before anything is shown. `MAX_REPAIRS=2`. If it still fails, the user sees a plain
+   "Format check failed" note, never a silently broken answer.
+2. **Audit + revise.** A different model family (`config.AUDITOR`, Groq gpt-oss-120b first) fact-checks the final answer: wrong
+   exact figures, compute vs memory vs IO claims, absolutes, category errors, ignored limitations, wrong attributions.
+   High/medium-confidence errors are fixed by one rewrite; low-confidence ones, and any whose quote is not found in the answer,
+   are listed as "Audit ko shak hai, khud check karo". A rewrite that loses its sections is discarded. `AUDIT=0` turns it off.
+3. **Wording rules.** Falsifiers get a red-flag checklist; judges must avoid absolutes, write exact figures only when sure,
+   and state the main limit of whatever they describe.
+
+The audit lowers the chance of confident mistakes. It does not remove it: the auditor is also a language model.
+For facts that matter (numbers, dates, papers), check a source.

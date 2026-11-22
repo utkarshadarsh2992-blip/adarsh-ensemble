@@ -124,7 +124,7 @@ def handle(request_json: str, progress=None) -> str:
         return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini ya OpenRouter).")
 
     cb = (lambda m: progress.accept(m)) if progress is not None else None
-    limit = float(os.getenv("ANDROID_TIMEOUT_S", "300"))
+    limit = float(os.getenv("ANDROID_TIMEOUT_S", "420"))
     try:
         return json.dumps(asyncio.run(asyncio.wait_for(_run(body, cb), timeout=limit)))
     except asyncio.TimeoutError:

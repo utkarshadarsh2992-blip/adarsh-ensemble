@@ -251,7 +251,8 @@ EXPLAIN_TEXT = (
 @pytest.fixture
 def spy_models(monkeypatch):
     """Fake models that answer by prompt type and record every system/user prompt."""
-    seen = {"panel": [], "popper": [], "judge": [], "verifier": 0}
+    seen = {"panel": [], "popper": [], "judge": [], "verifier": 0, "audit": [], "revise": [], "repair": [],
+            "audit_reply": json.dumps({"issues": []}), "revised_text": None}
 
     async def fake_chat(client, spec, messages, **kw):
         user = messages[-1]["content"]
@@ -269,6 +270,15 @@ def spy_models(monkeypatch):
         if "You are the final judge" in user:
             seen["judge"].append(user)
             return JUDGE_TEXT
+        if "hostile, precise fact-checker" in system:
+            seen["audit"].append(user)
+            return seen["audit_reply"]
+        if "Corrections to apply" in user:
+            seen["revise"].append(user)
+            return seen["revised_text"] or EXPLAIN_TEXT
+        if user.startswith("Format error:"):
+            seen["repair"].append(spec.label)
+            return EXPLAIN_TEXT
         if "verification scripts" in system:
             seen["verifier"] += 1
             return "NO_CHECKS"
@@ -362,3 +372,180 @@ def test_falsifier_notes_trim_and_section_c():
     n2 = verified.falsifier_notes({"Falsifier 1": "A. one\nC. TESTABLE: py\nD. TRAP: two"})
     assert "TESTABLE" not in n2[0]["text"] and "TRAP: two" in n2[0]["text"]
     assert verified.falsifier_notes({}) == []
+
+
+# ---------------------------------------------------------------- repair loop + audit/revise
+# These use FAKE models: they test the mechanism (what is asked, what is shown), not whether a real
+# auditor model would catch a given mistake.
+
+BROKEN = "Mathematics is a formal discipline. It has axioms and theorems."  # the judge dropped every heading
+GOOD = "### Short answer\nMath studies structures.\n### Explanation\nStart from axioms.\n### Common mistake\nConfusing curriculum with the subject."
+WITH_ERRORS = (
+    "### Short answer\nA transformer decodes fast. KV-cache makes per-step compute O(1).\n"
+    "### Explanation\nThe base model has about 100M parameters. FlashAttention reduces FLOPs of attention. "
+    "Proof here is always exact, and zero-knowledge proofs are proofs too.\n"
+    "### Common mistake\nConfusing speed with memory."
+)
+FIXED = (
+    "### Short answer\nA transformer decodes fast. With a KV-cache the per-step compute is O(t·d).\n"
+    "### Explanation\nThe base model has 65M parameters. FlashAttention is IO-aware and keeps the same FLOPs. "
+    "Classical proofs give absolute certainty, ZKPs give probabilistic certainty.\n"
+    "### Common mistake\nConfusing speed with memory."
+)
+AUDIT_ISSUES = json.dumps({"issues": [
+    {"quote": "KV-cache makes per-step compute O(1)", "problem": "Q still attends to all t cached keys",
+     "fix": "per-step compute is O(t·d), linear in sequence length", "confidence": "high"},
+    {"quote": "FlashAttention reduces FLOPs of attention", "problem": "it is exact attention, only IO-aware",
+     "fix": "FlashAttention keeps O(n^2) FLOPs and cuts memory traffic", "confidence": "medium"},
+    {"quote": "a sentence the answer never contained", "problem": "invented", "fix": "n/a", "confidence": "high"},
+    {"quote": "about 100M parameters", "problem": "base model has 65M", "fix": "65M (big model: 213M)", "confidence": "low"},
+]})
+
+
+@pytest.fixture
+def scripted(monkeypatch):
+    s = {"judge_replies": [], "repair_replies": [], "revise_replies": [], "audit_reply": json.dumps({"issues": []}),
+         "repair_labels": [], "audit": [], "revise": []}
+
+    async def fake_chat(client, spec, messages, **kw):
+        user, system = messages[-1]["content"], messages[0]["content"]
+        if spec is config.CLASSIFIER:
+            return "general"
+        if spec is config.STRIPPER:
+            return json.dumps({"claims": {"A": ["x"]}, "consensus": ["x"], "conflicts": []})
+        if "Popperian falsifier" in user:
+            return POPPER_TEXT
+        if user.startswith("Format error:"):  # a repair, also when it continues a revise conversation
+            s["repair_labels"].append(spec.label)
+            return s["repair_replies"].pop(0)
+        if "Corrections to apply" in user:
+            s["revise"].append(user)
+            return s["revise_replies"].pop(0)
+        if "hostile, precise fact-checker" in system:
+            s["audit"].append(user)
+            if isinstance(s["audit_reply"], Exception):
+                raise s["audit_reply"]
+            return s["audit_reply"]
+        if "final editor of an explanation" in user or "You are the final judge" in user:
+            return s["judge_replies"].pop(0)
+        return "draft answer"
+
+    monkeypatch.setattr(pipeline, "chat", fake_chat)
+    monkeypatch.setattr(verified, "chat", fake_chat)
+    return s
+
+
+def _ask(q="What is math"):
+    return asyncio.run(pipeline.run(q, deep=False, run_code=False, use_guard=False))
+
+
+def test_repair_fixes_missing_sections_before_user_sees_it(scripted):
+    scripted["judge_replies"], scripted["repair_replies"] = [BROKEN], [GOOD]
+    res = _ask()
+    assert "### Short answer" in res["answer"] and res["repairs"] == 1
+    assert not any("missing" in w for w in res.get("warnings", []))
+    assert scripted["repair_labels"] == [config.SYNTHESIZER.label]
+
+
+def test_second_repair_attempt_uses_a_different_model(scripted):
+    scripted["judge_replies"], scripted["repair_replies"] = [BROKEN], [BROKEN, GOOD]
+    res = _ask()
+    assert res["repairs"] == 2 and "### Explanation" in res["answer"]
+    assert scripted["repair_labels"] == [config.SYNTHESIZER.label, config.SYNTHESIZER.fallbacks[0]]
+
+
+def test_format_that_cannot_be_repaired_is_flagged_and_not_audited(scripted):
+    scripted["judge_replies"], scripted["repair_replies"] = [BROKEN], [BROKEN, BROKEN]
+    res = _ask()
+    assert res["repairs"] == 2
+    assert any("Format check failed after 2 repair attempt(s)" in w for w in res["warnings"])
+    assert not any(w.startswith("Final answer is missing") for w in res["warnings"])
+    assert scripted["audit"] == []  # no point fact-checking text that is not in the required shape
+
+
+def test_missing_sections_check_is_whitespace_tolerant():
+    assert verified.missing_sections("### Short   answer\n### Explanation\n### Common\nmistake", "explain") == []
+    assert verified.missing_sections("Direct Core Truth\nVerified Mechanism", "solve") == ["Trap Warning"]
+
+
+def test_audit_applies_high_and_medium_fixes_and_keeps_the_rest_as_doubts(scripted):
+    scripted["judge_replies"], scripted["revise_replies"] = [WITH_ERRORS], [FIXED]
+    scripted["audit_reply"] = AUDIT_ISSUES
+    res = _ask()
+    assert "O(t·d)" in res["answer"] and "65M" in res["answer"] and "O(1)" not in res["answer"]
+    json.dumps(res)  # /ask returns this dict as JSON
+    audit = res["audit"]
+    assert audit["ran"] and len(audit["applied"]) == 2
+    # the invented quote was capped to low (not found in the answer), the explicit low one stays low
+    assert {i["quote"] for i in audit["unsure"]} == {"a sentence the answer never contained", "about 100M parameters"}
+    assert all(i["confidence"] == "low" for i in audit["unsure"])
+    # only the two real findings reached the rewrite prompt
+    assert "O(t·d)" in scripted["revise"][0] and "memory traffic" in scripted["revise"][0]
+    assert "never contained" not in scripted["revise"][0] and "65M" not in scripted["revise"][0]
+    # the auditor only sees the question and the final answer, not drafts or claims
+    assert "Atomic claims" not in scripted["audit"][0] and "KV-cache makes per-step" in scripted["audit"][0]
+
+
+def test_a_rewrite_that_loses_its_sections_is_discarded(scripted):
+    scripted["judge_replies"] = [WITH_ERRORS]
+    scripted["revise_replies"], scripted["repair_replies"] = [BROKEN], [BROKEN, BROKEN]
+    scripted["audit_reply"] = AUDIT_ISSUES
+    res = _ask()
+    assert res["answer"] == WITH_ERRORS  # never worse than before the audit
+    assert res["audit"]["applied"] == [] and len(res["audit"]["unsure"]) == 4
+    assert not any("Format check failed" in w for w in res.get("warnings", []))
+    assert res["repairs"] == 0
+
+
+def test_audit_failures_do_not_break_the_answer(scripted, monkeypatch):
+    scripted["judge_replies"] = [GOOD]
+    scripted["audit_reply"] = llm.LLMError("auditor down")
+    res = _ask()
+    assert res["answer"] == GOOD and res["audit"]["enabled"] and not res["audit"]["ran"]
+
+    scripted["judge_replies"], scripted["audit_reply"] = [GOOD], "not json at all"
+    res = _ask()
+    assert res["answer"] == GOOD and not res["audit"]["ran"]
+
+
+def test_audit_can_be_switched_off(scripted, monkeypatch):
+    monkeypatch.setattr(config, "AUDIT_ENABLED", False)
+    scripted["judge_replies"] = [GOOD]
+    res = _ask()
+    assert scripted["audit"] == [] and res["audit"]["enabled"] is False and res["answer"] == GOOD
+
+
+def test_adapter_shows_audit_repairs_and_doubts(scripted, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    scripted["judge_replies"], scripted["revise_replies"] = [BROKEN], [FIXED]
+    scripted["repair_replies"] = [WITH_ERRORS]  # the repair of the judge answer produces the (wrong) full answer
+    scripted["audit_reply"] = AUDIT_ISSUES
+    out = json.loads(android_entry.handle(json.dumps({"text": "What is math"})))
+    steps = out[0]["steps"]
+    assert "Format repair x1" in steps and "Audit: 2 sudhar, 2 shak" in steps
+    items = out[0]["notes"]["items"]
+    assert items[0]["title"] == "Audit ne sudhara (2)" and "→" in items[0]["text"] and "O(t·d)" in items[0]["text"]
+    assert items[1]["title"] == "Audit ko shak hai, khud check karo" and "shayad sahi" in items[1]["text"]
+    assert items[2]["title"] == "Checker 1"  # falsifier notes follow the audit
+    assert "O(t·d)" in out[0]["text"]
+
+
+def test_rotated_chain_starts_on_another_model_and_keeps_all():
+    r = config.rotated(config.SYNTHESIZER)
+    assert r.label == config.SYNTHESIZER.fallbacks[0] and r.label != config.SYNTHESIZER.label
+    chain = [c.label for c in config.chain_of(r)]
+    assert config.SYNTHESIZER.label in chain and len(set(chain)) == len(chain)
+    assert config.PLAN_PROBLEMS == [] and "auditor" in dict(config.all_roles())
+    assert config.AUDITOR.provider != config.SYNTHESIZER.provider  # not the judge's family
+
+
+def test_prompts_carry_the_new_rules():
+    judge = prompts.judge_messages("q", "m", "f", "p", "lang")[1]["content"]
+    explain = prompts.judge_explain_messages("q", "m", "f", "lang")[1]["content"]
+    popper = prompts.popper_messages("q", "m", "lang")[1]["content"]
+    for text in (judge, explain):
+        assert "Avoid absolutes" in text and "stay in English" in text
+    assert "RED FLAGS" in popper and "compute (FLOPs), memory and IO" in popper
+    audit = prompts.audit_messages("q", "a", "lang")[1]["content"]
+    for must in ("Wrong exact figures", "Complexity and cost claims", "Absolutes", "Category errors", "limitation"):
+        assert must in audit

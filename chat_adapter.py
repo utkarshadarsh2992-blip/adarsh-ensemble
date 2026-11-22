@@ -82,6 +82,17 @@ async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "norma
     return {"type": "text", "text": out.strip(), "steps": ["Quick reply"]}
 
 
+def _audit_line(issue: dict, kind: str) -> str:
+    quote = " ".join(str(issue.get("quote") or "").split())
+    fix = " ".join(str(issue.get("fix") or "").split())
+    problem = " ".join(str(issue.get("problem") or "").split())
+    head = f'"{quote}" → ' if quote else ""
+    if kind == "applied":
+        return f"- {head}{fix}. Wajah: {problem}"
+    lead = f"{quote}: " if quote else ""
+    return f"- {lead}{problem} (shayad sahi: {fix})"
+
+
 def _format_answer(res: dict) -> str:
     text = res["answer"].strip()
     notes = []
@@ -154,9 +165,27 @@ async def handle(body: dict) -> dict | list[dict]:
     if source != "auto":
         steps.append(f"Source: {source} ({res.get('user_answers_used', 0)} yours, {res.get('panel_answers_used', 0)} models)")
     steps += [f"{m} x{n}" for m, n in (res.get("models_used") or {}).items()]
+    audit = res.get("audit") or {}
+    if res.get("repairs"):
+        steps.append(f"Format repair x{res['repairs']}")
+    if audit.get("enabled"):
+        steps.append(
+            f"Audit: {len(audit.get('applied', []))} sudhar, {len(audit.get('unsure', []))} shak"
+            if audit.get("ran")
+            else "Audit: chala nahi"
+        )
     steps.append(f"{res.get('latency_s', 0)}s")
     replies[0]["steps"] = steps
-    if res.get("falsifier_notes"):
-        # the checkers' own words, folded under the answer by the UI
-        replies[0]["notes"] = {"title": "Kahan galat ho sakta hai", "items": res["falsifier_notes"]}
+
+    # folded under the answer: what the audit corrected, what it doubts, and what the falsifiers found
+    items = []
+    if audit.get("applied"):
+        items.append({"title": f"Audit ne sudhara ({len(audit['applied'])})",
+                      "text": "\n".join(_audit_line(i, "applied") for i in audit["applied"])})
+    if audit.get("unsure"):
+        items.append({"title": "Audit ko shak hai, khud check karo",
+                      "text": "\n".join(_audit_line(i, "unsure") for i in audit["unsure"])})
+    items += res.get("falsifier_notes") or []
+    if items:
+        replies[0]["notes"] = {"title": "Kahan galat ho sakta hai", "items": items}
     return replies

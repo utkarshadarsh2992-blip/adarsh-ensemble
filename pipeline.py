@@ -306,6 +306,8 @@ def _pack(
         out["proofs_summary"] = extras["proofs_summary"]
         if extras.get("falsifier_notes"):
             out["falsifier_notes"] = extras["falsifier_notes"]
+        out["repairs"] = extras.get("repairs", 0)
+        out["audit"] = extras.get("audit")
     if guard_report:
         out["guard"] = guard_report
     if warnings:

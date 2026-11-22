@@ -208,6 +208,12 @@ def popper_messages(question: str, map_text: str, language_hint: str) -> list[di
         "you tried.\n"
         "C. TESTABLE: list the claims Python can check (numbers, formulas, algorithms, units, limits).\n"
         "D. TRAP: the single most likely mistake a careless solver makes here.\n"
+        "E. RED FLAGS: scan the claims for (1) absolutes (always, never, exclusively, only, 'no X is required') "
+        "that a counterexample, a historical fact or a standard limiting result would break; (2) exact figures, "
+        "dates, counts or benchmark scores recalled from memory (give the correct value if you know it, otherwise "
+        "mark them approximate); (3) cost or complexity claims: compute (FLOPs), memory and IO are different "
+        "things, and per-step differs from total; (4) things put in one bucket that differ in kind (e.g. "
+        "probabilistic vs absolute guarantees); (5) a standard impossibility or limitation result the claims ignore.\n"
         "Be terse and specific. No politeness.\n"
         f"{language_hint}"
     )
@@ -266,12 +272,18 @@ def judge_messages(
         "and do not rely on it.\n"
         "- If a point has no proof, never call it verified: tag it [REASONED] or [UNVERIFIED].\n"
         "- Agreement among drafts is not evidence. Prefer the side that survived falsification.\n"
-        "- No filler, no praise, no stacked hedges. Never mention drafts, debaters or models.\n\n"
+        "- No filler, no praise, no stacked hedges. Never mention drafts, debaters or models.\n"
+        "- Avoid absolutes (always, never, exclusively, 'no X is required') unless they are true by definition. "
+        "Write an exact figure only when you are sure of it; otherwise say 'about' or leave it out. When you "
+        "describe what a method or system can do, also state its main limit.\n"
+        "\n"
         "Output EXACTLY these 3 sections:\n"
         "1. Direct Core Truth: first 2 lines only, the answer itself, zero filler.\n"
         "2. Verified Mechanism: numbered first-principles steps; tag every step "
         "[PROVEN by code], [REASONED] or [UNVERIFIED].\n"
         "3. Trap Warning: the mistake the falsifier caught (or the most likely trap) and why it is wrong.\n"
+        "The three section names stay in English exactly as written, whatever the reply language; "
+        "only the content under them follows the language rule.\n"
         f"{language_hint}"
     )
     return [
@@ -350,7 +362,11 @@ def judge_explain_messages(
         "- If experts or sources genuinely disagree, or a point depends on definitions or philosophy, "
         "do NOT present one side as settled: give each position in one line.\n"
         "- Nothing here was run as code, so never write [PROVEN by code], [REASONED] or [UNVERIFIED].\n"
-        "- No filler, no praise. Never mention drafts, falsifiers, debaters or models.\n\n"
+        "- No filler, no praise. Never mention drafts, falsifiers, debaters or models.\n"
+        "- Avoid absolutes (always, never, exclusively, 'no X is required') unless they are true by definition. "
+        "Write an exact figure only when you are sure of it; otherwise say 'about' or leave it out. When you "
+        "describe what a method or system can do, also state its main limit.\n"
+        "\n"
         "Output EXACTLY these sections, each starting with a markdown heading line:\n"
         "### Short answer\n2 to 3 lines that answer the question directly.\n"
         "### Explanation\nBuild it up from the basics in short paragraphs or a short list, with one "
@@ -358,9 +374,68 @@ def judge_explain_messages(
         "### Where experts disagree\nInclude this section ONLY if there is a real disagreement or the "
         "answer depends on a definition. Otherwise leave it out entirely.\n"
         "### Common mistake\nThe single most likely misunderstanding and why it is wrong.\n"
+        "The section headings stay in English exactly as written, whatever the reply language; "
+        "only the content under them follows the language rule.\n"
         f"{language_hint}"
     )
     return [
         {"role": "system", "content": ROLES["judge"]},
+        {"role": "user", "content": user},
+    ]
+
+
+# ---------------------------------------------------------------- audit + revise
+
+def audit_messages(question: str, answer: str, language_hint: str) -> list[dict]:
+    """Fresh eyes on the FINAL answer only: no drafts, no claim map, so the auditor shares none of their framing."""
+    user = (
+        f"Question:\n{question}\n\nAnswer to audit:\n{answer}\n\n{UNTRUSTED}"
+        "Find concrete ERRORS in the answer. Look especially for:\n"
+        "1. Wrong exact figures: parameter counts, dates, benchmark scores, sizes, versions, constants. "
+        "If you know the correct value, give it.\n"
+        "2. Complexity and cost claims: compute (FLOPs), memory and IO are different things; per-step differs "
+        "from total; best case differs from worst case. Check every big-O claim.\n"
+        "3. Absolutes ('always', 'never', 'exclusively', 'only', 'no X is required', 'impossible') that a "
+        "counterexample, a historical fact or a standard limiting result breaks.\n"
+        "4. Category errors: things placed in one bucket that differ in kind (e.g. probabilistic vs absolute "
+        "guarantees, saving memory vs saving computation).\n"
+        "5. A well-known limitation or impossibility result that the answer ignores while describing what a "
+        "method or system can do.\n"
+        "6. Wrong attribution: a method, paper, person or date credited to the wrong source.\n"
+        "Rules:\n"
+        "- Report an error ONLY if you are confident it is an error. If you are unsure, set confidence to \"low\".\n"
+        "- Quote the exact sentence or phrase, say what is wrong, and give the corrected statement.\n"
+        "- Do not report style, tone, formatting or missing nice-to-have detail.\n"
+        "- If you find no errors, return an empty list.\n"
+        "Reply with ONLY valid JSON, no markdown fences, in this shape:\n"
+        '{"issues": [{"quote": "...", "problem": "...", "fix": "...", "confidence": "high|medium|low"}]}\n'
+        f"Write the problem and fix texts in this language: {language_hint} (keep the JSON keys in English)."
+    )
+    return [
+        {
+            "role": "system",
+            "content": "You are a hostile, precise fact-checker. You find real errors and you never invent them.",
+        },
+        {"role": "user", "content": user},
+    ]
+
+
+def revise_messages(question: str, answer: str, issues: list[dict], language_hint: str) -> list[dict]:
+    fixes = "\n".join(
+        f"{i}. Wrong: \"{x['quote']}\" | Problem: {x['problem']} | Correct: {x['fix']}"
+        for i, x in enumerate(issues, 1)
+    )
+    user = (
+        f"Question:\n{question}\n\nCurrent answer:\n{answer}\n\nCorrections to apply:\n{fixes}\n\n{UNTRUSTED}"
+        "Rewrite the COMPLETE answer with these corrections applied.\n"
+        "- Keep EXACTLY the same section headings, in the same order, with the same format.\n"
+        "- Change only what the corrections require. Keep everything else, including the tags on untouched steps.\n"
+        "- A step you change loses [PROVEN by code]: tag it [REASONED] (explanations carry no tags at all).\n"
+        "- If a correction concerns a figure you cannot be sure of, write it as approximate ('about', 'roughly').\n"
+        "- Do not mention corrections, auditors or this edit.\n"
+        f"{language_hint}"
+    )
+    return [
+        {"role": "system", "content": ROLES["synthesizer"]},
         {"role": "user", "content": user},
     ]
