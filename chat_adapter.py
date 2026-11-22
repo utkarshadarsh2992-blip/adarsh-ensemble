@@ -153,6 +153,7 @@ async def handle(body: dict) -> dict | list[dict]:
         reply_lang=reply_lang,
         depth=depth,
         debug=False,
+        record=True,
     )
 
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
@@ -188,4 +189,6 @@ async def handle(body: dict) -> dict | list[dict]:
     items += res.get("falsifier_notes") or []
     if items:
         replies[0]["notes"] = {"title": "Kahan galat ho sakta hai", "items": items}
+    if res.get("council"):
+        replies[0]["council"] = res["council"]  # shown on its own page, not in the chat scroll
     return replies

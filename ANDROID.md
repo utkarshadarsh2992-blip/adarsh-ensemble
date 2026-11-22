@@ -9,7 +9,7 @@ Kotlin AdarshBridge -> Engine (thread pool + foreground service)
    | Chaquopy
 android_entry.handle() -> chat_adapter -> pipeline (same engine, unchanged)
    | HTTPS (httpx)
-Groq / Gemini / OpenRouter
+Groq / Gemini / OpenRouter (zaroori) + Cloudflare Workers AI / NVIDIA NIM (optional extra)
 ```
 
 ## APK download (GitHub Actions)
@@ -17,7 +17,7 @@ Groq / Gemini / OpenRouter
 2. GitHub > **Actions** > **Android APK** > **Run workflow** (ya push par khud chalega).
 3. Run poora hone par (hara tick) run page kholo, neeche **Artifacts** me `adarsh-ensemble-debug-apk` download karo.
 4. Zip extract karo, `app-debug.apk` phone me install karo (Unknown sources allow karna padega).
-5. App kholo > Settings > **API keys** me Groq/Gemini/OpenRouter key daalo.
+5. App kholo > Settings > **API keys** me Groq/Gemini/OpenRouter key daalo. Cloudflare ke liye token aur Account ID dono chahiye. Test connection har provider ke configured model IDs check karta hai aur galat ID par "shayad: ..." batata hai.
 
 GitHub Secrets APK ke andar nahi jaate, isliye keys sirf app me daalte hain. Keys Android Keystore se encrypt hokar app-private storage me rehti hain.
 
@@ -44,3 +44,8 @@ Engine (pipeline, llm, health, prompts, guard) me koi logic change nahi. `main.p
 | Network failure on device, background/resume recovery | **Nahi chala** (sirf Python side par fake failure test hua) |
 
 Pehli CI build me Gradle/versions ki dikkat aa sakti hai (Chaquopy 16.1.0 + AGP 8.7.3 + Gradle 8.9 + Python 3.12 chuna hai, docs ke hisaab se compatible). Fail ho to Actions ka log bhejo, main fix karunga.
+
+## Kisne kya socha (council view)
+Jawab ke upar "Thinking" block live lines dikhata hai (har role ka kaam poora hote hi ek line), jawab aane par "Thought for Ns" ban jaata hai. Block par tap karo to poora page khulta hai: har role ka prompt, kaun sa model chala (fallback ho to wo bhi), poora jawab, claims map, falsifier reports, judge, format repair, audit (pehle/baad), aur "kya aaya, kya gaya" (draft se final tak, shabd-milan ka andaaza). Hardware back pehle is page ko band karta hai.
+Record bada hota hai (kuch 10 KB se 100 KB), isliye sirf pichhle 10 jawab ka rakha jaata hai; purane jawab ka text rehta hai, detail page nahi. Export me ye record shamil nahi hota.
+Pattern finder 7th panel role hai: sirf deep mode me chalta hai (fast me panel ke pehle 3 hi).

@@ -20,6 +20,7 @@ import asyncio
 import re
 
 import config
+import health
 from llm import LLMError, chat
 
 _NUM = re.compile(r"(?<![\w.])(?:\d+\.\d+|\d+)(?:[eE][-+]?\d+)?")
@@ -58,6 +59,7 @@ def parse_score(content: str) -> float | None:
 
 async def _score_chunk(client, chunk: str) -> tuple[float | None, str]:
     """Returns (score or None, detector) where detector is prompt-guard | llm-fallback | unavailable."""
+    health.set_stage("guard")
     try:
         out = await chat(
             client, config.GUARD, [{"role": "user", "content": chunk}],

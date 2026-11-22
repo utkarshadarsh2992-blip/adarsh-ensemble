@@ -82,7 +82,12 @@ class MainActivity : AppCompatActivity() {
 
         // Back never closes the app mid-request: it sends it to the background.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { moveTaskToBack(true) }
+            override fun handleOnBackPressed() {
+                // an open "Kisne kya socha" page closes first; otherwise the app goes to the background
+                web.evaluateJavascript("(window.__adarshBack&&window.__adarshBack())") { r ->
+                    if (r != "true") moveTaskToBack(true)
+                }
+            }
         })
 
         if (Build.VERSION.SDK_INT >= 33 &&

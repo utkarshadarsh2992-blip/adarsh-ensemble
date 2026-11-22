@@ -8,7 +8,9 @@ import json
 import os
 import sys
 
-KEY_NAMES = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY")
+# keep in sync with config.SECRET_ENVS (not imported here: config must load after init())
+KEY_NAMES = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
+             "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
 _ready = False
 
 
@@ -68,17 +70,23 @@ def diagnose() -> str:
     lines = []
     for name, prov in config.PROVIDERS.items():
         if not prov.api_key:
-            lines.append(f"{name}: key nahi hai")
+            if name == "cloudflare" and (os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
+                lines.append("cloudflare: API token aur Account ID dono chahiye, ek abhi bhi missing hai")
+            else:
+                lines.append(f"{name}: key nahi hai")
             continue
         try:
             r = httpx.get(
-                f"{prov.base_url}/models", headers={"Authorization": f"Bearer {prov.api_key}"}, timeout=20
+                f"{prov.url}/models", headers={"Authorization": f"Bearer {prov.api_key}"}, timeout=20
             )
         except Exception as e:  # network, DNS, TLS
             lines.append(f"{name}: NETWORK FAIL {type(e).__name__}: {str(e)[:120]}")
             continue
         if r.status_code in (401, 403):
             lines.append(f"{name}: key reject hui (HTTP {r.status_code})")
+            continue
+        if name == "cloudflare" and r.status_code in (404, 405):
+            lines.append("cloudflare: model list nahi deta, isliye key/ID ka pata pehle asli jawab me chalega")
             continue
         if r.status_code != 200:
             lines.append(f"{name}: HTTP {r.status_code} {r.text[:80]}")
@@ -92,7 +100,12 @@ def diagnose() -> str:
         missing = [m.model for m in ours if m.model not in ids]
         line = f"{name}: key OK, {len(ours) - len(missing)}/{len(ours)} configured models mile"
         if missing:
-            line += ". Nahi mile: " + ", ".join(missing)
+            hints = []
+            for mid in missing:
+                tail = mid.split("/")[-1].removesuffix(":free")
+                close = sorted(i for i in ids if tail and tail.lower() in i.lower())[:2]
+                hints.append(mid + (f" (shayad: {', '.join(close)})" if close else ""))
+            line += ". Nahi mile: " + ", ".join(hints)
         lines.append(line)
     return _text("**Connection test**\n\n" + "\n".join("- " + ln for ln in lines))
 
@@ -121,7 +134,7 @@ def handle(request_json: str, progress=None) -> str:
         return diagnose()
 
     if not body.get("ping") and not any(v.api_key for v in config.PROVIDERS.values()):
-        return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini ya OpenRouter).")
+        return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini, OpenRouter, Cloudflare ya NVIDIA).")
 
     cb = (lambda m: progress.accept(m)) if progress is not None else None
     limit = float(os.getenv("ANDROID_TIMEOUT_S", "420"))

@@ -47,7 +47,10 @@
     providers: [
       { id: 'GROQ_API_KEY', name: 'Groq', url: 'console.groq.com/keys' },
       { id: 'GEMINI_API_KEY', name: 'Gemini', url: 'aistudio.google.com/apikey' },
-      { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', url: 'openrouter.ai/keys' }
+      { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', url: 'openrouter.ai/keys' },
+      { id: 'CLOUDFLARE_API_TOKEN', name: 'Cloudflare token', url: 'dash.cloudflare.com/profile/api-tokens (Workers AI)' },
+      { id: 'CLOUDFLARE_ACCOUNT_ID', name: 'Cloudflare Account ID', url: 'dash.cloudflare.com, Workers AI page', plain: true },
+      { id: 'NVIDIA_API_KEY', name: 'NVIDIA NIM', url: 'build.nvidia.com' }
     ],
     status() { try { return JSON.parse(N.keyStatus()); } catch (e) { return {}; } },
     save(id, value) { try { return JSON.parse(N.saveKey(id, value)); } catch (e) { return { ok: false, error: 'Could not save.' }; } },

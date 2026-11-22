@@ -19,12 +19,23 @@ load_dotenv()
 @dataclass(frozen=True)
 class Provider:
     name: str
-    base_url: str  # OpenAI-compatible endpoint
+    base_url: str  # OpenAI-compatible endpoint; may contain {ENV_NAME} placeholders (see `needs`)
     api_key_env: str
+    needs: tuple = ()  # extra env values the endpoint needs besides the key (Cloudflare: account id)
 
     @property
     def api_key(self) -> str:
+        """The key, or "" when the provider is not fully configured (so it is skipped, not called)."""
+        if any(not os.getenv(n, "") for n in self.needs):
+            return ""
         return os.getenv(self.api_key_env, "")
+
+    @property
+    def url(self) -> str:
+        out = self.base_url
+        for n in self.needs:
+            out = out.replace("{" + n + "}", os.getenv(n, "").strip())
+        return out
 
 
 PROVIDERS = {
@@ -37,7 +48,21 @@ PROVIDERS = {
         "https://generativelanguage.googleapis.com/v1beta/openai",
         "GEMINI_API_KEY",
     ),
+    # Cloudflare Workers AI: OpenAI-compatible, needs an API token AND the account id in the URL.
+    "cloudflare": Provider(
+        "cloudflare",
+        "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1",
+        "CLOUDFLARE_API_TOKEN",
+        needs=("CLOUDFLARE_ACCOUNT_ID",),
+    ),
+    # NVIDIA NIM hosted API (build.nvidia.com): OpenAI-compatible.
+    "nvidia": Provider("nvidia", "https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY"),
 }
+# The fallback plan must always be answerable from these three; the other providers are optional extras.
+CORE_PROVIDERS = ("groq", "openrouter", "gemini")
+# Every env name a key screen / android_entry may set.
+SECRET_ENVS = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
+               "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
 
 
 @dataclass(frozen=True)
@@ -89,6 +114,23 @@ _reg("gemini-3.1-flash-lite", "gemini", "gemini-3.1-flash-lite", {"reasoning_eff
 # OpenAI-compatible endpoint: if it errors, the chain simply moves on and remembers it.
 _reg("gemma-4-31b-g", "gemini", "gemma-4-31b-it")
 _reg("gemma-4-26b-g", "gemini", "gemma-4-26b-a4b-it")
+_reg("gemini-3.5-flash-lite", "gemini", "gemini-3.5-flash-lite", {"reasoning_effort": "low"})
+_reg("gemini-2.5-flash-lite", "gemini", "gemini-2.5-flash-lite")
+
+# Cloudflare Workers AI (10,000 neurons/day, resets 00:00 UTC; neurons are not tokens, so no local cap:
+# real 429s move the chain on). bge-m3 is an embedding model, not a chat model, so it is not used here.
+# IDs below follow the "@cf/<maker>/<model>" pattern; only gpt-oss-120b is confirmed in Cloudflare's docs.
+_reg("cf-gpt-oss-120b", "cloudflare", "@cf/openai/gpt-oss-120b")
+_reg("cf-gemma-4-26b", "cloudflare", "@cf/google/gemma-4-26b-a4b-it")
+
+# NVIDIA NIM. IDs are best guesses ("<maker>/<model>"); only z-ai/glm-5-3 is confirmed on build.nvidia.com.
+# Settings > API keys > Test connection lists the IDs that do not exist and suggests the closest real ones.
+_reg("mistral-large-4", "nvidia", "mistralai/mistral-large-4-1t-a52b")
+_reg("laguna-xs-2.1", "nvidia", "poolside/laguna-xs-2.1")
+_reg("glm-5-3-flash", "nvidia", "z-ai/glm-5-3-flash")
+
+# one more OpenRouter free model (ID unverified, same note as above)
+_reg("inkling-2-small", "openrouter", "inkling/inkling-2-small:free")
 
 
 def use(label: str, role: str, fallbacks=(), extra: dict | None = None) -> ModelSpec:
@@ -102,7 +144,7 @@ def use(label: str, role: str, fallbacks=(), extra: dict | None = None) -> Model
 
 # ----------------------------------------------------------------------------- role plan
 # RULES (checked at startup by validate_plan(), see PLAN_PROBLEMS and GET /health):
-#   1. every chain has models on ALL THREE providers (groq, openrouter, gemini)
+#   1. every chain has models on all three CORE providers (groq, openrouter, gemini); cloudflare/nvidia are extras
 #   2. the FIRST fallback is on a DIFFERENT provider than the primary
 # So if a whole provider is down (or its key/quota is gone), the role still answers.
 # Exception: GUARD (prompt-guard models exist only on Groq) -> see GUARD_LLM below.
@@ -113,17 +155,20 @@ def use(label: str, role: str, fallbacks=(), extra: dict | None = None) -> Model
 # Order matters: the first 3 are used in "fast" mode, and they avoid OpenRouter completely.
 PANEL: list[ModelSpec] = [
     # strict derivations: fast reasoning model
-    use("gpt-oss-120b", "logic_math", ["gemini-3.8-flash", "nemotron-ultra", "qwen3.8-27b"]),
+    use("gpt-oss-120b", "logic_math", ["gemini-3.8-flash", "nemotron-ultra", "qwen3.8-27b", "cf-gpt-oss-120b"]),
     # broad / research angle, long context
-    use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g"]),
+    use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", "mistral-large-4"]),
     # algorithmic / boundary view: best coder on the list (LiveCodeBench v6 90.3)
-    use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "flint"]),
+    use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "flint", "laguna-xs-2.1"]),
     # first principles: biggest brain (550B MoE; multi-step reasoning + planning)
-    use("nemotron-ultra", "first_principles", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g"]),
+    use("nemotron-ultra", "first_principles", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", "glm-5-3-flash"]),
     # business: knowledge work + deep research tuned
-    use("ernie-5.5-flash", "business", ["gemma-4-26b-g", "gpt-oss-20b", "gemini-3.1-flash-lite", "ling-3.2-flash"]),
+    use("ernie-5.5-flash", "business", ["gemma-4-26b-g", "gpt-oss-20b", "gemini-3.1-flash-lite", "ling-3.2-flash", "cf-gemma-4-26b"]),
     # planner: dense reasoning model with good instruction following
-    use("gemma-4-31b-g", "planner", ["gpt-oss-20b", "gemma-4-31b", "gemini-3.1-flash-lite", "nemotron-lightning"]),
+    use("gemma-4-31b-g", "planner", ["gpt-oss-20b", "gemma-4-31b", "gemini-3.1-flash-lite", "nemotron-lightning", "gemini-3.5-flash-lite"]),
+    # pattern finder: names the known pattern / theorem / classic mistake the question matches, then solves with it.
+    # LAST on purpose: "fast" mode uses only the first 3 panel members, so it never runs there.
+    use("mistral-large-4", "pattern_finder", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"]),
 ]
 
 # Popper falsifiers (first 2 are used in "fast" mode). Different families on purpose.
@@ -143,15 +188,15 @@ GUARD = use("prompt-guard-22m", "judge", ["prompt-guard-86m"])
 # weaker fallback: a normal LLM asked (with the text wrapped as data) for an injection score.
 GUARD_LLM = use("gemini-3.1-flash-lite", "judge", ["nemotron-lightning", "gpt-oss-20b"])
 # tone-stripper: long input (all drafts) + strict JSON -> long-context, fast, cheap model.
-STRIPPER = use("gemini-3.1-flash-lite", "judge", ["nemotron-lightning", "gpt-oss-20b", "gemini-3.8-flash", "ling-3.2-flash"])
+STRIPPER = use("gemini-3.1-flash-lite", "judge", ["nemotron-lightning", "gpt-oss-20b", "gemini-3.8-flash", "ling-3.2-flash", "gemini-3.5-flash-lite"])
 # writes the Python verification scripts: strongest coder.
 VERIFIER = use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "flint"])
 # final judge / synthesizer: big context (claims + reports + proofs) -> Gemini first, not Groq (8K TPM).
-JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", "or-free-router"])
-SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", "or-free-router"])
+JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
+SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
 # fact auditor: a DIFFERENT model family from the judge (Gemini) so they do not share blind spots. Its input is only the
 # question + final answer, so it fits Groq's 8K tokens/min.
-AUDITOR = use("gpt-oss-120b", "judge", ["nemotron-ultra", "gemini-3.8-flash", "qwen3.8-27b"])
+AUDITOR = use("gpt-oss-120b", "judge", ["nemotron-ultra", "gemini-3.8-flash", "qwen3.8-27b", "mistral-large-4"])
 
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
 # images; the tts / live / translate / lyria / recraft / rerank models are not chat models.
@@ -179,7 +224,7 @@ def validate_plan() -> list[str]:
     problems = []
     for name, spec in all_roles() + [("guard_llm", GUARD_LLM)]:
         chain = chain_of(spec)
-        missing = set(PROVIDERS) - {c.provider for c in chain}
+        missing = set(CORE_PROVIDERS) - {c.provider for c in chain}
         if missing:
             problems.append(f"{name}: no model on {', '.join(sorted(missing))}")
         if spec.fallbacks and REGISTRY[spec.fallbacks[0]].provider == spec.provider:

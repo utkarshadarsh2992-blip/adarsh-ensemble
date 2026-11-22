@@ -50,8 +50,28 @@ ROLES = {
         "You are a planner. Break the goal into ordered concrete steps with dependencies, "
         "priorities and milestones, and say how to check that each step worked."
     ),
+    "pattern_finder": (
+        "You are a pattern finder. First name the known pattern this question matches: a theorem, a standard technique, "
+        "a classic mistake or a similar solved problem. Then solve it using that pattern, and say where the analogy "
+        "breaks or the pattern does not apply. If no known pattern really fits, say so plainly instead of forcing one. "
+        "Start your answer with exactly one line: PATTERN: <name of the pattern, or NONE>."
+    ),
     "judge": "You are a strict, impartial evaluator.",
     "synthesizer": "You are an expert editor who merges multiple drafts into one best answer.",
+}
+
+# Shown in the council view: (short title, what this role was asked to do, in Hinglish)
+ROLE_INFO = {
+    "logic_math": ("Logic & Math", "Strict step-by-step derivation, har symbol/unit define karke, har step check karke."),
+    "researcher": ("Researcher", "Broad angle: facts, nuances, competing views, jahan shak ho wahan likhna."),
+    "coder_edge": ("Edge-case hunter", "Algorithm aur boundary view: complexity, off-by-one, khali/bada/negative input, units."),
+    "first_principles": ("First principles", "Sawaal ko bunyaadi sach me tod kar wahin se jawab banana, assumptions batana."),
+    "business": ("Business", "Practical aur numbers wala angle: cost, incentives, risk, skeptic kya poochega."),
+    "planner": ("Planner", "Ordered steps, dependencies, priorities, aur har step kaise check ho."),
+    "pattern_finder": ("Pattern finder", "Pehchanta hai ki sawaal kis jaane-pehchaane pattern/theorem/classic galti jaisa hai, phir usi se solve."),
+    "step_solver": ("Step solver", "Careful step-by-step solving."),
+    "judge": ("Judge", "Claims, falsifier reports aur proofs dekh kar final jawab likhna."),
+    "synthesizer": ("Synthesizer", "Alag drafts ko ek best jawab me milana."),
 }
 
 TASK_HINTS = {

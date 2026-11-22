@@ -41,7 +41,7 @@ def fake_models(monkeypatch):
 
 def test_provider_config_valid():
     assert config.PLAN_PROBLEMS == []
-    assert set(config.PROVIDERS) == {"groq", "gemini", "openrouter"}
+    assert set(config.PROVIDERS) == {"groq", "gemini", "openrouter", "cloudflare", "nvidia"}
 
 
 def test_every_role_has_fallbacks():
@@ -549,3 +549,116 @@ def test_prompts_carry_the_new_rules():
     audit = prompts.audit_messages("q", "a", "lang")[1]["content"]
     for must in ("Wrong exact figures", "Complexity and cost claims", "Absolutes", "Category errors", "limitation"):
         assert must in audit
+
+
+# ---------------------------------------------------------------- new providers, pattern finder, council record
+def test_cloudflare_needs_token_and_account_id(monkeypatch):
+    p = config.PROVIDERS["cloudflare"]
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    assert p.api_key == ""
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "cf_token_123456")
+    assert p.api_key == ""  # account id still missing: provider is skipped, never called with a broken URL
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "abc123")
+    assert p.api_key == "cf_token_123456"
+    assert p.url == "https://api.cloudflare.com/client/v4/accounts/abc123/ai/v1"
+    assert config.PROVIDERS["nvidia"].url == "https://integrate.api.nvidia.com/v1"
+    for name in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY"):
+        assert name in android_entry.KEY_NAMES and name in config.SECRET_ENVS
+
+
+def test_new_models_registered_and_chat_models_only():
+    for label in ("gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "cf-gpt-oss-120b", "cf-gemma-4-26b",
+                  "mistral-large-4", "laguna-xs-2.1", "glm-5-3-flash", "inkling-2-small"):
+        assert label in config.REGISTRY, label
+    assert not any("bge" in m.model for m in config.REGISTRY.values())  # embedding model is not a chat model
+
+
+def test_pattern_finder_is_last_panel_member_and_off_in_fast_mode():
+    assert config.PANEL[-1].role == "pattern_finder" and len(config.PANEL) == 7
+    assert "pattern_finder" not in [s.role for s in config.PANEL[:3]]
+    assert "PATTERN:" in __import__("prompts").ROLES["pattern_finder"]
+
+
+def test_llm_chat_records_stage_prompt_output_and_skips(monkeypatch):
+    import health
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    health.reset()
+
+    class R:
+        status_code, headers, text = 200, {}, ""
+
+        def json(self):
+            return {"choices": [{"message": {"content": "hello"}}], "usage": {"total_tokens": 5}}
+
+    class C:
+        async def post(self, *a, **k):
+            return R()
+
+    async def go():
+        trace = health.start_trace(True)
+        health.set_stage("panel:logic_math")
+        out = await llm.chat(C(), config.PANEL[0], [{"role": "user", "content": "q?"}])
+        return out, trace
+
+    out, trace = asyncio.run(go())
+    e = trace[0]
+    assert out == "hello" and e["stage"] == "panel:logic_math" and e["ok"] and e["used"] == config.PANEL[0].label
+    assert e["prompt"][0]["content"] == "q?" and e["output"] == "hello" and "secs" in e
+    assert "skips" not in e  # first model answered: nothing was skipped
+
+    async def light():
+        trace = health.start_trace(False)
+        await llm.chat(C(), config.PANEL[0], [{"role": "user", "content": "q?"}])
+        return trace
+
+    assert "prompt" not in asyncio.run(light())[0]  # recording is opt-in (it is large)
+
+
+def test_council_record_is_built_and_sent_to_the_ui(monkeypatch):
+    import chat_adapter
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    out = json.loads(android_entry.handle(json.dumps({"text": "2+2 kya hai?"})))
+    c = out[0]["council"]
+    assert c["v"] == 1 and c["setup"]["task"] == "math" and c["final"].strip().startswith("1. Direct Core Truth")
+    assert c["question"].startswith("2+2") and {"calls", "drafts", "falsifiers", "audit", "provenance", "patterns"} <= set(c)
+    assert all(d["text"] for d in c["drafts"])
+    # without record=True nothing is built
+    res = asyncio.run(pipeline.run("2+2 kya hai?", run_code=False, use_guard=False))
+    assert "council" not in res
+
+
+def test_provenance_marks_kept_and_dropped_sentences():
+    import council
+
+    final = "Attention cost grows quadratically with sequence length because every token attends to every other token."
+    drafts = {
+        "A": "Attention cost grows quadratically with sequence length because every token attends to every other token. Extra.",
+        "B": "A completely different sentence about banana farming economics in tropical regions near the equator.",
+    }
+    p = council.provenance(final, drafts)
+    assert p["final_sentences"][0]["from"] == "A" and p["final_sentences"][0]["score"] >= 0.9
+    assert "B" in p["dropped"] and "A" not in p["dropped"]
+
+
+def test_patterns_reads_named_pattern_and_warns_on_total_agreement():
+    import council
+
+    drafts = {"pattern_finder": "PATTERN: Pigeonhole principle\nbody", "a": "x", "b": "y"}
+    cm = {"claims": {}, "consensus": ["same thing"], "conflicts": []}
+    p = council.patterns(drafts, cm)
+    assert p["named"] == "Pigeonhole principle" and p["warning"] and p["shared"] == ["same thing"]
+
+
+def test_council_record_is_size_capped_and_prompts_marked_when_cut(monkeypatch):
+    import council
+    import health
+
+    big = "x" * 40000
+    rec = {"calls": [{"stage": "judge", "prompt": [{"role": "user", "content": big}]} for _ in range(12)], "final": "ok"}
+    out = council._fit(rec)
+    assert out.get("trimmed") and all(len(m["content"]) < 3200 for c in out["calls"] for m in c["prompt"])
+    assert out["final"] == "ok"  # outputs / analysis are never cut
+    assert "kaata gaya" in health._cut(big, 100) and health._cut("short", 100) == "short"

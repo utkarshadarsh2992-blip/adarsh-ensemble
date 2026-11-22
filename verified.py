@@ -18,6 +18,7 @@ import json
 import re
 
 import config
+import health
 import prompts
 import sandbox
 from llm import LLMError, chat
@@ -172,6 +173,7 @@ def falsifier_notes(reports: dict[str, str], limit: int = 1100) -> list[dict]:
 # ------------------------------------------------------------------ stages
 
 async def strip_to_claims(client, question, anon, flagged=None) -> dict | None:
+    health.set_stage("stripper")
     try:
         out = await chat(
             client, config.STRIPPER, prompts.strip_messages(question, anon, flagged),
@@ -196,10 +198,20 @@ async def _popper_turn(client, spec, question, map_text, lang):
         return None, str(e) or "timeout"
 
 
+async def _falsifier_run(client, n, spec, question, map_text, lang):
+    stage = f"falsifier:{n}"
+    health.set_stage(stage)
+    config.emit(f"Falsifier {n}: claims par hamla soch raha hai")
+    text, err = await _popper_turn(client, spec, question, map_text, lang)
+    used = (health.last_call(stage) or {}).get("used", spec.label)
+    config.emit(f"Falsifier {n} ({used}): " + ("report mili" if text else "report nahi mili"))
+    return text, err
+
+
 async def falsify(client, question, map_text, lang, deep):
     debaters = config.DEBATERS if deep else config.DEBATERS[:2]
     results = await asyncio.gather(
-        *[_popper_turn(client, d, question, map_text, lang) for d in debaters]
+        *[_falsifier_run(client, i, d, question, map_text, lang) for i, d in enumerate(debaters, 1)]
     )
     reports, errors = {}, {}
     for i, (text, err) in enumerate(results, 1):
@@ -211,6 +223,7 @@ async def falsify(client, question, map_text, lang, deep):
 
 
 async def verify_with_code(client, question, task, map_text, fals_text, errors) -> list[dict]:
+    health.set_stage("verifier")
     try:
         out = await chat(
             client, config.VERIFIER,
@@ -244,6 +257,7 @@ def _judge_messages(question, map_text, fals_text, proofs_text, lang, style) -> 
 
 
 async def _judge(client, messages, errors) -> str | None:
+    health.set_stage("judge")
     try:  # SYNTHESIZER already carries its own fallback chain
         return await chat(client, config.SYNTHESIZER, messages, temperature=0.2, max_tokens=config.FINAL_MAX_TOKENS)
     except LLMError as e:
@@ -255,6 +269,7 @@ async def _repair(client, base_messages, answer, missing, attempt, errors) -> st
     """The judge dropped required headings. Show it its own answer and ask for the complete answer again.
     Attempt 2 starts on a different model, because the same one may keep making the same mistake."""
     spec = config.SYNTHESIZER if attempt == 0 else config.rotated(config.SYNTHESIZER)
+    health.set_stage(f"repair{attempt + 1}")
     messages = base_messages + [
         {"role": "assistant", "content": answer},
         {
@@ -272,7 +287,7 @@ async def _repair(client, base_messages, answer, missing, attempt, errors) -> st
         return None
 
 
-async def enforce_format(client, base_messages, answer, proofs, style, errors) -> tuple[str, list[str], int]:
+async def enforce_format(client, base_messages, answer, proofs, style, errors, log=None) -> tuple[str, list[str], int]:
     """Lint, and while required sections are missing re-ask (up to MAX_REPAIRS) BEFORE the user sees anything.
     Returns (answer, lint warnings for the FINAL text, repair attempts used)."""
     answer, lint = lint_answer(answer, proofs, style)
@@ -281,8 +296,10 @@ async def enforce_format(client, base_messages, answer, proofs, style, errors) -
         missing = missing_sections(answer, style)
         if not missing:
             break
-        config.emit("Format theek kar raha hu")
+        config.emit("Format theek kar raha hu: " + ", ".join(missing) + " section gayab tha")
         fixed = await _repair(client, base_messages, answer, missing, repairs, errors)
+        if log is not None:
+            log.append({"attempt": repairs + 1, "missing": list(missing), "before": answer, "after": fixed})
         repairs += 1
         if fixed:
             answer, lint = lint_answer(fixed, proofs, style)
@@ -304,6 +321,7 @@ async def audit_answer(client, question, answer, lang, errors) -> dict:
     """A different model fact-checks the FINAL answer. Returns {"ran": bool, "issues": [...]}.
     An issue whose quote cannot be found in the answer is capped at low confidence (it may be invented)."""
     config.emit("Audit: facts dobara check ho rahe hain")
+    health.set_stage("audit")
     try:
         out = await chat(
             client, config.AUDITOR, prompts.audit_messages(question, answer, lang),
@@ -334,6 +352,7 @@ async def audit_answer(client, question, answer, lang, errors) -> dict:
 
 
 async def revise_answer(client, messages, errors) -> str | None:
+    health.set_stage("revise")
     try:
         return await chat(client, config.SYNTHESIZER, messages, temperature=0.1, max_tokens=config.FINAL_MAX_TOKENS)
     except LLMError as e:
@@ -350,6 +369,10 @@ async def run_verified(
     config.emit("Drafts ko claims me tod raha hu")
     claim_map = await strip_to_claims(client, question, anon, flagged)
     if claim_map:
+        config.emit(
+            f"Tone-stripper: {sum(len(v) for v in claim_map['claims'].values())} claims, "
+            f"{len(claim_map['consensus'])} sahmati, {len(claim_map['conflicts'])} takraav"
+        )
         full_text = format_map(claim_map)
         compact_text = format_map(claim_map, compact=True)
     else:
@@ -375,29 +398,39 @@ async def run_verified(
     hint = judge_hint or lang
     judge_msgs = _judge_messages(question, full_text, fals_text, proofs_text, hint, style)
     answer = await _judge(client, judge_msgs, errors)
+    judge_raw = answer
+    repair_log: list[dict] = []
+    audit_texts: dict = {}
     repairs = 0
     audit = {"enabled": config.AUDIT_ENABLED, "ran": False, "issues": [], "applied": [], "unsure": []}
     if answer is None:
         answer = max(anon.values(), key=len)
         warnings.append("Judge failed: returned the longest draft (unverified).")
     else:
-        answer, lint, repairs = await enforce_format(client, judge_msgs, answer, proofs, style, errors)
+        used = (health.last_call("judge") or {}).get("used", "")
+        config.emit(f"Judge ({used}) ne jawab likha" if used else "Judge ne jawab likha")
+        answer, lint, repairs = await enforce_format(client, judge_msgs, answer, proofs, style, errors, repair_log)
 
         if config.AUDIT_ENABLED and not missing_sections(answer, style):
             res = await audit_answer(client, question, answer, lang, errors)
             audit["ran"], issues = res["ran"], res["issues"]
             audit["issues"] = issues
+            config.emit(f"Audit: {len(issues)} shak/galti mili" if issues else "Audit: koi galti nahi mili")
             actionable = [i for i in issues if i["confidence"] in ("high", "medium")]
             if actionable:
                 config.emit("Galtiyan sudhar raha hu")
                 rev_msgs = prompts.revise_messages(question, answer, actionable, hint)
+                audit_texts["before"] = answer
                 revised = await revise_answer(client, rev_msgs, errors)
                 if revised:
-                    r_answer, r_lint, r_repairs = await enforce_format(client, rev_msgs, revised, proofs, style, errors)
+                    r_answer, r_lint, r_repairs = await enforce_format(client, rev_msgs, revised, proofs, style, errors, repair_log)
                     # never end up worse than before: a rewrite that lost its sections is thrown away
                     if not missing_sections(r_answer, style):
                         answer, lint, repairs = r_answer, r_lint, repairs + r_repairs
                         audit["applied"] = actionable
+                        audit_texts["after"] = answer
+                    else:
+                        audit_texts["discarded"] = r_answer  # rewrite lost required sections: not used
             applied_ids = {id(i) for i in audit["applied"]}
             audit["unsure"] = [i for i in issues if id(i) not in applied_ids]
         warnings += lint
@@ -417,6 +450,9 @@ async def run_verified(
             "claims_map": claim_map,
             "falsification": reports,
             "proofs": proofs,
+            "judge_raw": judge_raw,
+            "repair_log": repair_log,
+            "audit_texts": audit_texts,
         },
     }
     return answer, extras

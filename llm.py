@@ -18,7 +18,7 @@ from config import PROVIDERS, ModelSpec
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _OPEN_THINK_RE = re.compile(r"<think>.*$", re.DOTALL)
 
-_CONCURRENCY = {"openrouter": 4, "groq": 4, "gemini": 6}  # parallel requests per provider
+_CONCURRENCY = {"openrouter": 4, "groq": 4, "gemini": 6, "cloudflare": 3, "nvidia": 3}  # parallel requests per provider
 _sems: dict = {}
 
 
@@ -117,7 +117,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         try:
             async with _sem(spec.provider):
                 r = await client.post(
-                    f"{prov.base_url}/chat/completions", json=payload, headers=headers, timeout=timeout
+                    f"{prov.url}/chat/completions", json=payload, headers=headers, timeout=timeout
                 )
         except httpx.HTTPError as e:
             health.provider_error(spec.provider)
@@ -194,6 +194,7 @@ async def chat(
 ) -> str:
     chain = [spec] + [config.REGISTRY[label] for label in spec.fallbacks]
     reasons: dict[str, str] = {}
+    t_start = time.perf_counter()
     for rnd in range(2):
         for cand in chain:
             try:
@@ -201,12 +202,13 @@ async def chat(
             except _Skip as e:
                 reasons[cand.label] = str(e)
                 continue
-            health.trace_add(spec, cand, True)
+            health.trace_add(spec, cand, True, messages=messages, output=text,
+                             secs=time.perf_counter() - t_start, skips=reasons)
             return text
         if rnd == 0:  # everyone is cooling down: if a short wait helps, wait once and retry
             wait = health.wait_hint(chain)
             if wait is None or wait > 15:
                 break
             await asyncio.sleep(wait + 0.5)
-    health.trace_add(spec, spec, False)
+    health.trace_add(spec, spec, False, messages=messages, secs=time.perf_counter() - t_start, skips=reasons)
     raise LLMError(f"{spec.role or spec.label}: no model could answer: {reasons}")

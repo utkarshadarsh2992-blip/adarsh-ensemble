@@ -99,3 +99,6 @@ build.py              inline to dist/
 ## 8. Not built (needs your backend)
 
 Real search, real memory recall, real reminders firing while the app is closed (needs push), file understanding, multi-device sync, streaming token output (add `onProgress`/SSE in your adapter), login (single-user token instead).
+
+## Reply field: `council` (optional)
+Backend may add `council` to the first text reply (see `council.py` for the shape). The UI then shows a "Thought for Ns" block instead of "Worked through N steps"; tapping it opens the full page (`js/03-council.js`). Live progress lines (`onProgress`) are stored as `thinkLines`. Only the newest 10 replies keep their `council`; it is left out of exports.

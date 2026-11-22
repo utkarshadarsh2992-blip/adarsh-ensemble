@@ -85,7 +85,9 @@ const Chat = (() => {
     const wrap = h('div', { class: 'msg', 'data-id': m.id });
     const ctx = { msg: m, redraw: () => { wrap.replaceWith(msgEl(m, isLast)); } };
     const r = m.reply;
-    if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    const thought = Council.done(r);
+    if (thought) wrap.append(thought);
+    else if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
     wrap.append(renderReply(r, ctx));
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
@@ -197,7 +199,7 @@ const Chat = (() => {
     const typed = textOverride == null;
     const answers = typed && srcMode() !== 'auto' ? validAnswers() : [];
     if (typed && srcMode() !== 'auto' && !answers.length) { toast('Paste at least one answer first'); sourceSheet(); return; }
-    const c = newChat();
+    const c = cur() || newChat();  // continue the open chat: every message used to start a new one, so follow-ups never saw earlier context
     const um = { id: uid('m'), role: 'user', text, ts: Date.now(), atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
     pushUser(c, um);
     if (textOverride == null) { ta.value = ''; pending = []; pasted = []; drawAtts(); onInput(); }
@@ -210,15 +212,15 @@ const Chat = (() => {
   }
   async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [] }) {
     lastExtra = { source, answers };
-    busy = true; ctl = new AbortController(); const steps = [];
-    const label = h('span', {}, 'Thinking'); thinkEl = h('div', { class: 'think', role: 'status' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), label);
+    busy = true; ctl = new AbortController(); const t0 = Date.now();
+    const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
       const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
-        { signal: ctl.signal, onProgress: (s) => { steps.push(s); label.textContent = s; } });
+        { signal: ctl.signal, onProgress: (s) => lv.push(s) });
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
-      arr.forEach((r, i) => { if (i === 0 && steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; deliver(c, r); });
+      arr.forEach((r, i) => { if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
@@ -232,6 +234,7 @@ const Chat = (() => {
     if (r.type === 'memory') { const m = { id: uid('mem'), text: r.text, pin: false, ts: Date.now() }; S.memories.unshift(m); r.memId = m.id; }
     if (r.type === 'task') { const t = { id: uid('t'), title: r.title, due: r.due || null, done: false, ts: Date.now() }; S.tasks.push(t); r.taskId = t.id; }
     if (r.type === 'mission') upsertMission(r);
+    if (r.council) { r.councilId = uid('cn'); Council.put(r.councilId, r.council); delete r.council; }  // big: stored apart from the chat state
     const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r };
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });

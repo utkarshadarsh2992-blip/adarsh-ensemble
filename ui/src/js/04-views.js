@@ -213,8 +213,10 @@ const App = (() => {
     } });
   }
   function keysSummary() {
-    const st = window.AdarshKeys.status(); const n = Object.values(st).filter(x => x && x.set).length;
-    return n ? n + ' of 3 providers set' : 'No keys yet. Add at least one to get answers';
+    const st = window.AdarshKeys.status(); const ok = id => !!(st[id] && st[id].set);
+    const n = ['GROQ_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY'].filter(ok).length
+      + (ok('CLOUDFLARE_API_TOKEN') && ok('CLOUDFLARE_ACCOUNT_ID') ? 1 : 0);
+    return n ? n + ' of 5 providers set' : 'No keys yet. Add at least one to get answers';
   }
   function keysSheet() {
     sheet({ title: 'API keys', tall: true, build(b, close) {
@@ -222,7 +224,7 @@ const App = (() => {
       b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'));
       K.providers.forEach(p => {
         const cur = st[p.id] || {};
-        const inp = h('input', { type: 'password', placeholder: cur.set ? 'Saved (' + cur.hint + '). Paste a new key to replace' : 'Paste ' + p.name + ' key', 'aria-label': p.name + ' API key', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+        const inp = h('input', { type: p.plain ? 'text' : 'password', placeholder: cur.set ? 'Saved (' + cur.hint + '). Paste a new key to replace' : 'Paste ' + p.name + (p.plain ? '' : ' key'), 'aria-label': p.name + ' API key', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
         const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
         b.append(h('label', { class: 'l' }, p.name + ' · ' + p.url), inp,
           h('div', { class: 'frow' },

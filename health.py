@@ -25,6 +25,9 @@ _prov_cool: dict[str, float] = {}  # provider -> unix time
 _streak: dict[str, int] = {}       # consecutive failures per model label
 _perr: dict[str, list[float]] = {}  # provider -> timestamps of recent network-level failures
 _trace: contextvars.ContextVar = contextvars.ContextVar("trace", default=None)
+_rec: contextvars.ContextVar = contextvars.ContextVar("trace_record", default=False)
+_stage: contextvars.ContextVar = contextvars.ContextVar("stage", default="")
+MAX_PROMPT_CHARS = 12000  # per message kept in a recorded trace
 
 
 def _today() -> str:
@@ -179,16 +182,47 @@ def rate_limited(spec: ModelSpec, wait: float | None) -> None:
 
 # ------------------------------------------------------------------ trace (per request)
 
-def start_trace() -> list:
+def start_trace(record: bool = False) -> list:
+    """record=True also keeps every prompt and output (for the council view). Off by default: it is big."""
     t: list = []
     _trace.set(t)
+    _rec.set(record)
     return t
 
 
-def trace_add(asked: ModelSpec, used: ModelSpec, ok: bool) -> None:
+def _cut(text: str, n: int) -> str:
+    if len(text) <= n:
+        return text
+    return text[:n] + "\n…[record me yahan kaata gaya, model ko poora prompt gaya tha]"
+
+
+def set_stage(name: str) -> None:
+    """Label the model calls that follow (per asyncio task), e.g. "panel:logic_math", "judge"."""
+    _stage.set(name)
+
+
+def trace_add(asked: ModelSpec, used: ModelSpec, ok: bool, *, messages=None, output=None, secs=None, skips=None) -> None:
     t = _trace.get()
-    if t is not None:
-        t.append({"role": asked.role or asked.label, "asked": asked.label, "used": used.label, "ok": ok})
+    if t is None:
+        return
+    e = {"role": asked.role or asked.label, "asked": asked.label, "used": used.label, "ok": ok, "stage": _stage.get()}
+    if secs is not None:
+        e["secs"] = round(secs, 2)
+    if skips:
+        e["skips"] = dict(skips)
+    if _rec.get() and e["stage"] != "guard":
+        if messages is not None:
+            e["prompt"] = [{"role": m.get("role", ""), "content": _cut(str(m.get("content", "")), MAX_PROMPT_CHARS)} for m in messages]
+        if output is not None:
+            e["output"] = output
+    t.append(e)
+
+
+def last_call(stage: str) -> dict | None:
+    for e in reversed(_trace.get() or []):
+        if e.get("stage") == stage:
+            return e
+    return None
 
 
 def summarize(trace: list) -> dict:

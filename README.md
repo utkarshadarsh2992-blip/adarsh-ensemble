@@ -47,3 +47,10 @@ UI kisi aur jagah host ki ho to Connection URL = `https://<server>/api/chat`.
 
 The audit lowers the chance of confident mistakes. It does not remove it: the auditor is also a language model.
 For facts that matter (numbers, dates, papers), check a source.
+
+## Providers
+Groq, OpenRouter, Gemini (core: har role ki chain me teeno) aur optional Cloudflare Workers AI, NVIDIA NIM (extra fallback; key na ho to skip). Cloudflare ko `CLOUDFLARE_API_TOKEN` aur `CLOUDFLARE_ACCOUNT_ID` dono chahiye. `bge-m3` embedding model hai, chat me use nahi hota. Cloudflare ke neurons token nahi hote, isliye local cap nahi: asli 429 aane par chain aage badhti hai.
+Model IDs jo docs me confirm nahi hue (NVIDIA ke teen, OpenRouter ka inkling, Cloudflare ka gemma) best guess hain. Galat ID par 404 aata hai, model 6 ghante ke liye skip hota hai aur agla model jawab deta hai. Android me Test connection sahi ID suggest karta hai.
+
+## Council record
+`pipeline.run(..., record=True)` har model call ka stage, prompt, output, time, fallback/skip reasons rakhta hai aur `out["council"]` banata hai (`council.py`): drafts, claims map, patterns, falsifiers, proofs, judge ka pehla jawab, repair log, audit before/after, draft->final provenance (shabd-milan se andaaza). Default off (bada hota hai); chat adapter on rakhta hai.

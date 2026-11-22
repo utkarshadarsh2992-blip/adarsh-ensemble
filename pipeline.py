@@ -22,6 +22,7 @@ import time
 import httpx
 
 import config
+import council
 import guard
 import health
 import prompts
@@ -50,6 +51,7 @@ def _unique(label: str, taken) -> str:
 
 
 async def classify(client: httpx.AsyncClient, question: str) -> str:
+    health.set_stage("classify")
     try:
         out = await chat(
             client,
@@ -72,6 +74,11 @@ async def classify(client: httpx.AsyncClient, question: str) -> str:
 
 async def _ask_member(client, spec, question, task, lang) -> tuple[str, str | None, str | None]:
     # drafts are keyed by ROLE (unique per panel slot); health trace shows which model served it
+    stage = f"panel:{spec.role}"
+    health.set_stage(stage)
+    title = prompts.ROLE_INFO.get(spec.role, (spec.role,))[0]
+    config.emit(f"{title}: sawaal mila, soch raha hai")
+    t0 = time.perf_counter()
     try:
         text = await asyncio.wait_for(
             chat(
@@ -83,12 +90,16 @@ async def _ask_member(client, spec, question, task, lang) -> tuple[str, str | No
             ),
             timeout=config.PANEL_TIMEOUT_S,
         )
+        call = health.last_call(stage) or {}
+        config.emit(f"{title}: draft mila ({call.get('used', spec.label)}, {len(text.split())} shabd, {time.perf_counter() - t0:.0f}s)")
         return spec.role, text, None
     except (LLMError, asyncio.TimeoutError) as e:
+        config.emit(f"{title}: draft nahi mila ({'time khatam' if isinstance(e, asyncio.TimeoutError) else 'sab models fail'})")
         return spec.role, None, str(e) or "timeout"
 
 
 async def _debater_turn(client, spec, question, drafts, others, lang):
+    health.set_stage(f"debate:{spec.label}")
     try:
         text = await asyncio.wait_for(
             chat(
@@ -164,9 +175,11 @@ async def run(
     reply_lang: str = "auto",  # auto | hinglish | english | hindi
     depth: str = "normal",  # simple | normal | detailed
     style: str = "auto",  # auto | solve | explain
+    record: bool = False,  # keep every prompt/output and return out["council"] (see council.py)
 ) -> dict:
     t0 = time.perf_counter()
-    trace = health.start_trace()
+    trace = health.start_trace(record)
+    rec = {"question": question, "deep": deep, "source": source, "depth": depth, "reply_lang": reply_lang} if record else None
     lang = _language_hint(question, reply_lang)  # language only (falsifiers, debaters)
     lang_full = (lang + " " + prompts.DEPTH_HINTS.get(depth, "")).strip()  # + depth (drafters, judge, synthesizer)
     rounds = max(0, min(debate_rounds, config.MAX_DEBATE_ROUNDS))
@@ -227,6 +240,7 @@ async def run(
 
         panel_failed = source == "auto" and len(panel_drafts) < config.MIN_PANEL_SUCCESS
         if panel_failed or not all_drafts:
+            health.set_stage("single")
             try:
                 answer = await chat(
                     client,
@@ -238,7 +252,7 @@ async def run(
                 raise RuntimeError(f"Not enough models responded. Errors: {errors} | {e}")
             return _pack(
                 answer, task, {}, {}, errors, [], t0, debug, 0, trace=trace, warnings=warnings,
-                guard_report=guard_report, fallback=True, style=style,
+                guard_report=guard_report, fallback=True, style=style, rec=rec,
             )
 
         # [2] anonymise (A, B, C...) and shuffle: judges see no brand names and no fixed order
@@ -259,7 +273,7 @@ async def run(
             return _pack(
                 answer, task, user_drafts, panel_drafts, errors, [], t0, debug, 0,
                 trace=trace, warnings=warnings, guard_report=guard_report,
-                letter_to_name=letter_to_name, engine="verified", extras=extras, style=style,
+                letter_to_name=letter_to_name, engine="verified", extras=extras, style=style, rec=rec,
             )
 
         # engine == "simple": plain debate + synthesis
@@ -270,6 +284,7 @@ async def run(
         debate_text = _format_debate(transcript)
 
         synth_args = (question, anon, debate_text, lang_full)
+        health.set_stage("synth")
         try:
             answer = await chat(
                 client, config.SYNTHESIZER, prompts.synth_messages(*synth_args),
@@ -282,14 +297,14 @@ async def run(
 
     return _pack(
         answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, len(transcript),
-        trace=trace, warnings=warnings, guard_report=guard_report, letter_to_name=letter_to_name, style=style,
+        trace=trace, warnings=warnings, guard_report=guard_report, letter_to_name=letter_to_name, style=style, rec=rec,
     )
 
 
 def _pack(
     answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, rounds_run, *,
     trace, warnings, guard_report, fallback=False, letter_to_name=None, engine="simple", extras=None,
-    style="solve",
+    style="solve", rec=None,
 ) -> dict:
     out = {
         "answer": answer,
@@ -308,6 +323,16 @@ def _pack(
             out["falsifier_notes"] = extras["falsifier_notes"]
         out["repairs"] = extras.get("repairs", 0)
         out["audit"] = extras.get("audit")
+    if rec is not None:
+        out["council"] = council.build(
+            question=rec["question"], trace=trace, user_drafts=user_drafts, panel_drafts=panel_drafts,
+            letter_to_name=letter_to_name, extras=extras, guard_report=guard_report, errors=errors,
+            warnings=warnings, final=answer,
+            setup={"task": task, "style": style, "engine": engine, "source": rec["source"],
+                   "mode": "deep" if rec["deep"] else "fast", "depth": rec["depth"], "reply_lang": rec["reply_lang"],
+                   "latency_s": out["latency_s"], "user_answers": len(user_drafts), "panel_answers": len(panel_drafts),
+                   "fallback": bool(fallback)},
+        )
     if guard_report:
         out["guard"] = guard_report
     if warnings:

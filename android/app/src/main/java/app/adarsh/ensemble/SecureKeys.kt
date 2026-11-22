@@ -43,6 +43,9 @@ class SecureKeys(private val ctx: Context) {
 
     companion object {
         const val FILE = "adarsh_keys"
-        val NAMES = listOf("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY")
+        val NAMES = listOf(
+            "GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
+            "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY"
+        )
     }
 }
