@@ -1,3 +1,6 @@
+
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -8,6 +11,14 @@ val repoRoot = rootDir.parentFile
 val engineDir = layout.buildDirectory.dir("generated/engine")
 val uiDir = layout.buildDirectory.dir("generated/ui")
 
+// Fixed signing key. Either adarsh-debug.keystore is uploaded as a file, or its base64 text is pasted into
+// adarsh-debug.keystore.b64 (easy from a phone) and decoded here before signing.
+val ksFile = file("adarsh-debug.keystore")
+val ksB64 = file("adarsh-debug.keystore.b64")
+if (!ksFile.exists() && ksB64.exists()) {
+    ksFile.writeBytes(Base64.getMimeDecoder().decode(ksB64.readText().trim()))
+}
+
 android {
     namespace = "app.adarsh.ensemble"
     compileSdk = 34
@@ -16,7 +27,8 @@ android {
         applicationId = "app.adarsh.ensemble"
         minSdk = 26
         targetSdk = 34
-        // GitHub run number: goes up with every CI build, so a new APK installs as an update over the old one
+
+        // GitHub run number
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionName = "1.0.0"
 
@@ -25,8 +37,6 @@ android {
         }
     }
 
-    // Fixed signing key. Without it every CI run signs the debug APK with a brand-new random key, Android refuses
-    // to update the installed app, you must uninstall it, and the saved API keys are deleted with it.
     signingConfigs {
         getByName("debug") {
             storeFile = file("adarsh-debug.keystore")
@@ -78,7 +88,6 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }
 
-// Engine: existing Python files, unchanged, excluding FastAPI server.
 val syncEngine = tasks.register<Copy>("syncEngine") {
     from(repoRoot) {
         include("*.py")
@@ -87,7 +96,6 @@ val syncEngine = tasks.register<Copy>("syncEngine") {
     into(engineDir)
 }
 
-// Frontend: single-file page produced by ui/build.py.
 val syncUi = tasks.register<Copy>("syncUi") {
     from(File(repoRoot, "ui/dist/adarsh.html")) {
         rename { "index.html" }
