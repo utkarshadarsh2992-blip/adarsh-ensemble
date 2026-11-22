@@ -16,11 +16,23 @@ android {
         applicationId = "app.adarsh.ensemble"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
+        // GitHub run number: goes up with every CI build, so a new APK installs as an update over the old one
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionName = "1.0.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    // Fixed signing key. Without it every CI run signs the debug APK with a brand-new random key, Android refuses
+    // to update the installed app, you must uninstall it, and the saved API keys are deleted with it.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("adarsh-debug.keystore")
+            storePassword = "adarsh123456"
+            keyAlias = "adarsh"
+            keyPassword = "adarsh123456"
         }
     }
 
