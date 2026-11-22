@@ -276,6 +276,7 @@ AUDIT_ENABLED = os.getenv("AUDIT", "1") == "1"
 AUDIT_MAX_ISSUES = 6
 # Manual mode builds ONE master answer only from the pasted answers (master.py). MASTER=0 restores the old manual flow.
 MASTER_ENABLED = os.getenv("MASTER", "1") == "1"
+LEARNER_PROFILE = os.getenv("LEARNER_PROFILE", "1") == "1"  # teach Utkarsh in his style (see prompts.LEARNER_PROFILE)
 GROUND_ENABLED = os.getenv("GROUND", "1") == "1"  # grounding check + rewrite of the master answer
 GROUND_MAX_ISSUES = 6
 MAX_CHECKS = 4
