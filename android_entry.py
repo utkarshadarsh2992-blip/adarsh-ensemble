@@ -19,6 +19,7 @@ def init(files_dir: str) -> str:
     global _ready
     os.makedirs(files_dir, exist_ok=True)
     os.environ["USAGE_FILE"] = os.path.join(files_dir, "usage.json")
+    os.environ["LESSONS_FILE"] = os.path.join(files_dir, "lessons.json")
     os.environ.setdefault("CHAT_MODE", "fast")  # phone default: fewer models, less quota
     _ready = True
     return "ok"
@@ -32,6 +33,19 @@ def set_key(name: str, value: str) -> bool:
     else:
         os.environ.pop(name, None)
     return True
+
+
+def lessons(op_json: str) -> str:
+    """Lessons list/add/edit/delete/clear. Plain file work: no model, no API key, no foreground service."""
+    import lessons as store
+
+    try:
+        op = json.loads(op_json)
+        if not isinstance(op, dict):
+            raise ValueError
+    except ValueError:
+        return json.dumps({"ok": False, "error": "Request samajh nahi aaya."})
+    return json.dumps(store.handle_op(op))
 
 
 def _scrub(text: str) -> str:
@@ -132,6 +146,9 @@ def handle(request_json: str, progress=None) -> str:
 
     if body.get("diagnose"):
         return diagnose()
+
+    if isinstance(body.get("lesson"), dict):  # plain file work: needs no API key
+        return lessons(json.dumps(body["lesson"]))
 
     if not body.get("ping") and not any(v.api_key for v in config.PROVIDERS.values()):
         return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini, OpenRouter, Cloudflare ya NVIDIA).")

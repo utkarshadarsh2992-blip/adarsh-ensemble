@@ -49,3 +49,10 @@ Pehli CI build me Gradle/versions ki dikkat aa sakti hai (Chaquopy 16.1.0 + AGP 
 Jawab ke upar "Thinking" block live lines dikhata hai (har role ka kaam poora hote hi ek line), jawab aane par "Thought for Ns" ban jaata hai. Block par tap karo to poora page khulta hai: har role ka prompt, kaun sa model chala (fallback ho to wo bhi), poora jawab, claims map, falsifier reports, judge, format repair, audit (pehle/baad), aur "kya aaya, kya gaya" (draft se final tak, shabd-milan ka andaaza). Hardware back pehle is page ko band karta hai.
 Record bada hota hai (kuch 10 KB se 100 KB), isliye sirf pichhle 10 jawab ka rakha jaata hai; purane jawab ka text rehta hai, detail page nahi. Export me ye record shamil nahi hota.
 Pattern finder 7th panel role hai: sirf deep mode me chalta hai (fast me panel ke pehle 3 hi).
+
+## Manual master answer + Lessons
+Manual mode ab sirf tumhare paste kiye answers se ek master answer banata hai (7 section, har baat par [A]/[B] source tag, jo answers me nahi wo "Paste kiye answers me nahi hai."). Panel ke models Manual me nahi chalte. Auto ka format aur stages wahi hain.
+Master answer par 👎 dabao to "Kya galat tha?" sheet khulti hai: ek line likho, wo rule ban kar agle master answer me jaati hai. Checks jab known galti pakadte hain (section chhoota, bina source ki baat, gadhi hui kahani, galat tag) to rule apne aap judta hai. Settings > Lessons me list, badlo, hatao. Model train nahi hota: rules prompt me jaate hain.
+Lessons ka kaam phone par seedha file ka kaam hai (`AdarshNative.lessons`), isliye API key ya foreground service nahi chahiye. File: app ke private folder me `engine/lessons.json`.
+Council page Manual me panel/falsifier/proofs hide karta hai aur Lessons section dikhata hai. Takraav par `factual` / `choice` pill dikhti hai.
+**Nahi chala:** Kotlin `lessons()` bridge compile/device par test nahi hua (APK build yahan nahi ho sakta).

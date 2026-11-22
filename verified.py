@@ -58,8 +58,10 @@ def _normalize_map(data) -> dict | None:
         for c in data["conflicts"]:
             if isinstance(c, dict):
                 pos = c.get("positions")
+                kind = str(c.get("kind", "factual")).strip().lower()
                 conflicts.append(
                     {
+                        "kind": kind if kind in ("factual", "choice", "unspecified") else "factual",
                         "issue": str(c.get("issue", "")).strip(),
                         "positions": {str(k): str(v) for k, v in pos.items()}
                         if isinstance(pos, dict)
@@ -71,15 +73,24 @@ def _normalize_map(data) -> dict | None:
 
 
 def format_map(m: dict, compact: bool = False) -> str:
+    """Only FACTUAL conflicts are put to the falsifiers. Choices and values the question never gave are listed apart:
+    neither side is an error, so nobody should spend tokens deciding who is 'right' (e.g. house size, colour)."""
+    factual = [c for c in m["conflicts"] if c.get("kind", "factual") == "factual"]
+    other = [c for c in m["conflicts"] if c.get("kind", "factual") != "factual"]
     lines = ["## CONSENSUS (most drafts agree)"]
     lines += [f"- {c}" for c in m["consensus"]] or ["- (none)"]
     lines.append("\n## CONFLICTS (logic collides)")
-    if m["conflicts"]:
-        for i, c in enumerate(m["conflicts"], 1):
+    if factual:
+        for i, c in enumerate(factual, 1):
             lines.append(f"{i}. {c['issue']}")
             lines += [f"   {k}: {v}" for k, v in c["positions"].items()]
     else:
         lines.append("- (none found)")
+    if other and not compact:
+        lines.append("\n## DIFFERENT CHOICES (not errors: the question did not fix these)")
+        for i, c in enumerate(other, 1):
+            lines.append(f"{i}. {c['issue']} [{c.get('kind')}]")
+            lines += [f"   {k}: {v}" for k, v in c["positions"].items()]
     if not compact:
         lines.append("\n## ATOMIC CLAIMS PER DRAFT")
         for k, claims in m["claims"].items():
@@ -122,6 +133,20 @@ def missing_sections(answer: str, style: str) -> list[str]:
 
 _TAG_RE = re.compile(r"\s*\[(?:PROVEN by code|REASONED|UNVERIFIED)\]", re.IGNORECASE)
 
+# "r162 is the latest stable release as of 2026-11-22": the engine has no internet, so this comes from stale memory.
+_VER = r"(?:\bv?\d+(?:\.\d+)+\b|\br\d{2,4}\b|\b(?:19|20)\d{2}\b)"
+_FRESH = re.compile(
+    r"(?is)\b(?:latest|newest|most recent|current(?:ly)?|as of|abhi tak ka)\b[^.\n]{0,70}?" + _VER
+    + r"|" + _VER + r"[^.\n]{0,50}?\b(?:is|was|hai)\b[^.\n]{0,20}\b(?:latest|newest|current|stable)\b"
+)
+
+
+def freshness_warning(answer: str) -> list[str]:
+    if _FRESH.search(answer):
+        return ["Jawab me 'latest / current / as of' ke saath version ya saal hai. Engine ke paas internet nahi hai, "
+                "isliye ye purani yaad se ho sakta hai: pehle official site par check karo."]
+    return []
+
 
 def lint_answer(answer: str, proofs: list[dict], style: str = "solve") -> tuple[str, list[str]]:
     """Deterministic contract check (no LLM). Keeps the 'verified' label honest."""
@@ -132,7 +157,7 @@ def lint_answer(answer: str, proofs: list[dict], style: str = "solve") -> tuple[
         missing = missing_sections(answer, style)
         if missing:
             warnings.append("Final answer is missing section(s): " + ", ".join(missing))
-        return answer, warnings
+        return answer, warnings + freshness_warning(answer)
     passed = sum(1 for p in proofs if p["status"] == "PASS")
     failed = sum(1 for p in proofs if p["status"] == "FAIL")
     if passed == 0 and re.search(r"\[PROVEN by code\]", answer, re.IGNORECASE):
@@ -145,7 +170,7 @@ def lint_answer(answer: str, proofs: list[dict], style: str = "solve") -> tuple[
         warnings.append(f"{failed} code check(s) FAILED: compare debug.proofs with the answer.")
     if proofs and passed == 0 and failed == 0:
         warnings.append("No code check produced PASS or FAIL (errors, timeouts or rejected scripts).")
-    return answer, warnings
+    return answer, warnings + freshness_warning(answer)
 
 
 # What the reader sees under "Kahan galat ho sakta hai": the falsifiers' own words, minus the part meant for the

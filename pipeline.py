@@ -24,6 +24,7 @@ import httpx
 import config
 import council
 import guard
+import master
 import health
 import prompts
 import verified
@@ -161,6 +162,10 @@ async def _noop() -> dict:
     return {}
 
 
+async def _general() -> str:
+    return "general"
+
+
 async def run(
     question: str,
     *,
@@ -196,9 +201,10 @@ async def run(
     async with httpx.AsyncClient() as client:
         config.emit("Sawaal samajh raha hu")
         # [0] guard pasted answers + classify the question, concurrently
+        master_mode = source == "manual" and config.MASTER_ENABLED and bool(user_drafts) and engine == "verified"
         guard_report, task = await asyncio.gather(
             guard.scan(client, user_drafts) if (use_guard and user_drafts) else _noop(),
-            classify(client, question),
+            _general() if master_mode else classify(client, question),  # master mode needs no task type
         )
         for name, g in guard_report.items():
             if g["flagged"]:
@@ -219,6 +225,21 @@ async def run(
                 warnings.append(
                     f"'{name}' was scanned by the weaker LLM fallback detector (Groq guard unavailable)."
                 )
+
+        if master_mode:
+            # Manual: one master answer from the pasted answers only. No panel, no falsifiers, no code.
+            items = list(user_drafts.items())
+            random.shuffle(items)
+            anon = {string.ascii_uppercase[i]: text for i, (_, text) in enumerate(items)}
+            letter_to_name = {string.ascii_uppercase[i]: name for i, (name, _) in enumerate(items)}
+            flagged = {l for l, n in letter_to_name.items() if guard_report.get(n, {}).get("flagged")}
+            answer, extras = await master.run_master(client, question, anon, letter_to_name, lang, lang_full, errors, flagged)
+            warnings += extras.get("warnings", [])
+            return _pack(
+                answer, "general", user_drafts, {}, errors, [], t0, debug, 0, trace=trace, warnings=warnings,
+                guard_report=guard_report, letter_to_name=letter_to_name, engine="master", extras=extras,
+                style="master", rec=rec,
+            )
 
         if style not in ("solve", "explain"):
             style = prompts.answer_style(question, task) if (config.EXPLAIN_STYLE and engine == "verified") else "solve"
@@ -323,6 +344,8 @@ def _pack(
             out["falsifier_notes"] = extras["falsifier_notes"]
         out["repairs"] = extras.get("repairs", 0)
         out["audit"] = extras.get("audit")
+        if extras.get("master"):
+            out["master"] = extras["master"]
     if rec is not None:
         out["council"] = council.build(
             question=rec["question"], trace=trace, user_drafts=user_drafts, panel_drafts=panel_drafts,

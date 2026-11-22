@@ -25,6 +25,14 @@ _SENT = re.compile(r"(?<=[.!?।])\s+|\n+")
 _WORD = re.compile(r"[a-z0-9ऀ-ॿ]{3,}")
 
 
+# manual mode reuses the stage names judge/audit/revise for its own steps
+MASTER_TITLES = {
+    "judge": "Master writer (jawab sirf paste kiye answers se)",
+    "audit": "Grounding check (kya paste kiye answers isse support karte hain?)",
+    "revise": "Grounding rewrite",
+}
+
+
 def stage_title(stage: str) -> str:
     kind, _, rest = stage.partition(":")
     if kind == "panel":
@@ -106,6 +114,8 @@ def build(*, question, setup, trace, user_drafts, panel_drafts, letter_to_name, 
     for e in trace:
         c = {k: e[k] for k in ("stage", "role", "asked", "used", "ok", "secs", "skips", "prompt", "output") if k in e}
         c["title"] = stage_title(e.get("stage") or e.get("role", ""))
+        if (setup or {}).get("engine") == "master" and e.get("stage") in MASTER_TITLES:
+            c["title"] = MASTER_TITLES[e["stage"]]
         if (e.get("stage") or "").startswith("panel:"):
             c["brief"] = prompts.ROLE_INFO.get(e["stage"].split(":", 1)[1], ("", ""))[1]
         calls.append(c)
@@ -139,6 +149,7 @@ def build(*, question, setup, trace, user_drafts, panel_drafts, letter_to_name, 
         "repairs": dbg.get("repair_log") or [],
         "audit": audit,
         "provenance": provenance(final, all_drafts) if all_drafts else None,
+        "lessons": (extras or {}).get("master"),
         "guard": guard_report or {},
         "errors": errors,
         "warnings": warnings,

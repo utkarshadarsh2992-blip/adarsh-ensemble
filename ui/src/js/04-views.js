@@ -160,6 +160,7 @@ const App = (() => {
     st.append(h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
+      navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet),
       swItem('bell', 'Notifications', 'Alert me when a reply or reminder arrives', () => S.settings.notif, async (v) => { S.settings.notif = v; if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} } }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; })));

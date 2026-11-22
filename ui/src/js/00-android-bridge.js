@@ -36,6 +36,8 @@
         catch (e) { delete pending[id]; rej(new Error('Could not reach the on-device engine.')); }
       });
     },
+    /* lessons: quick synchronous file work on the device (no model call) */
+    lessons(op) { try { return Promise.resolve(JSON.parse(N.lessons(JSON.stringify(op)))); } catch (e) { return Promise.resolve({ ok: false, error: 'Lessons nahi khule.' }); } },
     ping: async () => {
       try { const s = JSON.parse(N.status()); return { ok: !!s.ready, label: s.ready ? 'On-device engine' : 'Engine starting…' }; }
       catch (e) { return { ok: false, label: 'Engine not reachable' }; }

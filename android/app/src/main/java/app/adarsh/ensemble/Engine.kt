@@ -61,6 +61,17 @@ object Engine {
         entry?.callAttr("set_key", name, value)
     }
 
+    /** Lessons list/add/edit/delete: a quick file operation in Python. No model call, so no foreground service. */
+    fun lessons(opJson: String): String {
+        return try {
+            started.await()
+            val e = entry ?: return """{"ok":false,"error":"Engine start nahi hua."}"""
+            e.callAttr("lessons", opJson).toString()
+        } catch (t: Throwable) {
+            """{"ok":false,"error":"Lessons error."}"""
+        }
+    }
+
     fun submit(id: String, requestJson: String, onProgress: (String) -> Unit, onDone: (String?, String?) -> Unit) {
         if (inFlight.getAndIncrement() == 0) setForeground(true)
         pool.execute {

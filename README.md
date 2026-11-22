@@ -45,8 +45,31 @@ UI kisi aur jagah host ki ho to Connection URL = `https://<server>/api/chat`.
 3. **Wording rules.** Falsifiers get a red-flag checklist; judges must avoid absolutes, write exact figures only when sure,
    and state the main limit of whatever they describe.
 
+4. **Choice vs fact conflicts.** The tone-stripper tags each conflict `factual` or `choice` (house size, colours, names the question did
+   not fix). Falsifiers get only the factual ones, so they stop spending tokens on opinion differences; judges pick a labelled default
+   for choices instead of treating them as errors.
+5. **Freshness rule.** The models and the engine have no internet. Panel, judges, falsifiers and auditor are told never to claim
+   "latest / current / as of <date>" for versions, prices or rankings from memory (say "version X, check the current one"), and
+   `verified.freshness_warning` adds a note to the answer if such a claim still appears. It can only flag, not look the version up.
+
 The audit lowers the chance of confident mistakes. It does not remove it: the auditor is also a language model.
 For facts that matter (numbers, dates, papers), check a source.
+
+## Manual mode: master answer + lessons
+Manual (pasted answers only) no longer runs the panel. `master.py` builds ONE answer from the pasted answers and nothing else:
+claims are stripped from each answer, one writer produces 7 fixed sections (Concept kya hai / Kisne socha / Kaise socha / Kya trigger hua /
+First principle se / Patterns aur connections / Gaps aur takraav), every statement carries source tags like `[A]` or `[A,C]`, anything the
+answers do not state is written as "Paste kiye answers me nahi hai.". Then: format repair (missing heading = re-ask), invalid tag
+letters removed, a grounding check by a different model family ("does a pasted answer support this?", not "is it true?"), one rewrite
+for unsupported / invented / mis-tagged statements (dropped if it loses sections). Auto and Hybrid do not use this path.
+`MASTER=0` / `GROUND=0` turn the engine / the grounding check off.
+
+**Learning loop (`lessons.py`).** No model weights change. Rules are stored in a small JSON file and put into the next master prompt
+(top 8, the user's own first). Sources: (1) thumbs-down on a master answer asks "Kya galat tha?" and stores your line as a rule;
+(2) automatic: when a check catches a known kind of mistake (missing section, unsupported statement, invented name/year/story, wrong tag,
+bad tag letter, no tags, hidden contradiction) a fixed rule for that kind is created. A rule that is broken again gains weight, one that
+holds fades out when the list (max 30) is full. Settings > Lessons lists, edits and deletes them. Thumbs-up marks the rules in that
+answer's prompt as "held".
 
 ## Providers
 Groq, OpenRouter, Gemini (core: har role ki chain me teeno) aur optional Cloudflare Workers AI, NVIDIA NIM (extra fallback; key na ho to skip). Cloudflare ko `CLOUDFLARE_API_TOKEN` aur `CLOUDFLARE_ACCOUNT_ID` dono chahiye. `bge-m3` embedding model hai, chat me use nahi hota. Cloudflare ke neurons token nahi hote, isliye local cap nahi: asli 429 aane par chain aage badhti hai.

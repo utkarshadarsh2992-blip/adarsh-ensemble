@@ -11,6 +11,7 @@ import re
 import httpx
 
 import config
+import lessons
 import pipeline
 from llm import LLMError, chat
 
@@ -109,6 +110,8 @@ def _format_answer(res: dict) -> str:
 async def handle(body: dict) -> dict | list[dict]:
     if body.get("ping"):
         return {"ok": True}
+    if isinstance(body.get("lesson"), dict):
+        return lessons.handle_op(body["lesson"])  # list / add / edit / delete / clear / good: no model call
 
     meta = body.get("meta") or {}
     if meta.get("approval"):
@@ -162,18 +165,24 @@ async def handle(body: dict) -> dict | list[dict]:
     if body.get("attachments"):
         replies[0]["text"] += "\n\n*Attachments abhi ensemble tak nahi bheje jaate (sirf text).*"
     # shown folded under the answer as "Worked through N steps"
-    steps = [f"Task: {res.get('task_type', 'general')} · {res.get('style', 'solve')}"]
+    master = res.get("master")
+    if master:
+        steps = ["Manual · master answer (sirf tumhare answers se)"]
+    else:
+        steps = [f"Task: {res.get('task_type', 'general')} · {res.get('style', 'solve')}"]
     if source != "auto":
         steps.append(f"Source: {source} ({res.get('user_answers_used', 0)} yours, {res.get('panel_answers_used', 0)} models)")
     steps += [f"{m} x{n}" for m, n in (res.get("models_used") or {}).items()]
     audit = res.get("audit") or {}
     if res.get("repairs"):
         steps.append(f"Format repair x{res['repairs']}")
+    if master:
+        steps.append(f"Lessons: {len(master['lessons_used'])} lage, {len(master['learned'])} naye/majboot")
     if audit.get("enabled"):
         steps.append(
-            f"Audit: {len(audit.get('applied', []))} sudhar, {len(audit.get('unsure', []))} shak"
+            f"{audit.get('label', 'Audit')}: {len(audit.get('applied', []))} sudhar, {len(audit.get('unsure', []))} shak"
             if audit.get("ran")
-            else "Audit: chala nahi"
+            else f"{audit.get('label', 'Audit')}: chala nahi"
         )
     steps.append(f"{res.get('latency_s', 0)}s")
     replies[0]["steps"] = steps
@@ -181,14 +190,17 @@ async def handle(body: dict) -> dict | list[dict]:
     # folded under the answer: what the audit corrected, what it doubts, and what the falsifiers found
     items = []
     if audit.get("applied"):
-        items.append({"title": f"Audit ne sudhara ({len(audit['applied'])})",
+        items.append({"title": f"{audit.get('label', 'Audit')} ne sudhara ({len(audit['applied'])})",
                       "text": "\n".join(_audit_line(i, "applied") for i in audit["applied"])})
     if audit.get("unsure"):
-        items.append({"title": "Audit ko shak hai, khud check karo",
+        items.append({"title": f"{audit.get('label', 'Audit')} ko shak hai, khud check karo",
                       "text": "\n".join(_audit_line(i, "unsure") for i in audit["unsure"])})
     items += res.get("falsifier_notes") or []
     if items:
         replies[0]["notes"] = {"title": "Kahan galat ho sakta hai", "items": items}
+    if master:
+        replies[0]["master"] = True  # the UI offers "kya galat tha?" feedback only on these replies
+        replies[0]["lessonIds"] = [x["id"] for x in master["lessons_used"]]
     if res.get("council"):
         replies[0]["council"] = res["council"]  # shown on its own page, not in the chat scroll
     return replies

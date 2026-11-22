@@ -93,6 +93,7 @@ const Council = (() => {
 
   function render(stack, rec) {
     const calls = rec.calls || [], drafts = rec.drafts || [], su = rec.setup || {};
+    const master = su.engine === 'master', ls = rec.lessons || {};
     const byStage = (p) => calls.filter(c => (c.stage || '').startsWith(p));
     const one = (s) => calls.find(c => c.stage === s);
     const letterName = (l) => { const d = drafts.find(x => x.letter === l); return d ? l + ' · ' + d.title : l; };
@@ -128,8 +129,8 @@ const Council = (() => {
       stat('Drafts', String(drafts.length), (su.user_answers ? su.user_answers + ' tumhare + ' : '') + (su.panel_answers || 0) + ' panel'),
       stat('Fail / fallback', failed + ' / ' + fallbacks, 'model calls'),
       stat('Claims', cm ? String(nClaims) : '—', cm ? (cm.consensus || []).length + ' sahmati, ' + (cm.conflicts || []).length + ' takraav' : 'map nahi bana'),
-      stat('Falsifier', String(Object.keys(rec.falsifiers || {}).length), 'reports'),
-      stat('Audit', au.enabled ? (au.ran ? (au.applied || []).length + ' sudhar' : 'chala nahi') : 'band', au.ran ? (au.unsure || []).length + ' shak' : ''));
+      master ? stat('Lessons', String((ls.lessons_used || []).length), (ls.repeated || []).length + ' dohraye gaye') : stat('Falsifier', String(Object.keys(rec.falsifiers || {}).length), 'reports'),
+      stat(master ? 'Grounding' : 'Audit', au.enabled ? (au.ran ? (au.applied || []).length + ' sudhar' : 'chala nahi') : 'band', au.ran ? (au.unsure || []).length + ' shak' : ''));
     const modelsEl = h('div', { class: 'chips' }, Object.entries(used).map(([m, n]) => h('span', { class: 'chip' }, m + ' ×' + n)));
 
     /* ---- timeline (tap = jump) */
@@ -138,14 +139,15 @@ const Council = (() => {
     const nPanelOk = panelCalls.filter(c => c.ok !== false).length;
     const timeline = h('div', { class: 'tlist' },
       tl('setup', 'check', 'Sawaal samjha', (su.task || '') + ' · ' + (su.style || '')),
-      tl('panel', 'check', 'Panel ke drafts', nPanelOk + '/' + (panelCalls.length || drafts.length) + ' roles ne diye'),
-      tl('patterns', 'check', 'Patterns', (rec.patterns && rec.patterns.named) ? rec.patterns.named : 'koi naam nahi mila'),
+      tl('panel', 'check', master ? 'Tumhare paste kiye answers' : 'Panel ke drafts', master ? drafts.length + ' answers (panel nahi chala)' : nPanelOk + '/' + (panelCalls.length || drafts.length) + ' roles ne diye'),
+      master ? null : tl('patterns', 'check', 'Patterns', (rec.patterns && rec.patterns.named) ? rec.patterns.named : 'koi naam nahi mila'),
       tl('claims', 'check', 'Claims map', cm ? nClaims + ' claims' : 'nahi bana'),
-      tl('fals', 'check', 'Falsifiers', Object.keys(rec.falsifiers || {}).length + ' reports'),
-      tl('proofs', 'check', 'Code proofs', proofs.length ? proofs.length + ' checks' : (su.style === 'solve' ? 'Android par band' : 'is jawab me nahi')),
-      tl('judge', 'check', 'Judge', (one('judge') || {}).used || '—'),
+      master ? null : tl('fals', 'check', 'Falsifiers', Object.keys(rec.falsifiers || {}).length + ' reports'),
+      master ? null : tl('proofs', 'check', 'Code proofs', proofs.length ? proofs.length + ' checks' : (su.style === 'solve' ? 'Android par band' : 'is jawab me nahi')),
+      tl('judge', 'check', master ? 'Master answer likha' : 'Judge', (one('judge') || {}).used || '—'),
       tl('repair', 'check', 'Format repair', (rec.repairs || []).length ? (rec.repairs || []).length + ' baar' : 'zaroorat nahi padi'),
-      tl('audit', 'check', 'Audit', au.ran ? (au.applied || []).length + ' sudhar, ' + (au.unsure || []).length + ' shak' : (au.enabled ? 'chala nahi' : 'band')),
+      tl('audit', 'check', master ? 'Grounding check' : 'Audit', au.ran ? (au.applied || []).length + ' sudhar, ' + (au.unsure || []).length + ' shak' : (au.enabled ? 'chala nahi' : 'band')),
+      master ? tl('lessons', 'check', 'Lessons', (ls.lessons_used || []).length + ' lage, ' + (ls.learned || []).length + ' naye/majboot') : null,
       tl('prov', 'check', 'Kya aaya, kya gaya', 'draft se final tak'));
 
     if (rec.trimmed) stack.append(h('p', { class: 'warn' }, 'Record bada tha, isliye kuch prompts chhote karke dikhaye gaye hain (model ko poore gaye the).'));
@@ -177,10 +179,11 @@ const Council = (() => {
       if (c.stage === 'panel:pattern_finder' && p.named) bits.push('Pattern: ' + p.named);
       panelKids.push(callCard(c, bits.length ? h('div', { class: 'ml' }, bits.join(' · ')) : null));
     });
-    stack.append(sec('panel', 'Panel: har role ne kya kiya', 'Har role ko alag soch ka brief mila. Neeche uska prompt, kaun sa model chala, aur poora jawab hai.', panelKids));
+    if (master) panelKids.push(h('p', { class: 'muted' }, 'Manual mode me panel ke models nahi chalte. Master answer sirf upar ke paste kiye answers se bana.'));
+    stack.append(sec('panel', master ? 'Tumhare paste kiye answers' : 'Panel: har role ne kya kiya', 'Har role ko alag soch ka brief mila. Neeche uska prompt, kaun sa model chala, aur poora jawab hai.', panelKids));
 
     /* ---- patterns */
-    stack.append(sec('patterns', 'Patterns', 'Pattern finder ne jo naam diya, aur drafts me kya common/alag nikla.',
+    if (!master) stack.append(sec('patterns', 'Patterns', 'Pattern finder ne jo naam diya, aur drafts me kya common/alag nikla.',
       row('Pattern finder ka naam', p.named || 'koi pakka pattern nahi mila'),
       (p.shared && p.shared.length) ? h('div', {}, h('span', { class: 'k' }, 'Sab drafts me common'), h('ul', {}, p.shared.map(x => h('li', {}, x)))) : null,
       (p.split && p.split.length) ? h('div', {}, h('span', { class: 'k' }, 'Jahan drafts alag gaye'), h('ul', {}, p.split.map(x => h('li', {}, x)))) : null,
@@ -192,7 +195,7 @@ const Council = (() => {
       claimKids.push(h('span', { class: 'k' }, 'Sahmati'), h('ul', {}, (cm.consensus || []).map(x => h('li', {}, x))));
       if ((cm.conflicts || []).length) {
         claimKids.push(h('span', { class: 'k' }, 'Takraav'));
-        cm.conflicts.forEach(c => claimKids.push(h('div', { class: 'conf' }, h('b', {}, c.issue),
+        cm.conflicts.forEach(c => claimKids.push(h('div', { class: 'conf' }, h('b', {}, c.issue + ' '), pill(c.kind === 'factual' ? 'factual: sach-jhooth' : 'choice: galti nahi', c.kind === 'factual' ? 'bad' : 'mute'),
           Object.entries(c.positions || {}).map(([l, v]) => h('div', {}, h('span', { class: 'k' }, letterName(l)), ' ' + v)))));
       }
       Object.entries(cm.claims || {}).forEach(([l, list]) => claimKids.push(fold(letterName(l) + ' ke ' + list.length + ' claims', h('ol', {}, list.map(x => h('li', {}, x))))));
@@ -203,7 +206,7 @@ const Council = (() => {
 
     /* ---- falsifiers */
     const fk = Object.entries(rec.falsifiers || {});
-    stack.append(sec('fals', 'Falsifiers', 'Inka kaam sahmati ko todna hai. Model aksar ek jaisi galti saath me karte hain.',
+    if (!master) stack.append(sec('fals', 'Falsifiers', 'Inka kaam sahmati ko todna hai. Model aksar ek jaisi galti saath me karte hain.',
       byStage('falsifier:').map(c => {
         const rep = (rec.falsifiers || {})['Falsifier ' + c.stage.split(':')[1]];  // only when the call itself left no output
         return callCard(c, (!c.output && rep) ? fold('Report', md(rep), true) : null, true);
@@ -211,7 +214,7 @@ const Council = (() => {
       fk.length ? null : h('p', { class: 'warn' }, 'Koi falsifier report nahi mili.')));
 
     /* ---- proofs */
-    stack.append(sec('proofs', 'Code proofs', null,
+    if (!master) stack.append(sec('proofs', 'Code proofs', null,
       proofs.length ? proofs.map(x => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, clip(x.claim, 120)), pill(x.status, x.status === 'PASS' ? 'good' : 'bad')),
         fold('Code', pre(x.code)), x.output ? fold('Output', pre(x.output)) : null))
         : h('p', { class: 'muted' }, su.style === 'solve' ? 'Is phone par Python code chalane ki suvidha nahi hai, isliye steps [REASONED] hain, [PROVEN by code] nahi.' : 'Samjhane wale jawab me code-proof nahi chalta.'),
@@ -219,7 +222,7 @@ const Council = (() => {
 
     /* ---- judge */
     const jc = one('judge');
-    stack.append(sec('judge', 'Judge: final jawab kaise bana', 'Judge ne claims map, falsifier reports aur proofs dekh kar jawab likha.',
+    stack.append(sec('judge', master ? 'Master answer kaise bana' : 'Judge: final jawab kaise bana', master ? 'Ek model ne sirf paste kiye answers ke claims se 7 section wala jawab likha. Har baat par source tag [A], [B] lagta hai.' : 'Judge ne claims map, falsifier reports aur proofs dekh kar jawab likha.',
       jc ? callCard(jc) : h('p', { class: 'warn' }, 'Judge fail hua, sabse lamba draft diya gaya.'),
       rec.judge_raw ? fold('Judge ka pehla jawab (repair/audit se pehle)', md(rec.judge_raw)) : null));
 
@@ -238,7 +241,7 @@ const Council = (() => {
     const issueEl = (i) => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, pill(i.confidence || 'low', i.confidence === 'high' ? 'bad' : i.confidence === 'medium' ? 'warn' : 'mute'),
       pill(applied.has(key(i)) ? 'sudhara gaya' : 'sirf shak, badla nahi', applied.has(key(i)) ? 'good' : 'mute')),
       i.quote ? row('Jawab me', '“' + i.quote + '”') : null, row('Galti', i.problem), row('Sahi', i.fix));
-    stack.append(sec('audit', 'Audit: doosre model ne fact check kiya', 'Judge se alag family ka model. High/medium confidence wali galtiyan rewrite se sudhaari gayin, low sirf shak ke roop me dikhi.',
+    stack.append(sec('audit', master ? 'Grounding check: kya ye answers me hai?' : 'Audit: doosre model ne fact check kiya', master ? 'Doosre model ne sirf ye dekha ki har baat kisi paste kiye answer se milti hai ya nahi. Sach-jhooth nahi, sirf "source hai ya nahi".' : 'Judge se alag family ka model. High/medium confidence wali galtiyan rewrite se sudhaari gayin, low sirf shak ke roop me dikhi.',
       !au.enabled ? h('p', { class: 'muted' }, 'Audit band hai.') : null,
       auc ? callCard(auc) : null,
       au.ran ? ((au.issues || []).length ? (au.issues || []).map(issueEl) : h('p', { class: 'muted' }, 'Koi galti nahi mili.')) : (au.enabled ? h('p', { class: 'warn' }, 'Audit chala nahi ya uska output padha nahi gaya.') : null),
@@ -246,6 +249,16 @@ const Council = (() => {
       au.before ? fold('Sudhaar se pehle ka jawab', md(au.before)) : null,
       au.after ? fold('Sudhaar ke baad ka jawab', md(au.after), true) : null,
       au.discarded ? h('div', {}, h('p', { class: 'warn' }, 'Rewrite me zaroori section kho gaye the, isliye wo jawab fenk diya gaya.'), fold('Fenka hua rewrite', md(au.discarded))) : null));
+
+    /* ---- lessons (manual master only) */
+    if (master) {
+      const used = ls.lessons_used || [], rep = new Set(ls.repeated || []);
+      stack.append(sec('lessons', 'Lessons: pichhli galtiyon se seekha', 'Model ke weights nahi badalte. Rules ki ek chhoti list har master prompt me jaati hai. Jo rule tootta hai uska wazan badhta hai.',
+        used.length ? used.map(x => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), pill(x.origin === 'user' ? 'tumhara' : 'auto', x.origin === 'user' ? 'info' : 'mute'),
+          pill(rep.has(x.id) ? 'phir toota' : 'nibhaya', rep.has(x.id) ? 'bad' : 'good')), h('p', {}, x.text)))
+          : h('p', { class: 'muted' }, 'Abhi koi lesson nahi tha. Galti pakdi gayi to yahan judega.'),
+        (ls.learned || []).length ? h('div', {}, h('span', { class: 'k' }, 'Is baar naya seekha'), h('ul', {}, ls.learned.map(x => h('li', {}, x.kind + (x.new ? ' (naya rule)' : ' (rule majboot)'))))) : null));
+    }
 
     /* ---- provenance */
     if (pv) {

@@ -109,6 +109,14 @@ const HttpBackend = {
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
     const j = await r.json(); return Array.isArray(j) ? j : j.replies || j.reply || j;
   },
+  async lessons(op) {
+    try {
+      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ lesson: op }) });
+      const j = await r.json(); const x = Array.isArray(j) ? j[0] : (j.replies ? j.replies[0] : j);
+      return (x && x.lessonsResult) || (x && x.ok !== undefined ? x : { ok: false, error: 'Backend ne lessons nahi diye.' });
+    } catch (e) { return { ok: false, error: 'Lessons server tak nahi pahunche.' }; }
+  },
   async ping() {
     try {
       const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
@@ -124,6 +132,7 @@ const Backend = (() => {
   return {
     isDemo: () => !custom() && !connUrl(),
     send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; return impl().send(req, o); },
+    async lessons(op) { const b = impl(); return b.lessons ? b.lessons(op) : { ok: false, error: 'Demo mode me lessons nahi hote.' }; },
     missionAction(id, a) { const b = impl(); return b.missionAction ? b.missionAction(id, a) : Promise.resolve(null); },
     suggestions() { const b = impl(); return b.suggestions ? b.suggestions() : []; },
     async ping() { const b = impl(); return b.ping ? b.ping() : { ok: true, label: 'Custom backend' }; },

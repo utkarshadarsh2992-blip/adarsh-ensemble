@@ -98,7 +98,7 @@ const Chat = (() => {
     const a = h('div', { class: 'actions' });
     a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { try { await navigator.clipboard.writeText(m.reply.text || speechOf(m.reply)); toast('Copied'); } catch (e) { toast('Copy not available here'); } } } }, icon('copy', 's')));
     if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => TTS.speak(txt()) } }, icon('speaker', 's')));
-    ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
+    ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
     if (isLast) a.append(h('button', { 'aria-label': 'Retry', on: { click: retry } }, icon('refresh', 's'), 'Retry'));
     return a;
   }

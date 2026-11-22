@@ -373,7 +373,7 @@ button.item:active{background:var(--card2)}
 .sh-h{display:flex;align-items:center;justify-content:space-between}
 .sh-h h3{margin:0;font:500 22px var(--serif);padding:4px 0}
 .sh-h .ib{width:40px;height:40px;margin-right:-8px}
-.sheet .body{overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:8px 0 max(18px,env(safe-area-inset-bottom,0px))}
+.sheet .body{overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding-top:8px;padding-bottom:max(18px,env(safe-area-inset-bottom,0px))}
 .sheet label.l{font:500 12px var(--mono);letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
 .sheet form,.frow{display:flex;gap:8px;align-items:center}
 .sheet p{margin:0;color:var(--muted);font-size:14.5px}
@@ -439,6 +439,62 @@ button.item:active{background:var(--card2)}
   *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 
+.srcchip{display:flex;align-items:center;gap:6px;background:var(--card2);color:var(--fg);border-radius:14px;padding:8px 12px;font-size:13px}
+.ansbox{width:100%;min-height:140px;background:var(--card);border:0;border-radius:16px;padding:12px;font:13px var(--mono);color:var(--fg);resize:vertical}
+
+.notes{background:var(--card);border-radius:14px;font-family:var(--sans);margin-top:8px}
+.notes>summary{display:flex;gap:8px;align-items:center;padding:10px 14px;font-size:13px;color:var(--muted);cursor:pointer;list-style:none}
+.notes>summary::-webkit-details-marker{display:none}
+.notes .note-item{padding:4px 14px 10px;font-size:13.5px;border-top:1px solid color-mix(in srgb,var(--fg) 8%,transparent)}
+.notes .note-item>b{display:block;font-size:12px;color:var(--muted);margin:6px 0 2px;font-weight:500}
+
+/* ---- Thinking block (live lines, then "Thought for Ns") + the full "Kisne kya socha" page */
+.think2{background:transparent;border-radius:14px;cursor:pointer;font-family:var(--sans);color:var(--muted);outline:none;-webkit-tap-highlight-color:transparent}
+.think2 .th{display:flex;align-items:center;gap:10px;font:400 14.5px var(--sans);min-height:32px}
+.think2 .chv{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:16px;color:var(--muted)}
+.think2 .chv .chev{transition:transform .2s;transform:rotate(90deg)}.think2.open .chv .chev{transform:rotate(-90deg)}
+.think2 .tl{margin:2px 0 4px 3px;padding-left:14px;border-left:2px solid var(--line);font-size:14px;line-height:1.55;overflow:hidden}
+.think2.run .tl{max-height:6.4em;-webkit-mask-image:linear-gradient(to bottom,transparent,#000 45%);mask-image:linear-gradient(to bottom,transparent,#000 45%)}
+.think2.run.open .tl,.think2.open .tl{max-height:46vh;overflow-y:auto;-webkit-mask-image:none;mask-image:none}
+.think2:not(.run):not(.open) .tl{display:none}
+.tline{padding:2px 0;color:var(--muted);overflow-wrap:anywhere}
+.think2.run .tline:last-child{color:var(--fg)}
+.council{z-index:30;background:var(--bg)}
+.council .hdr h1{font-size:18px}
+.cn{gap:22px}
+.cn .qline{margin:0;font-style:italic}
+.cn .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.cn .stat{background:var(--card);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.cn .stat b{font:500 18px var(--sans)}.cn .stat small{color:var(--muted);font-size:11.5px;overflow-wrap:anywhere}
+.cn .k{font:500 10.5px var(--mono);letter-spacing:.09em;color:var(--muted);text-transform:uppercase;display:block;margin:6px 0 2px}
+.cn .tlist{display:flex;flex-direction:column;background:var(--card);border-radius:14px;overflow:hidden}
+.cn .tlrow{display:flex;align-items:center;gap:10px;padding:10px 14px;text-align:left;font:400 14px var(--sans);border-top:1px solid color-mix(in srgb,var(--fg) 7%,transparent)}
+.cn .tlrow:first-child{border-top:0}.cn .tlrow b{font-weight:500;white-space:nowrap}.cn .tlrow .muted{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
+.cn .tlrow .chev{opacity:.6}
+.csec{display:flex;flex-direction:column;gap:10px;scroll-margin-top:8px}
+.csec>h2{margin:0;font:500 20px var(--serif)}
+.csec ul,.csec ol{margin:0;padding-left:1.2em;font-size:14px}.csec li{margin:.25em 0;overflow-wrap:anywhere}
+.cn .kv{display:flex;gap:10px;font-size:14px;align-items:baseline}.cn .kv .k{flex:0 0 120px;margin:0}.cn .kv span:last-child{min-width:0;overflow-wrap:anywhere}
+.cn .warn{color:var(--warn);font-size:13.5px;margin:0}
+.ccard{background:var(--card);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.ccard.bad{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--bad) 45%,transparent)}
+.ccard .ch{display:flex;align-items:center;gap:8px;justify-content:space-between}.ccard .ch b{font-weight:500;min-width:0;overflow-wrap:anywhere}
+.ccard p{margin:0}
+.ccard .ml{font:400 12.5px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.ccard .skips{font:400 12px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.fold{background:var(--card2);border-radius:10px}
+.fold>summary{display:flex;gap:8px;align-items:center;padding:8px 10px;font-size:13px;color:var(--muted);cursor:pointer;list-style:none}
+.fold>summary::-webkit-details-marker{display:none}.fold[open]>summary .chev{transform:rotate(90deg)}
+.fold .fb{padding:2px 12px 12px;font-size:14px;overflow-x:auto}
+pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5px/1.5 var(--mono);color:var(--fg)}
+.cn .conf{background:var(--card);border-radius:12px;padding:10px 12px;font-size:13.5px;display:flex;flex-direction:column;gap:4px}
+.cn .bars{display:flex;flex-direction:column;gap:6px}
+.cn .bar{display:grid;grid-template-columns:110px 1fr auto;gap:8px;align-items:center;font-size:12.5px}
+.cn .bar i{display:block;height:8px;border-radius:4px;background:var(--accent);min-width:3px}
+.cn .bar span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cn .bar b{font:500 11.5px var(--mono);color:var(--muted)}
+.cn .ps{font-size:13.5px;padding:6px 0;border-top:1px solid color-mix(in srgb,var(--fg) 7%,transparent)}.cn .ps:first-child{border-top:0}
+.tl.big{max-height:60vh;overflow-y:auto;border-left:2px solid var(--line);padding-left:14px}
+
 </style></head><body><div class="phone" id="phone">
   <section class="view on" id="v-chat"></section>
   <section class="view" id="v-today"></section>
@@ -456,6 +512,68 @@ button.item:active{background:var(--card2)}
 <input type="file" id="f-any" multiple hidden>
 <input type="file" id="f-img" accept="image/*" hidden>
 <input type="file" id="f-import" accept="application/json" hidden><script>'use strict';
+/* 00-android-bridge.js : only active inside the Android app (window.AdarshNative is injected by the WebView).
+   In a normal browser this file does nothing, so the same build still works with the HTTP backend or the demo.
+   Messages go straight to the embedded Python engine: no localhost server. */
+(function () {
+  const N = window.AdarshNative;
+  if (!N) return;
+
+  const pending = {};
+  let seq = 0;
+
+  /* called by Kotlin when the engine finished: (id, jsonString) or (id, null, errorString) */
+  window.__adarshResult = function (id, json, err) {
+    const p = pending[id]; if (!p) return;
+    delete pending[id];
+    if (err) return p.rej(new Error(err));
+    try { p.res(JSON.parse(json)); } catch (e) { p.rej(new Error('The engine returned something unreadable.')); }
+  };
+  window.__adarshProgress = function (id, text) {
+    const p = pending[id]; if (p && p.onProgress && text) p.onProgress(text);
+  };
+
+  window.ADARSH_BACKEND = {
+    send(req, o) {
+      return new Promise((res, rej) => {
+        const id = 'r' + (++seq) + '_' + Date.now();
+        pending[id] = { res, rej, onProgress: o && o.onProgress };
+        if (o && o.signal) o.signal.addEventListener('abort', () => {
+          if (!pending[id]) return;
+          delete pending[id]; try { N.cancel(id); } catch (e) {}
+          rej(new DOMException('Aborted', 'AbortError'));
+        });
+        /* attachments are not understood by the engine yet; do not push large data URLs across the bridge */
+        const slim = Object.assign({}, req, { attachments: (req.attachments || []).map(a => ({ name: a.name, kind: a.kind, type: a.type, size: a.size })) });
+        try { N.send(id, JSON.stringify(slim)); }
+        catch (e) { delete pending[id]; rej(new Error('Could not reach the on-device engine.')); }
+      });
+    },
+    /* lessons: quick synchronous file work on the device (no model call) */
+    lessons(op) { try { return Promise.resolve(JSON.parse(N.lessons(JSON.stringify(op)))); } catch (e) { return Promise.resolve({ ok: false, error: 'Lessons nahi khule.' }); } },
+    ping: async () => {
+      try { const s = JSON.parse(N.status()); return { ok: !!s.ready, label: s.ready ? 'On-device engine' : 'Engine starting…' }; }
+      catch (e) { return { ok: false, label: 'Engine not reachable' }; }
+    }
+  };
+
+  /* API keys live in Android Keystore-backed storage. JS only ever sees a short hint, never the key. */
+  window.AdarshKeys = {
+    providers: [
+      { id: 'GROQ_API_KEY', name: 'Groq', url: 'console.groq.com/keys' },
+      { id: 'GEMINI_API_KEY', name: 'Gemini', url: 'aistudio.google.com/apikey' },
+      { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', url: 'openrouter.ai/keys' },
+      { id: 'CLOUDFLARE_API_TOKEN', name: 'Cloudflare token', url: 'dash.cloudflare.com/profile/api-tokens (Workers AI)' },
+      { id: 'CLOUDFLARE_ACCOUNT_ID', name: 'Cloudflare Account ID', url: 'dash.cloudflare.com, Workers AI page', plain: true },
+      { id: 'NVIDIA_API_KEY', name: 'NVIDIA NIM', url: 'build.nvidia.com' }
+    ],
+    status() { try { return JSON.parse(N.keyStatus()); } catch (e) { return {}; } },
+    save(id, value) { try { return JSON.parse(N.saveKey(id, value)); } catch (e) { return { ok: false, error: 'Could not save.' }; } },
+    remove(id) { try { return JSON.parse(N.deleteKey(id)); } catch (e) { return { ok: false, error: 'Could not delete.' }; } }
+  };
+})();
+
+'use strict';
 /* 01-core.js : helpers, icons, state store, event bus, toast, sheet, markdown-lite */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -527,7 +645,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { theme: 'system', font: 'sans', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30 },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'sans', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30 },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -657,6 +775,11 @@ const pill = (v) => { const [c, l] = VERDICT[v] || ['mute', String(v || '').repl
 const head = (kind, title, extra) => h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, kind), title ? h('h3', {}, title) : null), extra);
 const sec = (k, ...c) => h('div', { class: 'sec' }, k ? h('span', { class: 'k' }, k) : null, ...c);
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u || ''; } };
+
+/* reply.notes = { title, items: [{ title, text }] }: folded under the reply (falsifier findings). */
+const notesEl = (n) => h('details', { class: 'notes' },
+  h('summary', {}, icon('warn', 's'), (n.title || 'Notes') + ' · ' + n.items.length, h('span', { style: 'flex:1' }), icon('chev', 'chev')),
+  n.items.map(it => h('div', { class: 'note-item' }, it.title ? h('b', {}, it.title) : null, md(it.text || ''))));
 
 const RENDER = {
   text: (d) => md(d.text),
@@ -808,6 +931,366 @@ function speechOf(d) {
 }
 
 'use strict';
+/* 03-council.js : "Kisne kya socha".
+   1) the Thinking block in the chat (live lines while the engine works, "Thought for 38s" afterwards)
+   2) the full page behind it: every role's prompt, model, answer, what was dropped, the audit, before/after.
+   The data is reply.council (built by council.py). Without it (demo mode, quick replies) only the block is shown. */
+const Council = (() => {
+  let page = null, sink = null;          // sink: called with each new live step while the page is open in live mode
+  const KEEP = 10;                       // full records kept on the phone; older ones are dropped (they are big)
+  const IDX = 'adarsh.cn.idx', PRE = 'adarsh.cn.';
+  const mem = new Map();                 // records of this session, even when storage is full or unavailable
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } };
+  const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } };
+  const index = () => { try { return JSON.parse(lsGet(IDX) || '[]'); } catch (e) { return []; } };
+  /* Records live under their own keys, NOT inside the chat state: one big record must never make saving chats fail. */
+  function put(id, rec) {
+    mem.set(id, rec);
+    let idx = index().filter(x => x !== id); idx.push(id);
+    const text = JSON.stringify(rec);
+    while (!lsSet(PRE + id, text) && idx.length > 1) { const old = idx.shift(); lsDel(PRE + old); if (old === id) break; }  // quota: drop the oldest
+    while (idx.length > KEEP) lsDel(PRE + idx.shift());
+    lsSet(IDX, JSON.stringify(idx));
+    if (mem.size > KEEP) mem.delete(mem.keys().next().value);
+  }
+  function get(id) {
+    if (mem.has(id)) return mem.get(id);
+    const t = lsGet(PRE + id); if (!t) return null;
+    try { const r = JSON.parse(t); mem.set(id, r); return r; } catch (e) { return null; }
+  }
+
+  const fmtS = (s) => (s == null ? '' : s >= 60 ? Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's' : (s >= 10 ? Math.round(s) : Math.round(s * 10) / 10) + 's');
+  const clip = (t, n) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n) + '…' : t; };
+  const pre = (t) => h('pre', { class: 'raw' }, String(t == null ? '' : t));
+  const fold = (title, content, open) => { const d = h('details', { class: 'fold' }, h('summary', {}, icon('chev', 'chev'), title), h('div', { class: 'fb' }, content)); if (open) d.open = true; return d; };
+  const pill = (t, cls) => h('span', { class: 'pill ' + (cls || 'mute') }, t);
+  const row = (k, v) => h('div', { class: 'kv' }, h('span', { class: 'k' }, k), h('span', {}, v));
+
+  /* ---------------------------------------------------------------- inline block */
+  function shell(label, onOpen, running) {
+    const lines = h('div', { class: 'tl' });
+    const chv = h('button', { class: 'chv', 'aria-label': 'Lines dikhao/chhupao', on: { click: (e) => { e.stopPropagation(); el.classList.toggle('open'); lines.scrollTop = lines.scrollHeight; } } }, icon('chev', 'chev'));
+    const lab = h('span', { class: 'lab' }, label);
+    const head = h('div', { class: 'th' }, running ? h('span', { class: 'dots' }, h('i'), h('i'), h('i')) : null, lab, h('span', { style: 'flex:1' }), chv);
+    const el = h('div', { class: 'think2' + (running ? ' run' : ''), role: 'button', tabindex: '0', 'aria-label': 'Poora detail page kholo',
+      on: { click: onOpen, keydown: (e) => { if (e.key === 'Enter') onOpen(); } } }, head, lines);
+    return { el, lines, lab };
+  }
+  /* live: returned to runBackend, which pushes each progress line into it */
+  function live() {
+    const steps = [];
+    const s = shell('Thinking', () => open(null, steps), true);
+    const api = {
+      el: s.el, steps,
+      push(t) { steps.push(t); s.lines.append(h('div', { class: 'tline' }, t)); s.lines.scrollTop = s.lines.scrollHeight; if (sink) sink(t); }
+    };
+    return api;
+  }
+  /* done: the folded block under a finished reply */
+  function done(r) {
+    if (!r || !r.councilId) return null;
+    const rec0 = get(r.councilId);
+    const took = r.took != null ? r.took : (rec0 && rec0.setup && rec0.setup.latency_s);
+    const s = shell('Thought for ' + fmtS(took), () => open(get(r.councilId), r.thinkLines || r.steps || [], true), false);
+    (r.thinkLines || r.steps || []).forEach(t => s.lines.append(h('div', { class: 'tline' }, t)));
+    return s.el;
+  }
+
+  /* ---------------------------------------------------------------- page shell */
+  function close() { if (page) { page.remove(); page = null; sink = null; } }
+  function open(rec, steps, wasRecorded) {
+    close();
+    const stack = h('div', { class: 'stack cn' });
+    const title = h('h1', {}, 'Kisne kya socha');
+    page = h('section', { class: 'view on council', role: 'dialog', 'aria-label': 'Kisne kya socha' },
+      h('header', { class: 'hdr pad' }, ibtn('back', 'Wapas', close), title, h('span')),
+      h('div', { class: 'scroll pad' }, stack));
+    $('#phone').append(page);
+    if (rec) render(stack, rec);
+    else if (wasRecorded) stack.append(h('p', { class: 'muted' }, 'Is jawab ka poora record ab nahi hai: phone par sirf pichhle ' + KEEP + ' jawab ka detail rakha jaata hai (ya storage bhar gaya tha). Neeche jawab ke waqt ki lines hain.'),
+      h('div', { class: 'tl big' }, (steps || []).map(t => h('div', { class: 'tline' }, t))));
+    else renderLive(stack, steps || []);
+  }
+  window.__adarshBack = () => { if (page) { close(); return true; } return false; };
+
+  function renderLive(stack, steps) {
+    const box = h('div', { class: 'tl big' }, steps.map(t => h('div', { class: 'tline' }, t)));
+    stack.append(h('p', { class: 'muted' }, 'Engine abhi kaam kar raha hai. Jawab aate hi yahan har role ka poora detail (prompt, draft, kya hataya gaya) milega. Tab tak lines live dikh rahi hain.'), box);
+    sink = (t) => { box.append(h('div', { class: 'tline' }, t)); box.scrollTop = box.scrollHeight; };
+  }
+
+  /* ---------------------------------------------------------------- full record */
+  const sec = (id, title, sub, ...kids) => h('section', { class: 'csec', id: 'cn-' + id }, h('h2', {}, title), sub ? h('p', { class: 'muted' }, sub) : null, ...kids);
+
+  function render(stack, rec) {
+    const calls = rec.calls || [], drafts = rec.drafts || [], su = rec.setup || {};
+    const master = su.engine === 'master', ls = rec.lessons || {};
+    const byStage = (p) => calls.filter(c => (c.stage || '').startsWith(p));
+    const one = (s) => calls.find(c => c.stage === s);
+    const letterName = (l) => { const d = drafts.find(x => x.letter === l); return d ? l + ' · ' + d.title : l; };
+
+    const modelLine = (c) => {
+      const bits = [];
+      if (c.ok === false) bits.push('Fail: koi model jawab nahi de paya');
+      else if (c.used) bits.push('Chala: ' + c.used + (c.asked && c.asked !== c.used ? ' (pehle ' + c.asked + ' tha, fallback hua)' : ''));
+      if (c.secs != null) bits.push(fmtS(c.secs));
+      return bits.join(' · ');
+    };
+    const skipsEl = (c) => { const e = Object.entries(c.skips || {}); return e.length ? h('div', { class: 'skips' }, e.map(([m, r]) => h('div', {}, '↳ ' + m + ' skip: ' + r))) : null; };
+    const promptEl = (c) => (c.prompt && c.prompt.length)
+      ? fold('Ise kya mila (poora prompt)', c.prompt.map(m => h('div', {}, h('span', { class: 'k' }, m.role), pre(m.content)))) : null;
+    const outputEl = (c, openIt) => c.output ? fold('Poora jawab · ' + String(c.output).split(/\s+/).length + ' shabd', md(c.output), openIt) : null;
+    const callCard = (c, extra, openOut) => h('div', { class: 'ccard' + (c.ok === false ? ' bad' : '') },
+      h('div', { class: 'ch' }, h('b', {}, c.title || c.stage), pill(c.ok === false ? 'fail' : 'ok', c.ok === false ? 'bad' : 'good')),
+      c.brief ? h('p', { class: 'muted' }, c.brief) : null,
+      h('div', { class: 'ml' }, modelLine(c)), skipsEl(c), extra, promptEl(c), outputEl(c, openOut));
+
+    /* ---- scorecard */
+    const used = {};
+    calls.forEach(c => { if (c.ok !== false && c.used) used[c.used] = (used[c.used] || 0) + 1; });
+    const failed = calls.filter(c => c.ok === false).length;
+    const fallbacks = calls.filter(c => c.ok !== false && c.asked && c.used && c.asked !== c.used).length;
+    const pv = rec.provenance, p = rec.patterns || {};
+    const cm = rec.claims_map, nClaims = cm ? Object.values(cm.claims || {}).reduce((a, v) => a + v.length, 0) : 0;
+    const au = rec.audit || {}, proofs = rec.proofs || [];
+    const stat = (k, v, sub) => h('div', { class: 'stat' }, h('span', { class: 'k' }, k), h('b', {}, v), sub ? h('small', {}, sub) : null);
+    const panelCalls = byStage('panel:');
+    const score = h('div', { class: 'stats' },
+      stat('Time', fmtS(su.latency_s) || '—'),
+      stat('Drafts', String(drafts.length), (su.user_answers ? su.user_answers + ' tumhare + ' : '') + (su.panel_answers || 0) + ' panel'),
+      stat('Fail / fallback', failed + ' / ' + fallbacks, 'model calls'),
+      stat('Claims', cm ? String(nClaims) : '—', cm ? (cm.consensus || []).length + ' sahmati, ' + (cm.conflicts || []).length + ' takraav' : 'map nahi bana'),
+      master ? stat('Lessons', String((ls.lessons_used || []).length), (ls.repeated || []).length + ' dohraye gaye') : stat('Falsifier', String(Object.keys(rec.falsifiers || {}).length), 'reports'),
+      stat(master ? 'Grounding' : 'Audit', au.enabled ? (au.ran ? (au.applied || []).length + ' sudhar' : 'chala nahi') : 'band', au.ran ? (au.unsure || []).length + ' shak' : ''));
+    const modelsEl = h('div', { class: 'chips' }, Object.entries(used).map(([m, n]) => h('span', { class: 'chip' }, m + ' ×' + n)));
+
+    /* ---- timeline (tap = jump) */
+    const go = (id) => { const t = page && page.querySelector('#cn-' + id); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    const tl = (id, ic, title, note) => h('button', { class: 'tlrow', on: { click: () => go(id) } }, icon(ic, 's'), h('b', {}, title), h('span', { class: 'muted' }, note), icon('chev', 'chev'));
+    const nPanelOk = panelCalls.filter(c => c.ok !== false).length;
+    const timeline = h('div', { class: 'tlist' },
+      tl('setup', 'check', 'Sawaal samjha', (su.task || '') + ' · ' + (su.style || '')),
+      tl('panel', 'check', master ? 'Tumhare paste kiye answers' : 'Panel ke drafts', master ? drafts.length + ' answers (panel nahi chala)' : nPanelOk + '/' + (panelCalls.length || drafts.length) + ' roles ne diye'),
+      master ? null : tl('patterns', 'check', 'Patterns', (rec.patterns && rec.patterns.named) ? rec.patterns.named : 'koi naam nahi mila'),
+      tl('claims', 'check', 'Claims map', cm ? nClaims + ' claims' : 'nahi bana'),
+      master ? null : tl('fals', 'check', 'Falsifiers', Object.keys(rec.falsifiers || {}).length + ' reports'),
+      master ? null : tl('proofs', 'check', 'Code proofs', proofs.length ? proofs.length + ' checks' : (su.style === 'solve' ? 'Android par band' : 'is jawab me nahi')),
+      tl('judge', 'check', master ? 'Master answer likha' : 'Judge', (one('judge') || {}).used || '—'),
+      tl('repair', 'check', 'Format repair', (rec.repairs || []).length ? (rec.repairs || []).length + ' baar' : 'zaroorat nahi padi'),
+      tl('audit', 'check', master ? 'Grounding check' : 'Audit', au.ran ? (au.applied || []).length + ' sudhar, ' + (au.unsure || []).length + ' shak' : (au.enabled ? 'chala nahi' : 'band')),
+      master ? tl('lessons', 'check', 'Lessons', (ls.lessons_used || []).length + ' lage, ' + (ls.learned || []).length + ' naye/majboot') : null,
+      tl('prov', 'check', 'Kya aaya, kya gaya', 'draft se final tak'));
+
+    if (rec.trimmed) stack.append(h('p', { class: 'warn' }, 'Record bada tha, isliye kuch prompts chhote karke dikhaye gaye hain (model ko poore gaye the).'));
+    stack.append(
+      h('p', { class: 'muted qline' }, '“' + clip(rec.question, 160) + '”'),
+      score, modelsEl,
+      timeline);
+
+    /* ---- setup */
+    stack.append(sec('setup', 'Sawaal ka setup', null,
+      row('Task', su.task), row('Style', su.style === 'explain' ? 'explain (samjhana)' : 'solve (hal karna)'),
+      row('Source', su.source), row('Mode', su.mode + (su.engine ? ' · ' + su.engine + ' engine' : '')),
+      row('Depth / language', (su.depth || '') + ' · ' + (su.reply_lang || '')),
+      one('classify') ? callCard(one('classify')) : null,
+      su.fallback ? h('p', { class: 'warn' }, 'Panel ke kaafi drafts nahi mile, isliye ek akele model ne jawab diya.') : null));
+
+    /* ---- panel + pasted answers */
+    const panelKids = [];
+    drafts.filter(d => d.kind === 'user').forEach(d => panelKids.push(h('div', { class: 'ccard' },
+      h('div', { class: 'ch' }, h('b', {}, 'Tumhara paste kiya: ' + d.title), pill('letter ' + (d.letter || '?'))),
+      fold('Poora jawab', md(d.text)),
+      (rec.guard && rec.guard[d.name]) ? h('p', { class: 'muted' }, 'Guard: ' + (rec.guard[d.name].flagged ? 'FLAG hua (score ' + Number(rec.guard[d.name].max_score).toFixed(2) + ')' : 'saaf')) : null)));
+    panelCalls.forEach(c => {
+      const d = drafts.find(x => 'panel:' + x.name === c.stage);
+      const bits = [];
+      if (d && d.letter) bits.push('Judge ko letter ' + d.letter + ' ke naam se dikha (brand chhupa kar)');
+      if (d && cm && cm.claims && cm.claims[d.letter]) bits.push('Claims map me ' + cm.claims[d.letter].length + ' claims');
+      if (d && pv && pv.share) bits.push('final ke ' + (pv.share[d.name] || 0) + ' vaakya isse milte hain');
+      if (c.stage === 'panel:pattern_finder' && p.named) bits.push('Pattern: ' + p.named);
+      panelKids.push(callCard(c, bits.length ? h('div', { class: 'ml' }, bits.join(' · ')) : null));
+    });
+    if (master) panelKids.push(h('p', { class: 'muted' }, 'Manual mode me panel ke models nahi chalte. Master answer sirf upar ke paste kiye answers se bana.'));
+    stack.append(sec('panel', master ? 'Tumhare paste kiye answers' : 'Panel: har role ne kya kiya', 'Har role ko alag soch ka brief mila. Neeche uska prompt, kaun sa model chala, aur poora jawab hai.', panelKids));
+
+    /* ---- patterns */
+    if (!master) stack.append(sec('patterns', 'Patterns', 'Pattern finder ne jo naam diya, aur drafts me kya common/alag nikla.',
+      row('Pattern finder ka naam', p.named || 'koi pakka pattern nahi mila'),
+      (p.shared && p.shared.length) ? h('div', {}, h('span', { class: 'k' }, 'Sab drafts me common'), h('ul', {}, p.shared.map(x => h('li', {}, x)))) : null,
+      (p.split && p.split.length) ? h('div', {}, h('span', { class: 'k' }, 'Jahan drafts alag gaye'), h('ul', {}, p.split.map(x => h('li', {}, x)))) : null,
+      p.warning ? h('p', { class: 'warn' }, p.warning) : null));
+
+    /* ---- claims map */
+    const claimKids = [];
+    if (cm) {
+      claimKids.push(h('span', { class: 'k' }, 'Sahmati'), h('ul', {}, (cm.consensus || []).map(x => h('li', {}, x))));
+      if ((cm.conflicts || []).length) {
+        claimKids.push(h('span', { class: 'k' }, 'Takraav'));
+        cm.conflicts.forEach(c => claimKids.push(h('div', { class: 'conf' }, h('b', {}, c.issue + ' '), pill(c.kind === 'factual' ? 'factual: sach-jhooth' : 'choice: galti nahi', c.kind === 'factual' ? 'bad' : 'mute'),
+          Object.entries(c.positions || {}).map(([l, v]) => h('div', {}, h('span', { class: 'k' }, letterName(l)), ' ' + v)))));
+      }
+      Object.entries(cm.claims || {}).forEach(([l, list]) => claimKids.push(fold(letterName(l) + ' ke ' + list.length + ' claims', h('ol', {}, list.map(x => h('li', {}, x))))));
+    } else claimKids.push(h('p', { class: 'warn' }, 'Tone-stripper claims map nahi bana paya, judge ne seedhe drafts dekhe.'));
+    const strip = one('stripper');
+    stack.append(sec('claims', 'Claims map (tone-stripper)', 'Drafts se lehja, jazba aur confidence hata kar sirf sidhe claims nikale gaye.',
+      claimKids, strip ? callCard(strip) : null));
+
+    /* ---- falsifiers */
+    const fk = Object.entries(rec.falsifiers || {});
+    if (!master) stack.append(sec('fals', 'Falsifiers', 'Inka kaam sahmati ko todna hai. Model aksar ek jaisi galti saath me karte hain.',
+      byStage('falsifier:').map(c => {
+        const rep = (rec.falsifiers || {})['Falsifier ' + c.stage.split(':')[1]];  // only when the call itself left no output
+        return callCard(c, (!c.output && rep) ? fold('Report', md(rep), true) : null, true);
+      }),
+      fk.length ? null : h('p', { class: 'warn' }, 'Koi falsifier report nahi mili.')));
+
+    /* ---- proofs */
+    if (!master) stack.append(sec('proofs', 'Code proofs', null,
+      proofs.length ? proofs.map(x => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, clip(x.claim, 120)), pill(x.status, x.status === 'PASS' ? 'good' : 'bad')),
+        fold('Code', pre(x.code)), x.output ? fold('Output', pre(x.output)) : null))
+        : h('p', { class: 'muted' }, su.style === 'solve' ? 'Is phone par Python code chalane ki suvidha nahi hai, isliye steps [REASONED] hain, [PROVEN by code] nahi.' : 'Samjhane wale jawab me code-proof nahi chalta.'),
+      one('verifier') ? callCard(one('verifier')) : null));
+
+    /* ---- judge */
+    const jc = one('judge');
+    stack.append(sec('judge', master ? 'Master answer kaise bana' : 'Judge: final jawab kaise bana', master ? 'Ek model ne sirf paste kiye answers ke claims se 7 section wala jawab likha. Har baat par source tag [A], [B] lagta hai.' : 'Judge ne claims map, falsifier reports aur proofs dekh kar jawab likha.',
+      jc ? callCard(jc) : h('p', { class: 'warn' }, 'Judge fail hua, sabse lamba draft diya gaya.'),
+      rec.judge_raw ? fold('Judge ka pehla jawab (repair/audit se pehle)', md(rec.judge_raw)) : null));
+
+    /* ---- repairs */
+    const rp = rec.repairs || [];
+    stack.append(sec('repair', 'Format repair', 'Judge ne zaroori section chhod diya to jawab dikhane se pehle dobara likhwaya gaya.',
+      rp.length ? rp.map(r => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Koshish ' + r.attempt), pill('gayab: ' + (r.missing || []).join(', '), 'bad')),
+        fold('Pehle (adhoora)', md(r.before)), r.after ? fold('Baad me (dobara likha)', md(r.after)) : h('p', { class: 'warn' }, 'Dobara likhwane par bhi jawab nahi aaya.')))
+        : h('p', { class: 'muted' }, 'Zaroorat nahi padi, judge ka jawab pehli baar me sahi format me tha.'),
+      byStage('repair').map(c => callCard(c))));
+
+    /* ---- audit */
+    const key = (i) => (i.quote || '') + '|' + (i.fix || '');
+    const applied = new Set((au.applied || []).map(key));
+    const auc = one('audit'), rev = one('revise');
+    const issueEl = (i) => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, pill(i.confidence || 'low', i.confidence === 'high' ? 'bad' : i.confidence === 'medium' ? 'warn' : 'mute'),
+      pill(applied.has(key(i)) ? 'sudhara gaya' : 'sirf shak, badla nahi', applied.has(key(i)) ? 'good' : 'mute')),
+      i.quote ? row('Jawab me', '“' + i.quote + '”') : null, row('Galti', i.problem), row('Sahi', i.fix));
+    stack.append(sec('audit', master ? 'Grounding check: kya ye answers me hai?' : 'Audit: doosre model ne fact check kiya', master ? 'Doosre model ne sirf ye dekha ki har baat kisi paste kiye answer se milti hai ya nahi. Sach-jhooth nahi, sirf "source hai ya nahi".' : 'Judge se alag family ka model. High/medium confidence wali galtiyan rewrite se sudhaari gayin, low sirf shak ke roop me dikhi.',
+      !au.enabled ? h('p', { class: 'muted' }, 'Audit band hai.') : null,
+      auc ? callCard(auc) : null,
+      au.ran ? ((au.issues || []).length ? (au.issues || []).map(issueEl) : h('p', { class: 'muted' }, 'Koi galti nahi mili.')) : (au.enabled ? h('p', { class: 'warn' }, 'Audit chala nahi ya uska output padha nahi gaya.') : null),
+      rev ? callCard(rev) : null,
+      au.before ? fold('Sudhaar se pehle ka jawab', md(au.before)) : null,
+      au.after ? fold('Sudhaar ke baad ka jawab', md(au.after), true) : null,
+      au.discarded ? h('div', {}, h('p', { class: 'warn' }, 'Rewrite me zaroori section kho gaye the, isliye wo jawab fenk diya gaya.'), fold('Fenka hua rewrite', md(au.discarded))) : null));
+
+    /* ---- lessons (manual master only) */
+    if (master) {
+      const used = ls.lessons_used || [], rep = new Set(ls.repeated || []);
+      stack.append(sec('lessons', 'Lessons: pichhli galtiyon se seekha', 'Model ke weights nahi badalte. Rules ki ek chhoti list har master prompt me jaati hai. Jo rule tootta hai uska wazan badhta hai.',
+        used.length ? used.map(x => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), pill(x.origin === 'user' ? 'tumhara' : 'auto', x.origin === 'user' ? 'info' : 'mute'),
+          pill(rep.has(x.id) ? 'phir toota' : 'nibhaya', rep.has(x.id) ? 'bad' : 'good')), h('p', {}, x.text)))
+          : h('p', { class: 'muted' }, 'Abhi koi lesson nahi tha. Galti pakdi gayi to yahan judega.'),
+        (ls.learned || []).length ? h('div', {}, h('span', { class: 'k' }, 'Is baar naya seekha'), h('ul', {}, ls.learned.map(x => h('li', {}, x.kind + (x.new ? ' (naya rule)' : ' (rule majboot)'))))) : null));
+    }
+
+    /* ---- provenance */
+    if (pv) {
+      const total = Object.values(pv.share || {}).reduce((a, b) => a + b, 0) || 1;
+      const nm = (n) => { const d = drafts.find(x => x.name === n); return d ? d.title : n; };
+      const dropped = Object.entries(pv.dropped || {});
+      stack.append(sec('prov', 'Kya aaya, kya gaya', pv.note,
+        Object.keys(pv.share || {}).length ? h('div', { class: 'bars' }, Object.entries(pv.share || {}).sort((a, b) => b[1] - a[1]).map(([n, c]) =>
+          h('div', { class: 'bar' }, h('span', {}, nm(n)), h('i', { style: 'width:' + Math.round(100 * c / total) + '%' }), h('b', {}, c + ' vaakya')))) : null,
+        fold('Final jawab ke vaakya aur unka source', pv.final_sentences.map(s => h('div', { class: 'ps' }, h('span', { class: 'k' }, s.from ? nm(s.from) + ' · ' + s.score : 'naya (kisi draft se nahi mila)'), s.text))),
+        dropped.length ? h('div', {}, h('span', { class: 'k' }, 'Drafts ki ye baatein final me nahi aayin'), dropped.map(([n, list]) =>
+          fold(nm(n) + ' · ' + list.length, h('ul', {}, list.map(x => h('li', {}, x)))))) : h('p', { class: 'muted' }, 'Drafts ki koi bada hissa chhoota nahi mila.')));
+    }
+
+    /* ---- problems + final */
+    const errs = Object.entries(rec.errors || {}), ws = rec.warnings || [];
+    if (errs.length || ws.length) stack.append(sec('errs', 'Dikkatein', null,
+      errs.map(([k, v]) => row(k, clip(v, 400))), ws.map(w => h('p', { class: 'warn' }, w))));
+    stack.append(sec('final', 'Final jawab', null, md(rec.final || '')));
+  }
+
+  return { live, done, open, close, put, get, KEEP };
+})();
+
+/* Lessons: the one-line "kya galat tha" after a thumbs-down on a MANUAL master answer, and the list of rules.
+   No model is called here. The rules are stored on the device (or the server) and put into the next master prompt. */
+const Lessons = (() => {
+  const call = async (op) => { try { return await Backend.lessons(op); } catch (e) { return { ok: false, error: 'Lessons nahi khule.' }; } };
+  const HINTS = [
+    ['Source/tag galat', 'Source tag galat laga: baat us answer me nahi thi jiska tag diya.'],
+    ['Apni taraf se likha', 'Apni taraf se baat likhi. Sirf paste kiye answers ki baat likho.'],
+    ['Section chhoota', 'Koi section chhoot gaya. Saare 7 section hone chahiye.'],
+    ['Naam/saal gadha', 'Naam ya saal bina source ke likha. Na ho to likho: Paste kiye answers me nahi hai.'],
+    ['Takraav chhupaya', 'Answers me takraav tha, wo dikhana chahiye tha.']
+  ];
+
+  /* thumbs-down on a master answer: ask what was wrong (optional) and keep it as the user's own rule */
+  function feedbackSheet() {
+    sheet({ title: 'Kya galat tha?', build(b, close) {
+      const ta = h('textarea', { rows: '3', maxlength: '300', placeholder: 'Ek line me likho, jaise: "Kaise socha me apna andaza mat likho"', 'aria-label': 'Kya galat tha', style: 'width:100%;background:var(--card);border:0;border-radius:14px;padding:12px;color:var(--fg);resize:none' });
+      b.append(h('p', {}, 'Ye line ek rule ban kar agle master answer ke prompt me jaayegi. Khali chhodo to bas 👎 darj hoga.'),
+        h('div', { class: 'chips' }, HINTS.map(([l, t]) => h('button', { class: 'sbtn', on: { click: () => { ta.value = t; ta.focus(); } } }, l))), ta,
+        h('div', { class: 'frow' },
+          h('button', { class: 'btn ghost', style: 'flex:1', on: { click: close } }, 'Rehne do'),
+          h('button', { class: 'btn pri', style: 'flex:1', on: { click: async () => {
+            const t = ta.value.trim(); if (!t) { close(); return; }
+            const r = await call({ op: 'add', text: t });
+            if (r && r.ok) { toast('Rule yaad rakh liya'); close(); } else toast((r && r.error) || 'Save nahi hua');
+          } } }, 'Rule banao')));
+    } });
+  }
+
+  /* thumbs-up: the rules that were in this answer's prompt worked */
+  async function good(m) {
+    const ids = (m.reply && m.reply.lessonIds) || [];
+    if (!ids.length || m.lessonGood) return;
+    m.lessonGood = true;
+    await call({ op: 'good', ids });
+  }
+
+  function listSheet(onChange) {
+    sheet({ title: 'Lessons', tall: true, build(b) {
+      const wrap = h('div', { style: 'display:flex;flex-direction:column;gap:10px' });
+      const paint = (r) => {
+        wrap.replaceChildren();
+        if (!r || !r.ok) { wrap.append(h('p', { class: 'warn' }, (r && r.error) || 'Lessons nahi khule.')); return; }
+        const items = r.lessons || [];
+        if (onChange) onChange(items.length);
+        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Manual master answer par 👎 daba kar "kya galat tha" likho, ya jab checks galti pakdenge to yahan apne aap judega.')); return; }
+        items.forEach(x => wrap.append(h('div', { class: 'ccard' },
+          h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), h('span', { class: 'chips' },
+            h('span', { class: 'pill ' + (x.origin === 'user' ? 'info' : 'mute') }, x.origin === 'user' ? 'tumhara' : 'auto'),
+            h('span', { class: 'pill mute' }, 'wazan ' + x.weight))),
+          h('p', {}, x.text),
+          h('div', { class: 'ml' }, 'Nibhaya ' + x.held + ' baar'),
+          h('div', { class: 'frow' },
+            h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => editSheet(x, paint) } }, 'Badlo'),
+            h('button', { class: 'btn ghost', style: 'flex:1', on: { click: async () => paint(await call({ op: 'delete', id: x.id })) } }, 'Hatao')))));
+        wrap.append(h('button', { class: 'btn danger', on: { click: () => confirmSheet({ title: 'Saare lessons hatao?', text: 'Master answer phir bina sikhe rules ke shuru hoga.', label: 'Hatao', danger: true, top: true, onYes: async () => paint(await call({ op: 'clear' })) }) } }, 'Sab hatao'));
+      };
+      b.append(h('p', {}, 'Sirf Manual mode ka master answer inhe padhta hai. Auto aur Hybrid inhe nahi dekhte. Model ke weights nahi badalte: ye rules prompt me jaate hain aur jo tootte hain unka wazan badhta hai.'), wrap);
+      wrap.append(h('p', { class: 'muted' }, 'Khul raha hai…'));
+      call({ op: 'list' }).then(paint);
+    } });
+  }
+  function editSheet(x, paint) {
+    sheet({ title: 'Rule badlo', top: true, build(b, close) {
+      const ta = h('textarea', { rows: '4', maxlength: '300', 'aria-label': 'Rule', style: 'width:100%;background:var(--card);border:0;border-radius:14px;padding:12px;color:var(--fg);resize:none' });
+      ta.value = x.text;
+      b.append(ta, h('button', { class: 'btn pri', on: { click: async () => {
+        const r = await call({ op: 'edit', id: x.id, text: ta.value });
+        if (r && r.ok) { close(); paint(r); } else toast((r && r.error) || 'Badla nahi');
+      } } }, 'Save'));
+    } });
+  }
+
+  return { feedbackSheet, good, listSheet };
+})();
+
+'use strict';
 /* 03-chat.js : chat screen, composer, send pipeline, side-effects of structured replies */
 
 const Chat = (() => {
@@ -837,6 +1320,7 @@ const Chat = (() => {
     thread = h('div', { class: 'scroll thread pad' }, col = h('div', { class: 'col' }));
     ta = h('textarea', { rows: 1, placeholder: 'Message Adarsh', 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
+    drawAtts();
     micBtn = h('button', { class: 'circ mic', 'aria-label': 'Dictate', on: { click: dictate } }, icon('mic'));
     sendBtn = h('button', { class: 'circ send', 'aria-label': 'Send', hidden: true, on: { click: () => (busy ? stop() : submit()) } }, icon('send'));
     voiceBtn = h('button', { class: 'circ voicebtn', 'aria-label': 'Voice mode', on: { click: () => Voice.open() } }, icon('voice'));
@@ -893,8 +1377,11 @@ const Chat = (() => {
     const wrap = h('div', { class: 'msg', 'data-id': m.id });
     const ctx = { msg: m, redraw: () => { wrap.replaceWith(msgEl(m, isLast)); } };
     const r = m.reply;
-    if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    const thought = Council.done(r);
+    if (thought) wrap.append(thought);
+    else if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
     wrap.append(renderReply(r, ctx));
+    if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
     return wrap;
   }
@@ -903,9 +1390,48 @@ const Chat = (() => {
     const a = h('div', { class: 'actions' });
     a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { try { await navigator.clipboard.writeText(m.reply.text || speechOf(m.reply)); toast('Copied'); } catch (e) { toast('Copy not available here'); } } } }, icon('copy', 's')));
     if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => TTS.speak(txt()) } }, icon('speaker', 's')));
-    ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
+    ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
     if (isLast) a.append(h('button', { 'aria-label': 'Retry', on: { click: retry } }, icon('refresh', 's'), 'Retry'));
     return a;
+  }
+
+  /* ---------- answer source: auto / manual / hybrid ---------- */
+  const SRC = {
+    auto: ['Auto', 'Six models, each with its own way of thinking (logic, research, code, first principles, business, planning), write the answers.'],
+    manual: ['Manual', 'You paste answers from other AIs such as ChatGPT, Gemini or Claude. Adarsh checks them against each other.'],
+    hybrid: ['Hybrid', 'Your pasted answers and the six models together.']
+  };
+  const MAX_ANSWERS = 8, MAX_ANSWER_CHARS = 12000;
+  let pasted = [];                       // [{source, text}] for the next question only. Never saved.
+  let lastExtra = { source: 'auto', answers: [] };
+  const srcMode = () => S.settings.source || 'auto';
+  const validAnswers = () => pasted.map(a => ({ source: (a.source || '').trim().slice(0, 60), text: (a.text || '').trim().slice(0, MAX_ANSWER_CHARS) })).filter(a => a.text);
+  function sourceSheet() {
+    sheet({ title: 'Where answers come from', tall: true, build(b, close) {
+      const host = h('div', { style: 'display:flex;flex-direction:column;gap:12px' }); b.append(host);
+      const draw = () => {
+        host.textContent = '';
+        const mode = srcMode();
+        host.append(h('div', { class: 'seg' }, Object.keys(SRC).map(k => h('button', { 'aria-pressed': String(mode === k), on: { click: () => {
+          S.settings.source = k; save();
+          if (k !== 'auto' && !pasted.length) pasted.push({ source: '', text: '' });
+          drawAtts(); draw();
+        } } }, SRC[k][0]))));
+        host.append(h('p', {}, SRC[mode][1]));
+        if (mode !== 'auto') {
+          pasted.forEach((a, i) => {
+            const name = h('input', { type: 'text', placeholder: 'Which AI? (ChatGPT, Gemini, Claude…)', value: a.source || '', 'aria-label': 'Answer ' + (i + 1) + ' source', maxlength: '60', on: { input: (e) => { a.source = e.target.value; } } });
+            const body = h('textarea', { class: 'ansbox', placeholder: 'Paste the full answer here', 'aria-label': 'Answer ' + (i + 1) + ' text', maxlength: String(MAX_ANSWER_CHARS), value: a.text || '', on: { input: (e) => { a.text = e.target.value; } } });
+            host.append(h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, name, body,
+              h('button', { class: 'btn ghost', on: { click: () => { pasted.splice(i, 1); drawAtts(); draw(); } } }, 'Remove answer ' + (i + 1))));
+          });
+          if (pasted.length < MAX_ANSWERS) host.append(h('button', { class: 'btn ghost', on: { click: () => { pasted.push({ source: '', text: '' }); draw(); } } }, 'Add another answer'));
+          host.append(h('p', { class: 'muted' }, 'Up to ' + MAX_ANSWERS + ' answers. Pasted text is checked for prompt injection and treated only as data. It is used for the next question and then cleared.'));
+        }
+        host.append(h('button', { class: 'btn pri', on: { click: () => { pasted = pasted.filter(a => (a.text || '').trim()); drawAtts(); close(); } } }, 'Done'));
+      };
+      draw();
+    } });
   }
 
   /* ---------- composer ---------- */
@@ -923,7 +1449,7 @@ const Chat = (() => {
   function addSheet() {
     sheet({ title: 'Add', build(b, close) {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
-      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()));
+      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()), row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
     } });
   }
   function addFile(f) {
@@ -934,6 +1460,7 @@ const Chat = (() => {
   }
   function drawAtts() {
     atts.textContent = '';
+    if (srcMode() !== 'auto') atts.append(h('button', { class: 'srcchip', 'aria-label': 'Change answer source', on: { click: sourceSheet } }, icon('sliders', 's'), h('span', {}, SRC[srcMode()][0] + ' · ' + validAnswers().length + ' pasted')));
     pending.forEach(a => atts.append(h('div', { class: 'att' }, a.kind === 'image' ? h('img', { src: a.thumb, alt: '' }) : h('span', { class: 'ic' }, icon('file', 's')), h('span', {}, a.name),
       h('button', { 'aria-label': 'Remove ' + a.name, on: { click: () => { pending = pending.filter(x => x !== a); drawAtts(); onInput(); } } }, icon('x', 's')))));
   }
@@ -961,27 +1488,31 @@ const Chat = (() => {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
     if (!meta && App.view !== 'chat') App.show('chat');
-    const c = newChat();
+    const typed = textOverride == null;
+    const answers = typed && srcMode() !== 'auto' ? validAnswers() : [];
+    if (typed && srcMode() !== 'auto' && !answers.length) { toast('Paste at least one answer first'); sourceSheet(); return; }
+    const c = cur() || newChat();  // continue the open chat: every message used to start a new one, so follow-ups never saw earlier context
     const um = { id: uid('m'), role: 'user', text, ts: Date.now(), atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
     pushUser(c, um);
-    if (textOverride == null) { ta.value = ''; pending = []; drawAtts(); onInput(); }
+    if (textOverride == null) { ta.value = ''; pending = []; pasted = []; drawAtts(); onInput(); }
     const attachments = await Promise.all(files.map(readAtt));
-    await runBackend(c, { text, attachments, meta });
+    await runBackend(c, { text, attachments, meta, source: typed ? srcMode() : 'auto', answers });
   }
   function pushUser(c, um) {
     if (!c.msgs.length && um.text) c.title = um.text.slice(0, 42);
     c.msgs.push(um); c.ts = Date.now(); save(); Bus.emit('chats:changed'); renderThread();
   }
-  async function runBackend(c, { text, attachments = [], meta }) {
-    busy = true; ctl = new AbortController(); const steps = [];
-    const label = h('span', {}, 'Thinking'); thinkEl = h('div', { class: 'think', role: 'status' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), label);
+  async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [] }) {
+    lastExtra = { source, answers };
+    busy = true; ctl = new AbortController(); const t0 = Date.now();
+    const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta },
-        { signal: ctl.signal, onProgress: (s) => { steps.push(s); label.textContent = s; } });
+      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
+        { signal: ctl.signal, onProgress: (s) => lv.push(s) });
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
-      arr.forEach((r, i) => { if (i === 0 && steps.length) r.steps = steps.slice(); deliver(c, r); });
+      arr.forEach((r, i) => { if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
@@ -995,6 +1526,7 @@ const Chat = (() => {
     if (r.type === 'memory') { const m = { id: uid('mem'), text: r.text, pin: false, ts: Date.now() }; S.memories.unshift(m); r.memId = m.id; }
     if (r.type === 'task') { const t = { id: uid('t'), title: r.title, due: r.due || null, done: false, ts: Date.now() }; S.tasks.push(t); r.taskId = t.id; }
     if (r.type === 'mission') upsertMission(r);
+    if (r.council) { r.councilId = uid('cn'); Council.put(r.councilId, r.council); delete r.council; }  // big: stored apart from the chat state
     const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r };
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });
@@ -1009,7 +1541,7 @@ const Chat = (() => {
     const c = cur(); if (!c || busy) return;
     while (c.msgs.length && c.msgs[c.msgs.length - 1].role === 'ai') c.msgs.pop();
     const lastU = c.msgs[c.msgs.length - 1]; if (!lastU || lastU.role !== 'user') return renderThread();
-    renderThread(); runBackend(c, { text: lastU.text || '' });
+    renderThread(); runBackend(c, { text: lastU.text || '', ...lastExtra });
   }
 
   /* structured-reply follow-ups */
@@ -1034,7 +1566,7 @@ const Chat = (() => {
   }
 
   return {
-    mount, renderThread, newChat, open, remove, cur, submit,
+    mount, renderThread, newChat, open, remove, cur, submit, sourceSheet,
     setDraft(t) { ta.value = t; onInput(); ta.focus(); }, addFile, isBusy: () => busy,
     push(r, { chatId } = {}) { const c = (chatId && S.chats.find(x => x.id === chatId)) || newChat(); deliver(c, normReply(r)); save(); Bus.emit('chats:changed'); renderThread(); }
   };
@@ -1200,12 +1732,16 @@ const App = (() => {
       h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
       h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Chat font'), seg([['sans', 'Default'], ['serif', 'Serif']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
     st.append(h('div', { class: 'grp' },
+      navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
+      navItem('edit', 'Reply style', replySummary(), replySheet),
+      navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet),
       swItem('bell', 'Notifications', 'Alert me when a reply or reminder arrives', () => S.settings.notif, async (v) => { S.settings.notif = v; if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} } }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; })));
     st.append(h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
+      window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
       navItem('server', 'Connection', Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
     st.append(h('div', { class: 'grp' },
       navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
@@ -1227,6 +1763,55 @@ const App = (() => {
       b.append(swItem('speaker', 'Speak replies', 'Read answers aloud in voice mode and on tap', () => S.settings.speak, v => { S.settings.speak = v; }),
         h('label', { class: 'l' }, 'Recognition language'), seg, h('label', { class: 'l' }, 'Speaking speed'), rate,
         TTS.ok() ? h('button', { class: 'btn ghost', on: { click: () => TTS.speak('Namaste. Main Adarsh hoon.') } }, 'Test voice') : h('p', {}, 'This browser has no speech output.'));
+    } });
+  }
+  function replySummary() {
+    const L = { auto: 'Auto language', hinglish: 'Hinglish', english: 'English', hindi: 'Hindi' }, D = { simple: 'Simple', normal: 'Normal', detailed: 'Detailed' };
+    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal');
+  }
+  function replySheet() {
+    sheet({ title: 'Reply style', build(b) {
+      const group = (title, key, def, opts, note) => {
+        const seg = h('div', { class: 'seg' });
+        opts.forEach(([v, label]) => seg.append(h('button', { 'aria-pressed': String((S.settings[key] || def) === v), on: { click: () => {
+          S.settings[key] = v; save();
+          [...seg.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
+          seg.children[opts.findIndex(o => o[0] === v)].setAttribute('aria-pressed', 'true');
+          if (view === 'settings') build('settings');
+        } } }, label)));
+        b.append(h('label', { class: 'l' }, title), seg, h('p', { class: 'muted' }, note));
+      };
+      group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
+        'Auto answers in the language of your question.');
+      group('Depth', 'depth', 'normal', [['simple', 'Simple'], ['normal', 'Normal'], ['detailed', 'Detailed']],
+        'Simple: everyday words and one example. Detailed: the mechanism, edge cases and a worked example.');
+    } });
+  }
+  function keysSummary() {
+    const st = window.AdarshKeys.status(); const ok = id => !!(st[id] && st[id].set);
+    const n = ['GROQ_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY'].filter(ok).length
+      + (ok('CLOUDFLARE_API_TOKEN') && ok('CLOUDFLARE_ACCOUNT_ID') ? 1 : 0);
+    return n ? n + ' of 5 providers set' : 'No keys yet. Add at least one to get answers';
+  }
+  function keysSheet() {
+    sheet({ title: 'API keys', tall: true, build(b, close) {
+      const K = window.AdarshKeys, st = K.status();
+      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'));
+      K.providers.forEach(p => {
+        const cur = st[p.id] || {};
+        const inp = h('input', { type: p.plain ? 'text' : 'password', placeholder: cur.set ? 'Saved (' + cur.hint + '). Paste a new key to replace' : 'Paste ' + p.name + (p.plain ? '' : ' key'), 'aria-label': p.name + ' API key', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+        const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+        b.append(h('label', { class: 'l' }, p.name + ' · ' + p.url), inp,
+          h('div', { class: 'frow' },
+            h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { const v = inp.value.trim(); if (!v) return toast('Paste a key first'); done(K.save(p.id, v), p.name + ' key saved'); } } }, 'Save'),
+            cur.set ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => done(K.remove(p.id), p.name + ' key deleted') } }, 'Delete') : null));
+      });
+      const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
+      b.append(h('button', { class: 'btn ghost', on: { click: async () => {
+        res.textContent = 'Testing…';
+        try { const r = await window.ADARSH_BACKEND.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); }
+        catch (e) { res.textContent = 'Test failed: ' + e.message; }
+      } } }, 'Test connection'), res);
     } });
   }
   function connSheet() {
@@ -1590,11 +2175,19 @@ const HttpBackend = {
   async send(req, o) {
     const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, abilities: req.abilities, lang: req.lang }) });
+    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
     const j = await r.json(); return Array.isArray(j) ? j : j.replies || j.reply || j;
+  },
+  async lessons(op) {
+    try {
+      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ lesson: op }) });
+      const j = await r.json(); const x = Array.isArray(j) ? j[0] : (j.replies ? j.replies[0] : j);
+      return (x && x.lessonsResult) || (x && x.ok !== undefined ? x : { ok: false, error: 'Backend ne lessons nahi diye.' });
+    } catch (e) { return { ok: false, error: 'Lessons server tak nahi pahunche.' }; }
   },
   async ping() {
     try {
@@ -1611,6 +2204,7 @@ const Backend = (() => {
   return {
     isDemo: () => !custom() && !connUrl(),
     send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; return impl().send(req, o); },
+    async lessons(op) { const b = impl(); return b.lessons ? b.lessons(op) : { ok: false, error: 'Demo mode me lessons nahi hote.' }; },
     missionAction(id, a) { const b = impl(); return b.missionAction ? b.missionAction(id, a) : Promise.resolve(null); },
     suggestions() { const b = impl(); return b.suggestions ? b.suggestions() : []; },
     async ping() { const b = impl(); return b.ping ? b.ping() : { ok: true, label: 'Custom backend' }; },

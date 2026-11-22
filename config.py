@@ -274,6 +274,10 @@ MAX_REPAIRS = int(os.getenv("MAX_REPAIRS", "2"))
 # AUDIT=0 skips it (saves 1-2 model calls per question).
 AUDIT_ENABLED = os.getenv("AUDIT", "1") == "1"
 AUDIT_MAX_ISSUES = 6
+# Manual mode builds ONE master answer only from the pasted answers (master.py). MASTER=0 restores the old manual flow.
+MASTER_ENABLED = os.getenv("MASTER", "1") == "1"
+GROUND_ENABLED = os.getenv("GROUND", "1") == "1"  # grounding check + rewrite of the master answer
+GROUND_MAX_ISSUES = 6
 MAX_CHECKS = 4
 SANDBOX_TIMEOUT_S = int(os.getenv("SANDBOX_TIMEOUT_S", "10"))
 SANDBOX_MEM_MB = int(os.getenv("SANDBOX_MEM_MB", "1024"))

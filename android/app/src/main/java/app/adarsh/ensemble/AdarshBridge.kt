@@ -22,6 +22,9 @@ class AdarshBridge(
     fun status(): String = Engine.status()
 
     @JavascriptInterface
+    fun lessons(opJson: String): String = Engine.lessons(opJson)
+
+    @JavascriptInterface
     fun keyStatus(): String {
         val o = JSONObject()
         for (n in SecureKeys.NAMES) {
