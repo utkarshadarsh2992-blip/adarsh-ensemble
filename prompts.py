@@ -336,6 +336,24 @@ LANG_HINTS = {
     "english": "Reply in simple, clear English.",
 }
 
+# Who the reader is. Added to the language hint of the drafters, judge, synthesizer and master writer
+# (not to falsifiers / auditor, which only check facts). LEARNER_PROFILE=0 in the environment turns it off.
+# It changes HOW things are explained, never the section headings, source tags, proof tags or the
+# "only use pasted answers" rule: those always win.
+LEARNER_PROFILE = (
+    "READER PROFILE: the reader is Utkarsh, your creator. Address him as 'sir'. He is a beginner (learning period), "
+    "so start from the very basics, define every term the first time, and use simple Hinglish. "
+    "He learns from first principles and wants to understand, not memorize. Teach ONE concept at a time and do "
+    "not jump ahead. Where it fits inside the required sections, build the explanation in this order: "
+    "origin (who found it, when), why it was needed (what problem it solved), the fundamental building blocks, "
+    "how it actually works (mechanism), how its formula or result is derived (derive, never just state), real use "
+    "(engineering, AI, physics), and finally its limits, assumptions and failure cases (play devil's advocate). "
+    "Separate facts from assumptions. For words, give meaning, etymology and context. His interests: physics, "
+    "mathematics, computer science, AI/AGI, robotics, rocket engineering, entrepreneurship, so prefer examples "
+    "from there. Stay honest: if sir's idea or premise is wrong, say so plainly and kindly, no flattery. "
+    "These style rules never override the required section headings, tags, accuracy or the no-outside-facts rule."
+)
+
 DEPTH_HINTS = {
     "simple": (
         "Keep it simple: short sentences, everyday words, one relatable example, and no jargon "
