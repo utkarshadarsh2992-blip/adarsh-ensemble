@@ -67,13 +67,13 @@ def _is_casual(text: str) -> bool:
     return bool(_CASUAL.match(t)) or (len(t) <= 4 and not any(c.isdigit() for c in t) and "?" not in t)
 
 
-async def _casual_reply(text: str) -> dict | None:
+async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "normal") -> dict | None:
     """One quick model call. None means: fall back to the full pipeline."""
     try:
         async with httpx.AsyncClient() as client:
             out = await chat(
                 client, config.SYNTHESIZER,
-                [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text)},
+                [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text, reply_lang)},
                  {"role": "user", "content": text}],
                 temperature=0.6, max_tokens=300, timeout=40, retries=0,
             )
@@ -112,6 +112,10 @@ async def handle(body: dict) -> dict | list[dict]:
     if len(text) < 2:
         return {"type": "text", "text": "Kuch likho, phir main sawaal verify karunga."}
 
+    rp = body.get("reply") if isinstance(body.get("reply"), dict) else {}
+    reply_lang = rp.get("lang") if rp.get("lang") in ("auto", "hinglish", "english", "hindi") else "auto"
+    depth = rp.get("depth") if rp.get("depth") in ("simple", "normal", "detailed") else "normal"
+
     source = body.get("source") if body.get("source") in ("auto", "manual", "hybrid") else "auto"
     answers = _clean_answers(body.get("answers"))
     if source != "auto" and not answers:
@@ -120,7 +124,7 @@ async def handle(body: dict) -> dict | list[dict]:
         answers = []  # answers without manual/hybrid would be rejected by the pipeline
 
     if source == "auto" and _is_casual(text):
-        quick = await _casual_reply(text)
+        quick = await _casual_reply(text, reply_lang, depth)
         if quick:
             return [quick]
 
@@ -135,19 +139,24 @@ async def handle(body: dict) -> dict | list[dict]:
         answers=answers,
         run_code=config.CODE_EXEC_SUPPORTED,
         use_guard=bool(answers),  # scan pasted answers for prompt injection
+        reply_lang=reply_lang,
+        depth=depth,
         debug=False,
     )
 
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
-    if not config.CODE_EXEC_SUPPORTED and res.get("task_type") in config.VERIFY_TASKS:
+    if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:
         replies[0]["text"] += "\n\n*Python code proofs are off on Android. Steps are [REASONED], not [PROVEN by code].*"
     if body.get("attachments"):
         replies[0]["text"] += "\n\n*Attachments abhi ensemble tak nahi bheje jaate (sirf text).*"
     # shown folded under the answer as "Worked through N steps"
-    steps = [f"Task: {res.get('task_type', 'general')}"]
+    steps = [f"Task: {res.get('task_type', 'general')} · {res.get('style', 'solve')}"]
     if source != "auto":
         steps.append(f"Source: {source} ({res.get('user_answers_used', 0)} yours, {res.get('panel_answers_used', 0)} models)")
     steps += [f"{m} x{n}" for m, n in (res.get("models_used") or {}).items()]
     steps.append(f"{res.get('latency_s', 0)}s")
     replies[0]["steps"] = steps
+    if res.get("falsifier_notes"):
+        # the checkers' own words, folded under the answer by the UI
+        replies[0]["notes"] = {"title": "Kahan galat ho sakta hai", "items": res["falsifier_notes"]}
     return replies

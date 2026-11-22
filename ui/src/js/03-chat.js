@@ -87,6 +87,7 @@ const Chat = (() => {
     const r = m.reply;
     if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
     wrap.append(renderReply(r, ctx));
+    if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
     return wrap;
   }
@@ -214,10 +215,10 @@ const Chat = (() => {
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta, source, answers },
+      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
         { signal: ctl.signal, onProgress: (s) => { steps.push(s); label.textContent = s; } });
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
-      arr.forEach((r, i) => { if (i === 0 && steps.length) r.steps = steps.slice(); deliver(c, r); });
+      arr.forEach((r, i) => { if (i === 0 && steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; deliver(c, r); });
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }

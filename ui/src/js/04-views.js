@@ -159,6 +159,7 @@ const App = (() => {
       h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Chat font'), seg([['sans', 'Default'], ['serif', 'Serif']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
     st.append(h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
+      navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet),
       swItem('bell', 'Notifications', 'Alert me when a reply or reminder arrives', () => S.settings.notif, async (v) => { S.settings.notif = v; if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} } }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; })));
@@ -187,6 +188,28 @@ const App = (() => {
       b.append(swItem('speaker', 'Speak replies', 'Read answers aloud in voice mode and on tap', () => S.settings.speak, v => { S.settings.speak = v; }),
         h('label', { class: 'l' }, 'Recognition language'), seg, h('label', { class: 'l' }, 'Speaking speed'), rate,
         TTS.ok() ? h('button', { class: 'btn ghost', on: { click: () => TTS.speak('Namaste. Main Adarsh hoon.') } }, 'Test voice') : h('p', {}, 'This browser has no speech output.'));
+    } });
+  }
+  function replySummary() {
+    const L = { auto: 'Auto language', hinglish: 'Hinglish', english: 'English', hindi: 'Hindi' }, D = { simple: 'Simple', normal: 'Normal', detailed: 'Detailed' };
+    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal');
+  }
+  function replySheet() {
+    sheet({ title: 'Reply style', build(b) {
+      const group = (title, key, def, opts, note) => {
+        const seg = h('div', { class: 'seg' });
+        opts.forEach(([v, label]) => seg.append(h('button', { 'aria-pressed': String((S.settings[key] || def) === v), on: { click: () => {
+          S.settings[key] = v; save();
+          [...seg.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
+          seg.children[opts.findIndex(o => o[0] === v)].setAttribute('aria-pressed', 'true');
+          if (view === 'settings') build('settings');
+        } } }, label)));
+        b.append(h('label', { class: 'l' }, title), seg, h('p', { class: 'muted' }, note));
+      };
+      group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
+        'Auto answers in the language of your question.');
+      group('Depth', 'depth', 'normal', [['simple', 'Simple'], ['normal', 'Normal'], ['detailed', 'Detailed']],
+        'Simple: everyday words and one example. Detailed: the mechanism, edge cases and a worked example.');
     } });
   }
   function keysSummary() {

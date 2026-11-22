@@ -29,8 +29,10 @@ import verified
 from llm import LLMError, chat
 
 
-def _language_hint(question: str) -> str:
-    # Devanagari or common Hinglish markers -> answer in the user's style.
+def _language_hint(question: str, reply_lang: str = "auto") -> str:
+    # An explicit choice wins. Otherwise Devanagari or common Hinglish markers -> answer in the user's style.
+    if reply_lang in prompts.LANG_HINTS:
+        return prompts.LANG_HINTS[reply_lang]
     if re.search(r"[ऀ-ॿ]", question):
         return "Reply in Hindi (Devanagari), keeping technical terms in English."
     hinglish = r"\b(kya|kaise|kyun|kyu|hai|nahi|mujhe|chahiye|karna|batao|samjhao|ka|ki|ke)\b"
@@ -159,10 +161,14 @@ async def run(
     engine: str = "verified",
     run_code: bool = True,
     use_guard: bool = True,
+    reply_lang: str = "auto",  # auto | hinglish | english | hindi
+    depth: str = "normal",  # simple | normal | detailed
+    style: str = "auto",  # auto | solve | explain
 ) -> dict:
     t0 = time.perf_counter()
     trace = health.start_trace()
-    lang = _language_hint(question)
+    lang = _language_hint(question, reply_lang)  # language only (falsifiers, debaters)
+    lang_full = (lang + " " + prompts.DEPTH_HINTS.get(depth, "")).strip()  # + depth (drafters, judge, synthesizer)
     rounds = max(0, min(debate_rounds, config.MAX_DEBATE_ROUNDS))
     errors: dict[str, str] = {}
     warnings: list[str] = []
@@ -201,13 +207,16 @@ async def run(
                     f"'{name}' was scanned by the weaker LLM fallback detector (Groq guard unavailable)."
                 )
 
+        if style not in ("solve", "explain"):
+            style = prompts.answer_style(question, task) if (config.EXPLAIN_STYLE and engine == "verified") else "solve"
+
         # [1] drafts written by our own panel
         panel_drafts: dict[str, str] = {}
         if source in ("auto", "hybrid"):
             panel = config.PANEL if deep else config.PANEL[:3]
             config.emit(f"{len(panel)} models se draft likhwa raha hu")
             results = await asyncio.gather(
-                *[_ask_member(client, s, question, task, lang) for s in panel]
+                *[_ask_member(client, s, question, task, lang_full) for s in panel]
             )
             panel_drafts = {label: text for label, text, err in results if text}
             errors.update({label: err for label, text, err in results if err})
@@ -222,14 +231,14 @@ async def run(
                 answer = await chat(
                     client,
                     config.SYNTHESIZER,
-                    prompts.panel_messages(question, "step_solver", task, lang),
+                    prompts.panel_messages(question, "step_solver", task, lang_full),
                     max_tokens=config.FINAL_MAX_TOKENS,
                 )
             except LLMError as e:
                 raise RuntimeError(f"Not enough models responded. Errors: {errors} | {e}")
             return _pack(
                 answer, task, {}, {}, errors, [], t0, debug, 0, trace=trace, warnings=warnings,
-                guard_report=guard_report, fallback=True,
+                guard_report=guard_report, fallback=True, style=style,
             )
 
         # [2] anonymise (A, B, C...) and shuffle: judges see no brand names and no fixed order
@@ -243,13 +252,14 @@ async def run(
         # [3] engine
         if engine == "verified":
             answer, extras = await verified.run_verified(
-                client, question, task, anon, lang, deep, run_code, errors, flagged
+                client, question, task, anon, lang, deep, run_code, errors, flagged,
+                style=style, judge_hint=lang_full,
             )
             warnings += extras.get("warnings", [])
             return _pack(
                 answer, task, user_drafts, panel_drafts, errors, [], t0, debug, 0,
                 trace=trace, warnings=warnings, guard_report=guard_report,
-                letter_to_name=letter_to_name, engine="verified", extras=extras,
+                letter_to_name=letter_to_name, engine="verified", extras=extras, style=style,
             )
 
         # engine == "simple": plain debate + synthesis
@@ -259,7 +269,7 @@ async def run(
             errors.update(debate_errors)
         debate_text = _format_debate(transcript)
 
-        synth_args = (question, anon, debate_text, lang)
+        synth_args = (question, anon, debate_text, lang_full)
         try:
             answer = await chat(
                 client, config.SYNTHESIZER, prompts.synth_messages(*synth_args),
@@ -272,18 +282,20 @@ async def run(
 
     return _pack(
         answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, len(transcript),
-        trace=trace, warnings=warnings, guard_report=guard_report, letter_to_name=letter_to_name,
+        trace=trace, warnings=warnings, guard_report=guard_report, letter_to_name=letter_to_name, style=style,
     )
 
 
 def _pack(
     answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, rounds_run, *,
     trace, warnings, guard_report, fallback=False, letter_to_name=None, engine="simple", extras=None,
+    style="solve",
 ) -> dict:
     out = {
         "answer": answer,
         "engine": engine,
         "task_type": task,
+        "style": style,
         "user_answers_used": len(user_drafts),
         "panel_answers_used": len(panel_drafts),
         "debate_rounds_run": rounds_run,
@@ -292,6 +304,8 @@ def _pack(
     }
     if extras:
         out["proofs_summary"] = extras["proofs_summary"]
+        if extras.get("falsifier_notes"):
+            out["falsifier_notes"] = extras["falsifier_notes"]
     if guard_report:
         out["guard"] = guard_report
     if warnings:

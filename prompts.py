@@ -1,4 +1,5 @@
 """All prompts live here. Tweak these to tune quality."""
+import re
 
 TASK_TYPES = [
     "math", "science", "coding", "business", "research",
@@ -271,6 +272,92 @@ def judge_messages(
         "2. Verified Mechanism: numbered first-principles steps; tag every step "
         "[PROVEN by code], [REASONED] or [UNVERIFIED].\n"
         "3. Trap Warning: the mistake the falsifier caught (or the most likely trap) and why it is wrong.\n"
+        f"{language_hint}"
+    )
+    return [
+        {"role": "system", "content": ROLES["judge"]},
+        {"role": "user", "content": user},
+    ]
+
+
+# ---------------------------------------------------------------- answer style + reply preferences
+
+LANG_HINTS = {
+    "hinglish": "Reply in Hinglish (Hindi written in Roman script), keeping technical terms in English.",
+    "hindi": "Reply in Hindi (Devanagari), keeping technical terms in English.",
+    "english": "Reply in simple, clear English.",
+}
+
+DEPTH_HINTS = {
+    "simple": (
+        "Keep it simple: short sentences, everyday words, one relatable example, and no jargon "
+        "unless you define it on the spot."
+    ),
+    "normal": "",
+    "detailed": (
+        "Go deeper than usual: cover the mechanism, edge cases and nuances, use precise terms, "
+        "and include a worked example."
+    ),
+}
+
+# "solve": something can be computed, derived or run -> Direct Core Truth / Verified Mechanism / Trap Warning.
+# "explain": a concept, a why/how, a comparison -> plain explanation that shows where experts disagree.
+_COMPUTE = re.compile(
+    r"\d\s*[-+*/^×÷x]\s*\d"
+    r"|\d+(?:\.\d+)?\s*(?:%|°)"
+    r"|\d+(?:\.\d+)?\s*(?:kg|g|mg|m|cm|mm|km|s|ms|n|j|w|v|a|hz|deg|degrees?|mol|k|rad)\b"
+    r"|[=^√∑∫≤≥±×÷]|```"
+    r"|\b(?:calculate|compute|solve|evaluate|simplify|prove|derive|implement|debug|integrate|differentiate"
+    r"|plus|minus|times|divided by|multiplied|percent|sqrt|square root|how many|how much"
+    r"|nikalo|nikal do|hal karo|calculate karo)\b"
+    r"|\bwrite\s+(?:a|an|the|me)?\s*(?:\w+\s+)?(?:code|program|function|script|query|class)\b",
+    re.IGNORECASE,
+)
+_CONCEPT_EN = re.compile(
+    r"^\s*(?:what\s+(?:is|are|was|were|does|do)\b|what'?s\b|define\b|explain\b|describe\b|"
+    r"why\s+(?:is|are|do|does|did)\b|how\s+(?:does|do|did)\b|who\s+(?:is|was)\b|tell me about\b|"
+    r"difference between\b|meaning of\b|history of\b|compare\b)",
+    re.IGNORECASE,
+)
+_CONCEPT_HI = re.compile(
+    r"\b(?:kya\s+(?:hai|hota|hote|hoti|hain)|matlab|samjhao|samjhaiye|samjha\s+do|kaise\s+(?:kaam|hota|bante|chalta)|"
+    r"kyun\s+(?:hota|hoti|hote)|kyu\s+(?:hota|hoti|hote))\b",
+    re.IGNORECASE,
+)
+_CONTEXT_MARK = "\n\n[Earlier in this chat"
+
+
+def answer_style(question: str, task: str) -> str:
+    """Pick the answer format. Only the question itself counts, not the chat context appended after it."""
+    q = question.split(_CONTEXT_MARK, 1)[0].strip()
+    if _COMPUTE.search(q):
+        return "solve"
+    if _CONCEPT_EN.search(q) or _CONCEPT_HI.search(q):
+        return "explain"
+    return "solve" if task in ("math", "science", "coding") else "explain"
+
+
+def judge_explain_messages(
+    question: str, map_text: str, falsification: str, language_hint: str
+) -> list[dict]:
+    user = (
+        f"Question:\n{question}\n\n"
+        f"## Atomic claims (tone stripped)\n{map_text}\n\n"
+        f"## Falsification report\n{falsification}\n\n{UNTRUSTED}"
+        "You are the final editor of an explanation for a curious learner. Contract:\n"
+        "- Plain words first, then precision. Define every term the first time you use it.\n"
+        "- Build on the claims that survived falsification. Agreement among drafts is not evidence.\n"
+        "- If experts or sources genuinely disagree, or a point depends on definitions or philosophy, "
+        "do NOT present one side as settled: give each position in one line.\n"
+        "- Nothing here was run as code, so never write [PROVEN by code], [REASONED] or [UNVERIFIED].\n"
+        "- No filler, no praise. Never mention drafts, falsifiers, debaters or models.\n\n"
+        "Output EXACTLY these sections, each starting with a markdown heading line:\n"
+        "### Short answer\n2 to 3 lines that answer the question directly.\n"
+        "### Explanation\nBuild it up from the basics in short paragraphs or a short list, with one "
+        "concrete example or analogy.\n"
+        "### Where experts disagree\nInclude this section ONLY if there is a real disagreement or the "
+        "answer depends on a definition. Otherwise leave it out entirely.\n"
+        "### Common mistake\nThe single most likely misunderstanding and why it is wrong.\n"
         f"{language_hint}"
     )
     return [

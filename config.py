@@ -211,6 +211,9 @@ MAX_USER_ANSWERS = 8
 
 # Verified engine
 VERIFY_TASKS = {"math", "science", "coding", "first_principles"}
+# Concept questions ("what is math", "kya hota hai ...") get a plain explanation instead of the
+# Direct Core Truth / Verified Mechanism / Trap Warning format. EXPLAIN_STYLE=0 restores the old behaviour.
+EXPLAIN_STYLE = os.getenv("EXPLAIN_STYLE", "1") == "1"
 MAX_CHECKS = 4
 SANDBOX_TIMEOUT_S = int(os.getenv("SANDBOX_TIMEOUT_S", "10"))
 SANDBOX_MEM_MB = int(os.getenv("SANDBOX_MEM_MB", "1024"))

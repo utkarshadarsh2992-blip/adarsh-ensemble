@@ -229,3 +229,136 @@ def test_manual_without_answers_is_refused_and_greeting_not_casual(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
     out = json.loads(android_entry.handle(json.dumps({"text": "hello", "source": "manual", "answers": []})))
     assert "pasted answer" in out["text"]
+
+
+# ---------------------------------------------------------------- explain style, reply prefs, falsifier notes
+
+import prompts  # noqa: E402
+
+POPPER_TEXT = (
+    "A. CONFLICTS: none.\n"
+    "B. CONSENSUS: Edge case: the 'discovered vs invented' split is a philosophical stance, not a fact.\n"
+    "C. TESTABLE: claims Python can check: none.\n"
+    "D. TRAP: treating the school curriculum list as the definition of mathematics."
+)
+EXPLAIN_TEXT = (
+    "### Short answer\nMath studies structures. [REASONED]\n"
+    "### Explanation\nStart from axioms. [PROVEN by code]\n"
+    "### Common mistake\nConfusing curriculum with the subject. [UNVERIFIED]"
+)
+
+
+@pytest.fixture
+def spy_models(monkeypatch):
+    """Fake models that answer by prompt type and record every system/user prompt."""
+    seen = {"panel": [], "popper": [], "judge": [], "verifier": 0}
+
+    async def fake_chat(client, spec, messages, **kw):
+        user = messages[-1]["content"]
+        system = messages[0]["content"]
+        if spec is config.CLASSIFIER:
+            return "math"  # a trap: 'math' appears in the question but it is a concept question
+        if spec is config.STRIPPER:
+            return json.dumps({"claims": {"A": ["x"]}, "consensus": ["x"], "conflicts": []})
+        if "Popperian falsifier" in user:
+            seen["popper"].append(user)
+            return POPPER_TEXT
+        if "final editor of an explanation" in user:
+            seen["judge"].append(user)
+            return EXPLAIN_TEXT
+        if "You are the final judge" in user:
+            seen["judge"].append(user)
+            return JUDGE_TEXT
+        if "verification scripts" in system:
+            seen["verifier"] += 1
+            return "NO_CHECKS"
+        seen["panel"].append(system)
+        return "draft answer"
+
+    monkeypatch.setattr(pipeline, "chat", fake_chat)
+    monkeypatch.setattr(verified, "chat", fake_chat)
+    return seen
+
+
+@pytest.mark.parametrize(
+    "q,task,expected",
+    [
+        ("What is math", "math", "explain"),
+        ("math kya hai", "math", "explain"),
+        ("Explain recursion", "coding", "explain"),
+        ("What is a closure in JavaScript", "coding", "explain"),
+        ("Why is the sky blue?", "science", "explain"),
+        ("2+2 kya hai?", "math", "solve"),
+        ("A 2 kg block slides down a 30 degree incline, mu=0.2, find acceleration", "science", "solve"),
+        ("Prove that sqrt 2 is irrational", "math", "solve"),
+        ("Write a function to reverse a list", "coding", "solve"),
+        ("What is 15% of 240?", "math", "solve"),
+        ("Is zero even?", "math", "solve"),
+        ("Should I start a bakery?", "business", "explain"),
+        # only the question counts, numbers in the appended chat context do not
+        ("What is math\n\n[Earlier in this chat, context only]\nUser: 2+2=4 and 5*6=30", "math", "explain"),
+    ],
+)
+def test_answer_style(q, task, expected):
+    assert prompts.answer_style(q, task) == expected
+
+
+def test_explain_flow_no_proofs_no_tags_and_notes(spy_models):
+    res = asyncio.run(pipeline.run("What is math", deep=False, run_code=True, use_guard=False))
+    assert res["style"] == "explain" and res["engine"] == "verified"
+    assert "### Short answer" in res["answer"]
+    assert not any(t in res["answer"] for t in ("[REASONED]", "[PROVEN", "[UNVERIFIED]"))
+    assert spy_models["verifier"] == 0  # no code-writer call for a concept question
+    assert "Direct Core Truth" not in spy_models["judge"][0]
+    notes = res["falsifier_notes"]
+    assert notes and "curriculum" in notes[0]["text"] and "TESTABLE" not in notes[0]["text"]
+    assert res.get("proofs_summary", {}).get("total", 0) == 0
+
+
+def test_solve_flow_keeps_old_format(spy_models):
+    res = asyncio.run(pipeline.run("2+2 kya hai?", deep=False, run_code=True, use_guard=False))
+    assert res["style"] == "solve" and "Direct Core Truth" in res["answer"]
+    assert spy_models["verifier"] == 1  # math + solve still asks for code proofs
+
+
+def test_explain_style_can_be_disabled(spy_models, monkeypatch):
+    monkeypatch.setattr(config, "EXPLAIN_STYLE", False)
+    res = asyncio.run(pipeline.run("What is math", deep=False, run_code=False, use_guard=False))
+    assert res["style"] == "solve" and "Direct Core Truth" in res["answer"]
+
+
+def test_reply_language_and_depth_reach_the_right_prompts(spy_models):
+    asyncio.run(
+        pipeline.run("What is math", deep=False, run_code=False, use_guard=False, reply_lang="hinglish", depth="simple")
+    )
+    assert all("Hinglish" in s and "Keep it simple" in s for s in spy_models["panel"])
+    assert all("Hinglish" in u and "Keep it simple" not in u for u in spy_models["popper"])  # falsifiers: language only
+    assert "Hinglish" in spy_models["judge"][0] and "Keep it simple" in spy_models["judge"][0]
+
+    spy_models["panel"].clear()
+    asyncio.run(pipeline.run("What is math", deep=False, run_code=False, use_guard=False, reply_lang="english", depth="detailed"))
+    assert all("simple, clear English" in s and "worked example" in s for s in spy_models["panel"])
+
+
+def test_adapter_passes_prefs_and_returns_notes(spy_models, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    body = {"text": "What is math", "reply": {"lang": "hinglish", "depth": "simple"}}
+    out = json.loads(android_entry.handle(json.dumps(body)))
+    assert "### Short answer" in out[0]["text"]
+    assert out[0]["notes"]["title"] == "Kahan galat ho sakta hai" and out[0]["notes"]["items"]
+    assert out[0]["steps"][0].endswith("· explain")
+    assert "Python code proofs are off" not in out[0]["text"]  # not shown for explanations
+    assert all("Hinglish" in s for s in spy_models["panel"])
+    # junk prefs fall back to defaults instead of breaking the request
+    spy_models["panel"].clear()
+    json.loads(android_entry.handle(json.dumps({"text": "What is math", "reply": {"lang": "klingon", "depth": 5}})))
+    assert not any("Keep it simple" in s for s in spy_models["panel"])
+
+
+def test_falsifier_notes_trim_and_section_c():
+    long = "A. x\nB. " + ("word " * 600) + "\nC. TESTABLE: a\nmore c\nD. TRAP: t"
+    n = verified.falsifier_notes({"Falsifier 1": long}, limit=300)
+    assert len(n[0]["text"]) <= 305 and n[0]["text"].endswith("…")
+    n2 = verified.falsifier_notes({"Falsifier 1": "A. one\nC. TESTABLE: py\nD. TRAP: two"})
+    assert "TESTABLE" not in n2[0]["text"] and "TRAP: two" in n2[0]["text"]
+    assert verified.falsifier_notes({}) == []

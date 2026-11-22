@@ -41,7 +41,7 @@ Server rules: verify the token, keep your own allow-list (the Telegram `CHAT_ID`
 
 ## 3. Reply contract (every type the UI can draw)
 
-Always `{ "type": …, … }`. Unknown types fall back to text. Any reply may carry `steps: ["…"]` (shown folded as "Worked through N steps").
+Always `{ "type": …, … }`. Unknown types fall back to text. Any reply may carry `steps: ["…"]` (shown folded as "Worked through N steps") and `notes: { title, items: [{ title, text }] }` (shown folded under the reply, e.g. what the falsifiers found). The request also carries `source` (`auto|manual|hybrid`), `answers` (`[{ source, text }]`, pasted from other AIs) and `reply: { lang: auto|hinglish|english|hindi, depth: simple|normal|detailed }`.
 
 | type | fields | maps from ADARSH v6 |
 |---|---|---|

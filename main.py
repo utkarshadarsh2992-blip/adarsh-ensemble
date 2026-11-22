@@ -49,6 +49,9 @@ class AskRequest(BaseModel):
     run_code: bool = True  # verified engine: execute Python checks in the sandbox
     guard: bool = True  # scan pasted answers for prompt injection (flag + warn only)
     debate_rounds: int = Field(1, ge=0, le=config.MAX_DEBATE_ROUNDS)  # simple engine only
+    reply_lang: str = Field("auto", pattern="^(auto|hinglish|english|hindi)$")
+    depth: str = Field("normal", pattern="^(simple|normal|detailed)$")
+    style: str = Field("auto", pattern="^(auto|solve|explain)$")  # auto: concept questions get a plain explanation
     debug: bool = False  # drafts, claims map, falsifier reports, proofs, model trace, usage
 
     @model_validator(mode="after")
@@ -111,6 +114,9 @@ async def ask(
             engine=req.engine,
             run_code=req.run_code,
             use_guard=req.guard,
+            reply_lang=req.reply_lang,
+            depth=req.depth,
+            style=req.style,
         )
     except RuntimeError as e:
         raise HTTPException(503, str(e))

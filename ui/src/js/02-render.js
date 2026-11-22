@@ -12,6 +12,11 @@ const head = (kind, title, extra) => h('div', { class: 'card-h' }, h('div', { cl
 const sec = (k, ...c) => h('div', { class: 'sec' }, k ? h('span', { class: 'k' }, k) : null, ...c);
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u || ''; } };
 
+/* reply.notes = { title, items: [{ title, text }] }: folded under the reply (falsifier findings). */
+const notesEl = (n) => h('details', { class: 'notes' },
+  h('summary', {}, icon('warn', 's'), (n.title || 'Notes') + ' · ' + n.items.length, h('span', { style: 'flex:1' }), icon('chev', 'chev')),
+  n.items.map(it => h('div', { class: 'note-item' }, it.title ? h('b', {}, it.title) : null, md(it.text || ''))));
+
 const RENDER = {
   text: (d) => md(d.text),
 

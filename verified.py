@@ -108,9 +108,19 @@ def format_proofs(results: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
-def lint_answer(answer: str, proofs: list[dict]) -> tuple[str, list[str]]:
+_TAG_RE = re.compile(r"\s*\[(?:PROVEN by code|REASONED|UNVERIFIED)\]", re.IGNORECASE)
+
+
+def lint_answer(answer: str, proofs: list[dict], style: str = "solve") -> tuple[str, list[str]]:
     """Deterministic contract check (no LLM). Keeps the 'verified' label honest."""
     warnings: list[str] = []
+    if style == "explain":
+        # Nothing was run as code for an explanation, so proof tags would only suggest certainty that is not there.
+        answer = _TAG_RE.sub("", answer)
+        missing = [s for s in ("Short answer", "Explanation", "Common mistake") if s.lower() not in answer.lower()]
+        if missing:
+            warnings.append("Final answer is missing section(s): " + ", ".join(missing))
+        return answer, warnings
     passed = sum(1 for p in proofs if p["status"] == "PASS")
     failed = sum(1 for p in proofs if p["status"] == "FAIL")
     if passed == 0 and re.search(r"\[PROVEN by code\]", answer, re.IGNORECASE):
@@ -126,6 +136,28 @@ def lint_answer(answer: str, proofs: list[dict]) -> tuple[str, list[str]]:
     if proofs and passed == 0 and failed == 0:
         warnings.append("No code check produced PASS or FAIL (errors, timeouts or rejected scripts).")
     return answer, warnings
+
+
+# What the reader sees under "Kahan galat ho sakta hai": the falsifiers' own words, minus the part meant for the
+# script-writer (section C, "what Python can test").
+_C_BLOCK = re.compile(r"(?ms)^[ \t>*#_]*C[.):][^\n]*\n.*?(?=^[ \t>*#_]*D[.):]|\Z)")
+
+
+def _trim(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    brk = max(cut.rfind("\n"), cut.rfind(". ") + 1)
+    return (cut[:brk] if brk > limit * 0.6 else cut).rstrip() + " …"
+
+
+def falsifier_notes(reports: dict[str, str], limit: int = 1100) -> list[dict]:
+    notes = []
+    for i, text in enumerate(reports.values(), 1):
+        t = _C_BLOCK.sub("", text).strip() or text.strip()
+        if t:
+            notes.append({"title": f"Checker {i}", "text": _trim(t, limit)})
+    return notes
 
 
 # ------------------------------------------------------------------ stages
@@ -196,11 +228,16 @@ async def verify_with_code(client, question, task, map_text, fals_text, errors) 
     ]
 
 
-async def _judge(client, question, map_text, fals_text, proofs_text, lang, errors) -> str | None:
+async def _judge(client, question, map_text, fals_text, proofs_text, lang, errors, style="solve") -> str | None:
+    messages = (
+        prompts.judge_explain_messages(question, map_text, fals_text, lang)
+        if style == "explain"
+        else prompts.judge_messages(question, map_text, fals_text, proofs_text, lang)
+    )
     try:  # SYNTHESIZER already carries its own fallback chain
         return await chat(
             client, config.SYNTHESIZER,
-            prompts.judge_messages(question, map_text, fals_text, proofs_text, lang),
+            messages,
             temperature=0.2, max_tokens=config.FINAL_MAX_TOKENS,
         )
     except LLMError as e:
@@ -210,8 +247,10 @@ async def _judge(client, question, map_text, fals_text, proofs_text, lang, error
 
 # ------------------------------------------------------------------ entry point
 
-async def run_verified(client, question, task, anon, lang, deep, run_code, errors, flagged=None):
-    """Returns (answer, extras). Never raises."""
+async def run_verified(
+    client, question, task, anon, lang, deep, run_code, errors, flagged=None, *, style="solve", judge_hint=None
+):
+    """Returns (answer, extras). Never raises. `lang` goes to the falsifiers, `judge_hint` (language + depth) to the judge."""
     config.emit("Drafts ko claims me tod raha hu")
     claim_map = await strip_to_claims(client, question, anon, flagged)
     if claim_map:
@@ -231,18 +270,18 @@ async def run_verified(client, question, task, anon, lang, deep, run_code, error
     )
 
     proofs: list[dict] = []
-    if run_code and task in config.VERIFY_TASKS:
+    if run_code and style == "solve" and task in config.VERIFY_TASKS:
         proofs = await verify_with_code(client, question, task, compact_text, fals_text, errors)
     proofs_text = format_proofs(proofs)
 
     warnings: list[str] = []
     config.emit("Final judge jawab likh raha hai")
-    answer = await _judge(client, question, full_text, fals_text, proofs_text, lang, errors)
+    answer = await _judge(client, question, full_text, fals_text, proofs_text, judge_hint or lang, errors, style)
     if answer is None:
         answer = max(anon.values(), key=len)
         warnings.append("Judge failed: returned the longest draft (unverified).")
     else:
-        answer, lint = lint_answer(answer, proofs)
+        answer, lint = lint_answer(answer, proofs, style)
         warnings += lint
 
     summary = {"total": len(proofs)}
@@ -252,6 +291,7 @@ async def run_verified(client, question, task, anon, lang, deep, run_code, error
             summary[s.lower()] = n
     extras = {
         "proofs_summary": summary,
+        "falsifier_notes": falsifier_notes(reports),
         "warnings": warnings,
         "debug": {
             "claims_map": claim_map,
