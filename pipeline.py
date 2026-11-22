@@ -187,6 +187,8 @@ async def run(
     rec = {"question": question, "deep": deep, "source": source, "depth": depth, "reply_lang": reply_lang} if record else None
     lang = _language_hint(question, reply_lang)  # language only (falsifiers, debaters)
     lang_full = (lang + " " + prompts.DEPTH_HINTS.get(depth, "")).strip()  # + depth (drafters, judge, synthesizer)
+    if config.LEARNER_PROFILE:  # + who the reader is (how to teach him); never goes to falsifiers / auditor
+        lang_full = f"{lang_full}\n{prompts.LEARNER_PROFILE}"
     rounds = max(0, min(debate_rounds, config.MAX_DEBATE_ROUNDS))
     errors: dict[str, str] = {}
     warnings: list[str] = []
