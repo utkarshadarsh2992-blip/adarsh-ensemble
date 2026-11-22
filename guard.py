@@ -57,17 +57,19 @@ def parse_score(content: str) -> float | None:
     return None
 
 
-async def _score_chunk(client, chunk: str) -> tuple[float | None, str]:
-    """Returns (score or None, detector) where detector is prompt-guard | llm-fallback | unavailable."""
+async def _score_chunk(client, chunk: str) -> tuple[float | None, str, str]:
+    """Returns (score or None, detector, why). detector is prompt-guard | llm-fallback | unavailable;
+    why = the reason the Groq guard could not answer (empty when it did)."""
     health.set_stage("guard")
+    why = ""
     try:
         out = await chat(
             client, config.GUARD, [{"role": "user", "content": chunk}],
             temperature=None, max_tokens=None, timeout=20, retries=0,
         )
-        return parse_score(out), "prompt-guard"
-    except LLMError:
-        pass
+        return parse_score(out), "prompt-guard", ""
+    except LLMError as e:
+        why = str(e)
     try:  # other provider: chunk is wrapped, never sent as a bare instruction
         out = await chat(
             client, config.GUARD_LLM,
@@ -77,9 +79,9 @@ async def _score_chunk(client, chunk: str) -> tuple[float | None, str]:
             ],
             temperature=0.0, max_tokens=300, timeout=30, retries=0,
         )
-        return parse_score(out), "llm-fallback"
-    except LLMError:
-        return None, "unavailable"
+        return parse_score(out), "llm-fallback", why
+    except LLMError as e:
+        return None, "unavailable", f"{why} | fallback LLM: {e}"
 
 
 async def scan(client, answers: dict[str, str]) -> dict:
@@ -96,16 +98,18 @@ async def scan(client, answers: dict[str, str]) -> dict:
 
     async def one(label: str, chunk: str):
         async with sem:
-            score, via = await _score_chunk(client, chunk)
-            return label, score, via
+            score, via, why = await _score_chunk(client, chunk)
+            return label, score, via, why
 
     report: dict[str, dict] = {}
-    for label, score, via in await asyncio.gather(*[one(l, c) for l, c in jobs]):
+    for label, score, via, why in await asyncio.gather(*[one(l, c) for l, c in jobs]):
         r = report.setdefault(
             label,
-            {"max_score": None, "flagged": False, "chunks": 0, "unparsed": 0, "unavailable": 0, "via": []},
+            {"max_score": None, "flagged": False, "chunks": 0, "unparsed": 0, "unavailable": 0, "via": [], "why": ""},
         )
         r["chunks"] += 1
+        if why and not r["why"]:
+            r["why"] = why[:600]  # first reason is enough: why the Groq guard did not answer
         if via not in r["via"]:
             r["via"].append(via)
         if via == "unavailable":
