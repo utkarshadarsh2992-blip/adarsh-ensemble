@@ -223,7 +223,8 @@ async def run(
                 )
             elif "llm-fallback" in g["via"]:
                 warnings.append(
-                    f"'{name}' was scanned by the weaker LLM fallback detector (Groq guard unavailable)."
+                    f"'{name}' was scanned by the weaker LLM fallback detector (Groq guard unavailable). "
+                    f"Reason: {g.get('why') or 'unknown'}"
                 )
 
         if master_mode:
