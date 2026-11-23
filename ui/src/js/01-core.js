@@ -16,7 +16,7 @@ const IC = {
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z', sliders: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M8 15v4',
   trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13', chat: 'M5 5h14v10H9l-4 4z', search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
   lock: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3', attach: 'M20 11l-8 8a5 5 0 0 1-7-7l8-8a3 3 0 0 1 4 4l-8 8a1 1 0 0 1-2-2l7-7',
-  file: 'M7 3h7l4 4v14H7zM14 3v4h4', image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01', star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+  file: 'M7 3h7l4 4v14H7zM14 3v4h4', image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01', video: 'M4 5h11v14H4zM15 10l5-3v10l-5-3z', star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
   bell: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4', shield: 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z',
   ask: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5M12 17v.2',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
@@ -93,7 +93,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();

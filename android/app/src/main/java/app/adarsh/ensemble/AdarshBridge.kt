@@ -107,7 +107,11 @@ class AdarshBridge(
 
     /** Voice typing (Android SpeechRecognizer; the WebView has no Web Speech API). Events come back via window.__adarshSpeech. */
     @JavascriptInterface
-    fun speechStart(lang: String) = MainActivity.speechStart(lang)
+    fun bnrSupported(): Boolean = MainActivity.bnrSupported()
+
+    @JavascriptInterface
+    fun speechStart(lang: String, useBnr: Boolean, functionId: String) =
+        MainActivity.speechStart(lang, useBnr, functionId, if (useBnr) keys.get("NVIDIA_API_KEY").orEmpty() else "")
 
     @JavascriptInterface
     fun speechStop() = MainActivity.speechStop()

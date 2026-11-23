@@ -6,6 +6,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.chaquo.python")
+    id("com.google.protobuf")
 }
 
 val repoRoot = rootDir.parentFile
@@ -83,6 +84,19 @@ chaquopy {
     }
 }
 
+protobuf {
+    protoc { artifact = "com.google.protobuf:protoc:3.25.5" }
+    plugins {
+        create("grpc") { artifact = "io.grpc:protoc-gen-grpc-java:1.67.1" }
+    }
+    generateProtoTasks {
+        all().configureEach {
+            builtins { id("java") { option("lite") } }
+            plugins { id("grpc") { option("lite") } }
+        }
+    }
+}
+
 // Offline neural voice runtime (sherpa-onnx, static onnxruntime; arm64 + x86_64 used). Downloaded once, not kept in git.
 val sherpaVersion = "1.12.40"
 val sherpaAar = file("libs/sherpa-onnx-$sherpaVersion.aar")
@@ -96,6 +110,11 @@ if (!sherpaAar.exists() || sherpaAar.length() < 1_000_000) {
 
 dependencies {
     implementation(files(sherpaAar))
+    implementation("io.grpc:grpc-okhttp:1.67.1")
+    implementation("io.grpc:grpc-protobuf-lite:1.67.1")
+    implementation("io.grpc:grpc-stub:1.67.1")
+    implementation("com.google.protobuf:protobuf-javalite:3.25.5")
+    compileOnly("javax.annotation:javax.annotation-api:1.3.2")
     implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")

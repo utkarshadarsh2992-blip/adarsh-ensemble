@@ -252,6 +252,8 @@ const App = (() => {
         return seg;
       };
       const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.05', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
+      const bnrSupported = !!(window.AdarshNative && window.AdarshNative.bnrSupported && window.AdarshNative.bnrSupported());
+      const bnrFunctionId = h('input', { type: 'text', value: S.settings.bnrFunctionId || '', placeholder: 'NVIDIA BNR Function ID', 'aria-label': 'NVIDIA BNR Function ID', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', on: { change: () => { S.settings.bnrFunctionId = bnrFunctionId.value.trim(); save(); } } });
       const pick = h('select', { 'aria-label': 'Natural voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit', on: { change: () => { S.settings.voiceName = pick.value; save(); TTS.speak('Namaste, main Adarsh hoon. Ye meri nayi awaaz hai.'); } } },
         TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Orus') === v) o.selected = true; return o; }));
       const status = h('p', { class: 'muted' });
@@ -293,6 +295,11 @@ const App = (() => {
         h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
         segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
         h('label', { class: 'l' }, 'Speaking speed'), rate,
+        bnrSupported ? h('div', { class: 'grp' },
+          swItem('mic', 'NVIDIA noise removal for voice typing', 'Optional; OFF by default. Foreground dictation only, not background voice. The installed recognizer may process cleaned audio online.', () => !!S.settings.bnr, v => { S.settings.bnr = v; }),
+          h('label', { class: 'l' }, 'NVIDIA BNR Function ID'), bnrFunctionId,
+          h('p', { class: 'muted' }, 'With the switch ON, the recorded utterance is sent to NVIDIA BNR, then cleaned audio goes to your installed Android speech recognizer, which may process it online. Audio is temporary and deleted after processing. Paste the BNR Function ID from NVIDIA Build; it is not a secret. The recognizer must support custom audio input.')
+        ) : (window.AdarshNative ? h('p', { class: 'muted' }, 'NVIDIA BNR voice typing needs Android 13 or later; normal Android dictation remains available.') : null),
         offlineBlock(),
         TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
           : h('p', {}, 'Is browser me speech output nahi hai.'),

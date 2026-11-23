@@ -123,7 +123,7 @@ const Chat = (() => {
     }
     wrap.append(renderReply(r, ctx));
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
-    if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
+    if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
   }
   function actionsEl(m, isLast) {
@@ -261,8 +261,62 @@ const Chat = (() => {
   function addSheet() {
     sheet({ title: 'Add', build(b, close) {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
-      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()), row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
+      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()),
+        row('sparkle', 'Generate image', 'NVIDIA FLUX 3 Image Klein', () => mediaPrompt('image')),
+        row('video', 'Generate video', 'NVIDIA Cosmos3 Nano · MP4', () => mediaPrompt('video')),
+        row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()),
+        row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
     } });
+  }
+  function mediaPrompt(kind) {
+    if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
+    const keys = window.AdarshKeys && window.AdarshKeys.status ? window.AdarshKeys.status() : {};
+    if (!(keys.NVIDIA_API_KEY && keys.NVIDIA_API_KEY.set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
+    sheet({ title: kind === 'image' ? 'Generate image' : 'Generate video', tall: true, build(b, close) {
+      const prompt = h('textarea', { rows: '4', maxlength: '2000', placeholder: kind === 'image' ? 'Describe the image…' : 'Describe the video…', 'aria-label': 'Generation prompt', style: 'width:100%;min-height:110px;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;resize:vertical' });
+      const frames = kind === 'video' ? h('select', { 'aria-label': 'Video duration', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit' },
+        [[25, 'About 1 second'], [49, 'About 2 seconds'], [73, 'About 3 seconds'], [121, 'About 5 seconds']].map(([v, label]) => h('option', { value: String(v), selected: v === 49 }, label))) : null;
+      const note = h('p', { class: 'muted' }, kind === 'image'
+        ? 'FLUX makes one 1024×1024 JPEG. NVIDIA API limits apply.'
+        : 'Cosmos3 makes a 480p, 24 fps MP4. It may take several minutes; the request can be stopped.');
+      const disclosure = h('p', { class: 'muted' }, 'Prompt NVIDIA ko bheja jayega; private info mat likho. Stop app request ko locally cancel karta hai, lekin NVIDIA ke accepted generation ya billing ko rokne ki guarantee nahi hai.');
+      const go = h('button', { class: 'btn pri', style: 'width:100%', on: { click: () => {
+        const text = prompt.value.trim();
+        if (!text) { toast('Prompt likho.'); prompt.focus(); return; }
+        close(); generateMedia(kind, text, frames ? Number(frames.value) : undefined);
+      } } }, kind === 'image' ? 'Generate image' : 'Generate video');
+      b.append(h('label', { class: 'l' }, 'Prompt'), prompt);
+      if (frames) b.append(h('label', { class: 'l' }, 'Duration'), frames);
+      b.append(note, disclosure, go);
+      setTimeout(() => { if (prompt.isConnected) prompt.focus(); }, 0);
+    } });
+  }
+  async function generateMedia(kind, prompt, frames) {
+    if (busy) return;
+    if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for media generation.');
+    if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
+    if (!App || App.view !== 'chat') App.show('chat');
+    const c = cur() || newChat();
+    const userText = (kind === 'image' ? 'Generate image: ' : 'Generate video: ') + prompt;
+    pushUser(c, { id: uid('m'), role: 'user', text: userText, ts: Date.now(), requestSource: 'media' });
+    busy = true; ctl = new AbortController();
+    const lv = Council.live(); thinkEl = lv.el; callRows = []; drawCalls();
+    sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread(); Bus.emit('busy', true);
+    try {
+      const media = { kind, prompt };
+      if (kind === 'video') media.frames = frames || 49;
+      const result = await Backend.send({ media }, { signal: ctl.signal, onProgress: s => lv.push(s) });
+      if (ctl.signal.aborted) return;
+      const r = normReply(result);
+      if (r.type !== 'text' && r.type !== kind) throw new Error('NVIDIA se expected media result nahi mila.');
+      deliver(c, r);
+    } catch (e) {
+      if (ctl.signal.aborted || e.name === 'AbortError') toast('App request stopped; NVIDIA may continue processing.');
+      else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'NVIDIA media request fail hua.') }); }
+    } finally {
+      busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save(); Bus.emit('busy', false);
+    }
   }
   function addFile(f) {
     if (f.size > 8 * 1024 * 1024) return toast(f.name + ' is over 8 MB');
@@ -281,12 +335,14 @@ const Chat = (() => {
   let dictating = false;
   function dictate() {
     if (dictating) { STT.stop(); return; }
+    const usingBnr = !!S.settings.bnr;
     if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for voice typing.');
     let base = ta.value;
     const ok = STT.start({
       onPartial: (t) => { ta.value = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); onInput(); },
       onFinal: (t) => { base = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); ta.value = base; onInput(); },
-      onEnd: () => { dictating = false; micBtn.classList.remove('live'); },
+      onState: (s) => { if (s && s.state === 'processing') { statusEl.lastChild.textContent = 'Cleaning audio…'; micBtn.setAttribute('aria-label', 'Cancel audio cleanup'); } },
+      onEnd: () => { dictating = false; micBtn.classList.remove('live'); micBtn.setAttribute('aria-label', 'Dictate'); if (usingBnr) Backend.refresh(); },
       onError: (msg) => toast(msg)
     });
     if (ok) { dictating = true; micBtn.classList.add('live'); } else toast('Voice typing isn’t supported in this browser. Use Voice mode’s typed input or your keyboard mic.');
@@ -296,7 +352,7 @@ const Chat = (() => {
   function stop() { if (ctl) ctl.abort(); }
   function histText(c = cur()) {
     const allowPersonal = Productivity.access().personalOnline && Productivity.access().localRead;
-    return (c ? c.msgs : []).filter(m => !m.localOnly && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
+    return (c ? c.msgs : []).filter(m => !m.localOnly && m.requestSource !== 'media' && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory', 'image', 'video'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
   }
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;

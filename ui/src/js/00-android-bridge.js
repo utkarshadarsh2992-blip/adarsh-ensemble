@@ -28,10 +28,11 @@
     const on = (k, f) => { L[k].push(f); return () => { L[k] = L[k].filter(x => x !== f); }; };
     window.__adarshSpeech = function (type, text) {
       if (type === 'started') { if (startWait) { startWait.res(); startWait = null; } return; }
-      if (type === 'error') { if (startWait) { startWait.rej({ code: text }); startWait = null; } else L.state.forEach(f => f({ state: 'idle', reason: 'error' })); return; }
+      if (type === 'error') { if (startWait) { startWait.rej({ code: text }); startWait = null; } else L.state.forEach(f => f({ state: 'idle', reason: 'error', message: text })); return; }
       if (startWait) { startWait.res(); startWait = null; }
       if (type === 'partial') L.partial.forEach(f => f({ text }));
       else if (type === 'final') L.final.forEach(f => f({ text }));
+      else if (type === 'processing') L.state.forEach(f => f({ state: 'processing', reason: 'processing' }));
       else if (type === 'state') L.state.forEach(f => f({ state: 'idle', reason: text }));
     };
     window.__adarshDictation = {
@@ -39,7 +40,7 @@
       start: () => new Promise((res, rej) => {
         startWait = { res, rej };
         setTimeout(() => { if (startWait) { startWait.rej({ code: 'timeout' }); startWait = null; } }, 15000);  // permission dialog counts
-        try { N.speechStart((window.S && S.settings && S.settings.lang) || 'en-IN'); } catch (e) { startWait = null; rej({ code: 'unavailable' }); }
+        try { N.speechStart((typeof S !== 'undefined' && S.settings && S.settings.lang) || 'en-IN', !!(typeof S !== 'undefined' && S.settings && S.settings.bnr), (typeof S !== 'undefined' && S.settings && S.settings.bnrFunctionId) || ''); } catch (e) { startWait = null; rej({ code: 'unavailable' }); }
       }),
       stop: () => { try { N.speechStop(); } catch (e) {} return Promise.resolve(); }
     };

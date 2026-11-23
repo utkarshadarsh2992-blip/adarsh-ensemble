@@ -23,6 +23,7 @@ def init(files_dir: str) -> str:
     os.environ["USAGE_FILE"] = os.path.join(files_dir, "usage.json")
     os.environ["LESSONS_FILE"] = os.path.join(files_dir, "lessons.json")
     os.environ["TTS_DIR"] = os.path.join(files_dir, "tts")  # natural-voice clips (MediaPlayer plays the file)
+    os.environ["GENERATED_MEDIA_DIR"] = os.path.join(files_dir, "generated_media")
     os.environ.setdefault("CHAT_MODE", "fast")  # phone default: fewer models, less quota
     _ready = True
     return "ok"
@@ -208,6 +209,23 @@ def handle(request_json: str, progress=None, request_id=None) -> str:
             return json.dumps({"type": "error", "error": "cancelled"})
         except Exception as e:
             return json.dumps({"type": "error", "error": _scrub(f"{type(e).__name__}: {e}")[:300]})
+
+    # Media generation is a separate NVIDIA endpoint; it never enters config/chat_adapter model routing.
+    if isinstance(body.get("media"), dict):
+        import nvidia_media
+        try:
+            if progress is not None:
+                progress.accept("NVIDIA media generate kar raha hai…")
+            limit = float(os.getenv("ANDROID_MEDIA_TIMEOUT_S", "780"))
+            return json.dumps(_run_cancellable(lambda: nvidia_media.generate(body["media"]), limit, request_id))
+        except asyncio.CancelledError:
+            return _text("Generation rok di gayi.")
+        except asyncio.TimeoutError:
+            return _text("NVIDIA generation timeout ho gayi. Duplicate request apne aap nahi bheji; prompt ko manually dobara try karo.")
+        except nvidia_media.MediaError as e:
+            return _text(str(e))
+        except Exception as e:
+            return _text(f"Media engine error ({type(e).__name__}): {_scrub(str(e))[:220]}")
 
     # Offline in-app commands and read-only self-knowledge must work even with zero model keys.
     import chat_adapter

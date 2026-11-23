@@ -20,6 +20,25 @@ const notesEl = (n) => h('details', { class: 'notes' },
 const RENDER = {
   text: (d) => md(d.text),
 
+  image: (d) => {
+    if (typeof d.mediaId !== 'string' || !/^[a-f0-9]{32}$/.test(d.mediaId)) return md('Generated image file is missing or invalid.');
+    const src = '/media/' + d.mediaId + '.jpg';
+    return h('div', { class: 'card generated-media' },
+      head('Generated image', null),
+      h('img', { src, alt: 'AI-generated image', loading: 'lazy', decoding: 'async' }),
+      d.prompt ? h('p', { class: 'muted' }, d.prompt) : null);
+  },
+
+  video: (d) => {
+    if (typeof d.mediaId !== 'string' || !/^[a-f0-9]{32}$/.test(d.mediaId)) return md('Generated video file is missing or invalid.');
+    const src = '/media/' + d.mediaId + '.mp4';
+    return h('div', { class: 'card generated-media' },
+      head('Generated video', null),
+      h('video', { src, controls: true, playsinline: true, preload: 'metadata' }, 'This device could not play the generated video.'),
+      h('a', { class: 'link', href: src, download: 'adarsh-cosmos3.mp4', rel: 'noopener' }, 'Open or download MP4'),
+      d.prompt ? h('p', { class: 'muted' }, d.prompt) : null);
+  },
+
   research: (d) => {
     const card = h('div', { class: 'card' });
     card.append(head('Research', d.question, d.confidence != null ? h('span', { class: 'chip' }, Math.round(d.confidence * 100) + '% confidence') : null));

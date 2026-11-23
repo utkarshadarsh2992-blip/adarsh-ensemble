@@ -160,14 +160,30 @@ const STT = {
   start(o) {
     if (this.dict) {
       const d = this.dict; const offs = [];
+      const errorText = code => ({
+        bnr_config: 'NVIDIA BNR ke liye NVIDIA API key aur BNR Function ID chahiye.',
+        bnr_unsupported: 'NVIDIA BNR voice typing ko Android 13 ya uske baad ka version chahiye.',
+        bnr_empty: 'Speech nahi mili. Dobara bolo ya BNR switch OFF karke normal dictation use karo.',
+        bnr_failed: 'NVIDIA BNR fail hua. Internet, API key aur Function ID check karo; normal dictation available hai.',
+        recognition_error: 'Phone ka recognition provider cleaned audio accept nahi kar saka. BNR-supported recognizer use karo ya setting OFF karo.',
+        not_granted: 'Microphone permission nahi mili.',
+        unavailable: 'Speech recognition is device par available nahi hai.'
+      })[code] || 'Voice typing failed. Please type instead.';
       offs.push(d.onPartial(e => o.onPartial && o.onPartial(e.text)));
       offs.push(d.onFinal(e => o.onFinal && o.onFinal(e.text)));
-      offs.push(d.onState(e => { if (e.state === 'idle') { offs.forEach(f => f()); this._stop = null; if (o.onEnd) o.onEnd(e.reason); } }));
+      offs.push(d.onState(e => {
+        if (o.onState) o.onState(e);
+        if (e.state === 'idle') {
+          if (e.message && o.onError) o.onError(errorText(e.message));
+          else if (e.reason === 'recognition_error' && o.onError) o.onError(errorText(e.reason));
+          offs.forEach(f => f()); this._stop = null; if (o.onEnd) o.onEnd(e.reason);
+        }
+      }));
       this._stop = () => d.stop().catch(() => {});
       d.start({}).catch(err => {
         if (err && err.code === 'stopped') return;
         offs.forEach(f => f()); this._stop = null;
-        if (o.onError) o.onError(err && err.code === 'not_granted' ? 'Microphone permission was declined.' : 'Voice typing failed. Please type instead.');
+        if (o.onError) o.onError(err && err.code === 'not_granted' ? 'Microphone permission was declined.' : errorText(err && err.code));
         if (o.onEnd) o.onEnd('error');
       });
       return true;

@@ -9,6 +9,7 @@ pluginManagement {
         id("com.android.application") version "8.7.3"
         id("org.jetbrains.kotlin.android") version "2.0.21"
         id("com.chaquo.python") version "16.1.0"
+        id("com.google.protobuf") version "0.9.4"
     }
 }
 dependencyResolutionManagement {

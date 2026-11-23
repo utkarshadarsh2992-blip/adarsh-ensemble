@@ -145,6 +145,16 @@ class MainActivity : AppCompatActivity() {
         val loader = WebViewAssetLoader.Builder()
             .setDomain(HOST)
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/media/", WebViewAssetLoader.PathHandler { path ->
+                val match = Regex("^([a-f0-9]{32})\\.(jpg|mp4)$").matchEntire(path) ?: return@PathHandler null
+                val file = java.io.File(filesDir, "engine/generated_media/${match.value}")
+                if (!file.isFile || file.length() <= 0L) {
+                    WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), null)
+                } else {
+                    val mime = if (match.groupValues[2] == "jpg") "image/jpeg" else "video/mp4"
+                    WebResourceResponse(mime, null, 200, "OK", mapOf("Content-Length" to file.length().toString()), file.inputStream())
+                }
+            })
             .build()
 
         with(web.settings) {
@@ -249,6 +259,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         resumed = false
+        // Runtime permission dialogs can pause the activity before BNR capture starts; that pending
+        // permission path is left alone. Active BNR capture/transcription is foreground-only.
+        dictation.cancelBnrForBackground()
         super.onPause()
     }
     override fun onSaveInstanceState(outState: Bundle) {
@@ -500,7 +513,10 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {}
         }
 
-        fun speechStart(lang: String) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.start(lang) } } }
+        fun bnrSupported(): Boolean = Build.VERSION.SDK_INT >= 33
+        fun speechStart(lang: String, useBnr: Boolean = false, functionId: String = "", apiKey: String = "") {
+            current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.start(lang, useBnr, functionId, apiKey) } }
+        }
         fun speechStop() { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.stop() } } }
 
         /** Dictation -> page. */

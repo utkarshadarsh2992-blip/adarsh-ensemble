@@ -716,10 +716,11 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
     const on = (k, f) => { L[k].push(f); return () => { L[k] = L[k].filter(x => x !== f); }; };
     window.__adarshSpeech = function (type, text) {
       if (type === 'started') { if (startWait) { startWait.res(); startWait = null; } return; }
-      if (type === 'error') { if (startWait) { startWait.rej({ code: text }); startWait = null; } else L.state.forEach(f => f({ state: 'idle', reason: 'error' })); return; }
+      if (type === 'error') { if (startWait) { startWait.rej({ code: text }); startWait = null; } else L.state.forEach(f => f({ state: 'idle', reason: 'error', message: text })); return; }
       if (startWait) { startWait.res(); startWait = null; }
       if (type === 'partial') L.partial.forEach(f => f({ text }));
       else if (type === 'final') L.final.forEach(f => f({ text }));
+      else if (type === 'processing') L.state.forEach(f => f({ state: 'processing', reason: 'processing' }));
       else if (type === 'state') L.state.forEach(f => f({ state: 'idle', reason: text }));
     };
     window.__adarshDictation = {
@@ -727,7 +728,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
       start: () => new Promise((res, rej) => {
         startWait = { res, rej };
         setTimeout(() => { if (startWait) { startWait.rej({ code: 'timeout' }); startWait = null; } }, 15000);  // permission dialog counts
-        try { N.speechStart((window.S && S.settings && S.settings.lang) || 'en-IN'); } catch (e) { startWait = null; rej({ code: 'unavailable' }); }
+        try { N.speechStart((typeof S !== 'undefined' && S.settings && S.settings.lang) || 'en-IN', !!(typeof S !== 'undefined' && S.settings && S.settings.bnr), (typeof S !== 'undefined' && S.settings && S.settings.bnrFunctionId) || ''); } catch (e) { startWait = null; rej({ code: 'unavailable' }); }
       }),
       stop: () => { try { N.speechStop(); } catch (e) {} return Promise.resolve(); }
     };
@@ -812,7 +813,7 @@ const IC = {
   bolt: 'M13 3L5 14h6l-1 7 8-11h-6z', sliders: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M8 15v4',
   trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13', chat: 'M5 5h14v10H9l-4 4z', search: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
   lock: 'M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3', attach: 'M20 11l-8 8a5 5 0 0 1-7-7l8-8a3 3 0 0 1 4 4l-8 8a1 1 0 0 1-2-2l7-7',
-  file: 'M7 3h7l4 4v14H7zM14 3v4h4', image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01', star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
+  file: 'M7 3h7l4 4v14H7zM14 3v4h4', image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01', video: 'M4 5h11v14H4zM15 10l5-3v10l-5-3z', star: 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z',
   bell: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4', shield: 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z',
   ask: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5M12 17v.2',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
@@ -889,7 +890,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -1201,6 +1202,25 @@ const notesEl = (n) => h('details', { class: 'notes' },
 
 const RENDER = {
   text: (d) => md(d.text),
+
+  image: (d) => {
+    if (typeof d.mediaId !== 'string' || !/^[a-f0-9]{32}$/.test(d.mediaId)) return md('Generated image file is missing or invalid.');
+    const src = '/media/' + d.mediaId + '.jpg';
+    return h('div', { class: 'card generated-media' },
+      head('Generated image', null),
+      h('img', { src, alt: 'AI-generated image', loading: 'lazy', decoding: 'async' }),
+      d.prompt ? h('p', { class: 'muted' }, d.prompt) : null);
+  },
+
+  video: (d) => {
+    if (typeof d.mediaId !== 'string' || !/^[a-f0-9]{32}$/.test(d.mediaId)) return md('Generated video file is missing or invalid.');
+    const src = '/media/' + d.mediaId + '.mp4';
+    return h('div', { class: 'card generated-media' },
+      head('Generated video', null),
+      h('video', { src, controls: true, playsinline: true, preload: 'metadata' }, 'This device could not play the generated video.'),
+      h('a', { class: 'link', href: src, download: 'adarsh-cosmos3.mp4', rel: 'noopener' }, 'Open or download MP4'),
+      d.prompt ? h('p', { class: 'muted' }, d.prompt) : null);
+  },
 
   research: (d) => {
     const card = h('div', { class: 'card' });
@@ -1980,7 +2000,7 @@ const Chat = (() => {
     }
     wrap.append(renderReply(r, ctx));
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
-    if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
+    if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
   }
   function actionsEl(m, isLast) {
@@ -2118,8 +2138,62 @@ const Chat = (() => {
   function addSheet() {
     sheet({ title: 'Add', build(b, close) {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
-      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()), row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()), row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
+      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()),
+        row('sparkle', 'Generate image', 'NVIDIA FLUX 3 Image Klein', () => mediaPrompt('image')),
+        row('video', 'Generate video', 'NVIDIA Cosmos3 Nano · MP4', () => mediaPrompt('video')),
+        row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()),
+        row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
     } });
+  }
+  function mediaPrompt(kind) {
+    if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
+    const keys = window.AdarshKeys && window.AdarshKeys.status ? window.AdarshKeys.status() : {};
+    if (!(keys.NVIDIA_API_KEY && keys.NVIDIA_API_KEY.set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
+    sheet({ title: kind === 'image' ? 'Generate image' : 'Generate video', tall: true, build(b, close) {
+      const prompt = h('textarea', { rows: '4', maxlength: '2000', placeholder: kind === 'image' ? 'Describe the image…' : 'Describe the video…', 'aria-label': 'Generation prompt', style: 'width:100%;min-height:110px;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;resize:vertical' });
+      const frames = kind === 'video' ? h('select', { 'aria-label': 'Video duration', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit' },
+        [[25, 'About 1 second'], [49, 'About 2 seconds'], [73, 'About 3 seconds'], [121, 'About 5 seconds']].map(([v, label]) => h('option', { value: String(v), selected: v === 49 }, label))) : null;
+      const note = h('p', { class: 'muted' }, kind === 'image'
+        ? 'FLUX makes one 1024×1024 JPEG. NVIDIA API limits apply.'
+        : 'Cosmos3 makes a 480p, 24 fps MP4. It may take several minutes; the request can be stopped.');
+      const disclosure = h('p', { class: 'muted' }, 'Prompt NVIDIA ko bheja jayega; private info mat likho. Stop app request ko locally cancel karta hai, lekin NVIDIA ke accepted generation ya billing ko rokne ki guarantee nahi hai.');
+      const go = h('button', { class: 'btn pri', style: 'width:100%', on: { click: () => {
+        const text = prompt.value.trim();
+        if (!text) { toast('Prompt likho.'); prompt.focus(); return; }
+        close(); generateMedia(kind, text, frames ? Number(frames.value) : undefined);
+      } } }, kind === 'image' ? 'Generate image' : 'Generate video');
+      b.append(h('label', { class: 'l' }, 'Prompt'), prompt);
+      if (frames) b.append(h('label', { class: 'l' }, 'Duration'), frames);
+      b.append(note, disclosure, go);
+      setTimeout(() => { if (prompt.isConnected) prompt.focus(); }, 0);
+    } });
+  }
+  async function generateMedia(kind, prompt, frames) {
+    if (busy) return;
+    if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for media generation.');
+    if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
+    if (!App || App.view !== 'chat') App.show('chat');
+    const c = cur() || newChat();
+    const userText = (kind === 'image' ? 'Generate image: ' : 'Generate video: ') + prompt;
+    pushUser(c, { id: uid('m'), role: 'user', text: userText, ts: Date.now(), requestSource: 'media' });
+    busy = true; ctl = new AbortController();
+    const lv = Council.live(); thinkEl = lv.el; callRows = []; drawCalls();
+    sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread(); Bus.emit('busy', true);
+    try {
+      const media = { kind, prompt };
+      if (kind === 'video') media.frames = frames || 49;
+      const result = await Backend.send({ media }, { signal: ctl.signal, onProgress: s => lv.push(s) });
+      if (ctl.signal.aborted) return;
+      const r = normReply(result);
+      if (r.type !== 'text' && r.type !== kind) throw new Error('NVIDIA se expected media result nahi mila.');
+      deliver(c, r);
+    } catch (e) {
+      if (ctl.signal.aborted || e.name === 'AbortError') toast('App request stopped; NVIDIA may continue processing.');
+      else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'NVIDIA media request fail hua.') }); }
+    } finally {
+      busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save(); Bus.emit('busy', false);
+    }
   }
   function addFile(f) {
     if (f.size > 8 * 1024 * 1024) return toast(f.name + ' is over 8 MB');
@@ -2138,12 +2212,14 @@ const Chat = (() => {
   let dictating = false;
   function dictate() {
     if (dictating) { STT.stop(); return; }
+    const usingBnr = !!S.settings.bnr;
     if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for voice typing.');
     let base = ta.value;
     const ok = STT.start({
       onPartial: (t) => { ta.value = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); onInput(); },
       onFinal: (t) => { base = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); ta.value = base; onInput(); },
-      onEnd: () => { dictating = false; micBtn.classList.remove('live'); },
+      onState: (s) => { if (s && s.state === 'processing') { statusEl.lastChild.textContent = 'Cleaning audio…'; micBtn.setAttribute('aria-label', 'Cancel audio cleanup'); } },
+      onEnd: () => { dictating = false; micBtn.classList.remove('live'); micBtn.setAttribute('aria-label', 'Dictate'); if (usingBnr) Backend.refresh(); },
       onError: (msg) => toast(msg)
     });
     if (ok) { dictating = true; micBtn.classList.add('live'); } else toast('Voice typing isn’t supported in this browser. Use Voice mode’s typed input or your keyboard mic.');
@@ -2153,7 +2229,7 @@ const Chat = (() => {
   function stop() { if (ctl) ctl.abort(); }
   function histText(c = cur()) {
     const allowPersonal = Productivity.access().personalOnline && Productivity.access().localRead;
-    return (c ? c.msgs : []).filter(m => !m.localOnly && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
+    return (c ? c.msgs : []).filter(m => !m.localOnly && m.requestSource !== 'media' && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory', 'image', 'video'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
   }
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
@@ -3207,6 +3283,8 @@ const App = (() => {
         return seg;
       };
       const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.05', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
+      const bnrSupported = !!(window.AdarshNative && window.AdarshNative.bnrSupported && window.AdarshNative.bnrSupported());
+      const bnrFunctionId = h('input', { type: 'text', value: S.settings.bnrFunctionId || '', placeholder: 'NVIDIA BNR Function ID', 'aria-label': 'NVIDIA BNR Function ID', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', on: { change: () => { S.settings.bnrFunctionId = bnrFunctionId.value.trim(); save(); } } });
       const pick = h('select', { 'aria-label': 'Natural voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit', on: { change: () => { S.settings.voiceName = pick.value; save(); TTS.speak('Namaste, main Adarsh hoon. Ye meri nayi awaaz hai.'); } } },
         TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Orus') === v) o.selected = true; return o; }));
       const status = h('p', { class: 'muted' });
@@ -3248,6 +3326,11 @@ const App = (() => {
         h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
         segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
         h('label', { class: 'l' }, 'Speaking speed'), rate,
+        bnrSupported ? h('div', { class: 'grp' },
+          swItem('mic', 'NVIDIA noise removal for voice typing', 'Optional; OFF by default. Foreground dictation only, not background voice. The installed recognizer may process cleaned audio online.', () => !!S.settings.bnr, v => { S.settings.bnr = v; }),
+          h('label', { class: 'l' }, 'NVIDIA BNR Function ID'), bnrFunctionId,
+          h('p', { class: 'muted' }, 'With the switch ON, the recorded utterance is sent to NVIDIA BNR, then cleaned audio goes to your installed Android speech recognizer, which may process it online. Audio is temporary and deleted after processing. Paste the BNR Function ID from NVIDIA Build; it is not a secret. The recognizer must support custom audio input.')
+        ) : (window.AdarshNative ? h('p', { class: 'muted' }, 'NVIDIA BNR voice typing needs Android 13 or later; normal Android dictation remains available.') : null),
         offlineBlock(),
         TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
           : h('p', {}, 'Is browser me speech output nahi hai.'),
@@ -3535,14 +3618,30 @@ const STT = {
   start(o) {
     if (this.dict) {
       const d = this.dict; const offs = [];
+      const errorText = code => ({
+        bnr_config: 'NVIDIA BNR ke liye NVIDIA API key aur BNR Function ID chahiye.',
+        bnr_unsupported: 'NVIDIA BNR voice typing ko Android 13 ya uske baad ka version chahiye.',
+        bnr_empty: 'Speech nahi mili. Dobara bolo ya BNR switch OFF karke normal dictation use karo.',
+        bnr_failed: 'NVIDIA BNR fail hua. Internet, API key aur Function ID check karo; normal dictation available hai.',
+        recognition_error: 'Phone ka recognition provider cleaned audio accept nahi kar saka. BNR-supported recognizer use karo ya setting OFF karo.',
+        not_granted: 'Microphone permission nahi mili.',
+        unavailable: 'Speech recognition is device par available nahi hai.'
+      })[code] || 'Voice typing failed. Please type instead.';
       offs.push(d.onPartial(e => o.onPartial && o.onPartial(e.text)));
       offs.push(d.onFinal(e => o.onFinal && o.onFinal(e.text)));
-      offs.push(d.onState(e => { if (e.state === 'idle') { offs.forEach(f => f()); this._stop = null; if (o.onEnd) o.onEnd(e.reason); } }));
+      offs.push(d.onState(e => {
+        if (o.onState) o.onState(e);
+        if (e.state === 'idle') {
+          if (e.message && o.onError) o.onError(errorText(e.message));
+          else if (e.reason === 'recognition_error' && o.onError) o.onError(errorText(e.reason));
+          offs.forEach(f => f()); this._stop = null; if (o.onEnd) o.onEnd(e.reason);
+        }
+      }));
       this._stop = () => d.stop().catch(() => {});
       d.start({}).catch(err => {
         if (err && err.code === 'stopped') return;
         offs.forEach(f => f()); this._stop = null;
-        if (o.onError) o.onError(err && err.code === 'not_granted' ? 'Microphone permission was declined.' : 'Voice typing failed. Please type instead.');
+        if (o.onError) o.onError(err && err.code === 'not_granted' ? 'Microphone permission was declined.' : errorText(err && err.code));
         if (o.onEnd) o.onEnd('error');
       });
       return true;
