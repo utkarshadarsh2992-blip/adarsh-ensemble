@@ -63,6 +63,11 @@ answers do not state is written as "Paste kiye answers me nahi hai.". Then: form
 letters removed, a grounding check by a different model family ("does a pasted answer support this?", not "is it true?"), one rewrite
 for unsupported / invented / mis-tagged statements (dropped if it loses sections). Auto and Hybrid do not use this path.
 `MASTER=0` / `GROUND=0` turn the engine / the grounding check off.
+Manual mode saves the Gemini / Groq free quotas: the master writer (and its repair / rewrite) starts on NVIDIA
+(`config.MASTER_WRITER`, mistral-large-4) and the grounding check on Cloudflare (`config.MASTER_AUDITOR`, gpt-oss-120b, the only
+Cloudflare ID confirmed in its docs). A missing key, a wrong ID (404) or a used-up quota moves the chain to Gemini / Groq by itself.
+The rewrite gets the language hint without the reader profile, and the grounding check sees shorter raw answers (the claims list
+covers the rest). Auto still uses `SYNTHESIZER` / `AUDITOR` unchanged.
 
 **Learning loop (`lessons.py`).** No model weights change. Rules are stored in a small JSON file and put into the next master prompt
 (top 8, the user's own first). Sources: (1) thumbs-down on a master answer asks "Kya galat tha?" and stores your line as a rule;

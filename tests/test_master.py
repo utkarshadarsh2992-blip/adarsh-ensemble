@@ -80,7 +80,7 @@ def ask(answers=ANSWERS, **kw):
 def test_master_uses_only_the_pasted_answers_and_no_panel_models(scripted):
     res = ask()
     assert res["engine"] == "master"
-    assert set(scripted["specs"]) <= {config.STRIPPER, config.SYNTHESIZER, config.AUDITOR}
+    assert set(scripted["specs"]) <= {config.STRIPPER, config.MASTER_WRITER, config.MASTER_AUDITOR}
     assert not any("Popperian" in u for u in scripted["users"])
     for s in H:
         assert f"### {s}" in res["answer"]
@@ -364,3 +364,75 @@ def test_freshness_note_is_in_panel_judges_falsifier_and_audit_prompts():
 def _arity(fn):
     import inspect
     return len(inspect.signature(fn).parameters)
+
+
+# ---------------------------------------------------------------- manual mode starts on NVIDIA / Cloudflare (saves Gemini + Groq)
+
+def test_manual_specs_start_on_nvidia_and_cloudflare_and_auto_specs_are_untouched():
+    assert config.MASTER_WRITER.provider == "nvidia" and config.MASTER_AUDITOR.provider == "cloudflare"
+    assert config.MASTER_WRITER.label != config.MASTER_AUDITOR.label
+    assert config.PLAN_PROBLEMS == []
+    assert (config.SYNTHESIZER.label, config.AUDITOR.label, config.JUDGE.label) == ("gemini-3.8-flash", "gpt-oss-120b", "gemini-3.8-flash")
+    assert config.SYNTHESIZER.fallbacks[0] == "nemotron-ultra"  # Auto chain as before
+
+
+def _fake_http(monkeypatch, calls, fail_models=()):
+    import llm
+
+    class R:
+        def __init__(s, code, content=""):
+            s.status_code, s.headers, s._c, s.text = code, {}, content, content
+
+        def json(s):
+            return {"choices": [{"message": {"content": s._c}, "finish_reason": "stop"}], "usage": {"total_tokens": 50}}
+
+    class C:
+        async def post(self, url, json=None, headers=None, timeout=None):
+            m = json["model"]
+            calls.append(m)
+            if m in fail_models:
+                return R(404, "no")
+            user = json["messages"][-1]["content"]
+            if "You are the master editor" in user:
+                return R(200, GOOD)
+            if "strict grounding checker" in json["messages"][0]["content"]:
+                return R(200, '{"issues": []}')
+            return R(200, '{"claims": {"A": ["a"], "B": ["b"]}, "consensus": ["a"], "conflicts": []}')
+
+    real = llm.chat
+
+    async def chat_with(client, spec, messages, **kw):
+        return await real(C(), spec, messages, **kw)
+
+    for mod in (pipeline, verified, master):
+        monkeypatch.setattr(mod, "chat", chat_with)
+
+
+def test_manual_run_writes_on_nvidia_and_checks_on_cloudflare(monkeypatch):
+    import health
+    health.reset(clear_usage=True)
+    for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "NVIDIA_API_KEY", "CLOUDFLARE_API_TOKEN"):
+        monkeypatch.setenv(k, "test-key-123456")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acc123")
+    calls = []
+    _fake_http(monkeypatch, calls)
+    res = ask()
+    assert res["engine"] == "master"
+    assert config.MASTER_WRITER.model in calls and config.MASTER_AUDITOR.model in calls
+    assert "gemini-3.8-flash" not in calls and "openai/gpt-oss-120b" not in calls  # Gemini big model / Groq untouched
+    health.reset(clear_usage=True)
+
+
+def test_wrong_nvidia_id_costs_one_call_then_gemini_writes(monkeypatch):
+    import health
+    health.reset(clear_usage=True)
+    for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "NVIDIA_API_KEY"):
+        monkeypatch.setenv(k, "test-key-123456")
+    monkeypatch.delenv("CLOUDFLARE_API_TOKEN", raising=False)  # not configured: skipped without any call
+    calls = []
+    _fake_http(monkeypatch, calls, fail_models=(config.MASTER_WRITER.model,))
+    res = ask()
+    assert "### Concept kya hai" in res["answer"]
+    assert calls.count(config.MASTER_WRITER.model) == 1 and "gemini-3.8-flash" in calls
+    assert "@cf/openai/gpt-oss-120b" not in calls
+    health.reset(clear_usage=True)

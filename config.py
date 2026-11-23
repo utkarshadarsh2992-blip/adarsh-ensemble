@@ -202,6 +202,12 @@ SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss
 # answer on a small token budget) comes late, gemini-3.8-flash last.
 AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"])
 
+# MANUAL MODE ONLY (master.py): the writer and the grounding check start on NVIDIA / Cloudflare so the Gemini and Groq
+# free quotas are kept for Auto. The two are different model families (Mistral vs gpt-oss), like judge vs auditor.
+# If a key is missing, an ID is wrong (404) or a quota is gone, the chain moves on to Gemini / Groq on its own.
+MASTER_WRITER = use("mistral-large-4", "synthesizer", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"])
+MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "gpt-oss-120b", "nemotron-lightning"])
+
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
 # images; the tts / live / translate / lyria / recraft / rerank models are not chat models.
 
@@ -219,7 +225,7 @@ def chain_of(spec: ModelSpec) -> list[ModelSpec]:
 def all_roles() -> list[tuple[str, ModelSpec]]:
     rows = [(f"panel:{s.role}", s) for s in PANEL]
     rows += [(f"falsifier{i + 1}", s) for i, s in enumerate(DEBATERS)]
-    for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "AUDITOR"):
+    for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "AUDITOR", "MASTER_WRITER", "MASTER_AUDITOR"):
         rows.append((name.lower(), globals()[name]))
     return rows
 

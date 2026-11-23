@@ -290,10 +290,11 @@ async def _judge(client, messages, errors) -> str | None:
         return None
 
 
-async def _repair(client, base_messages, answer, missing, attempt, errors) -> str | None:
+async def _repair(client, base_messages, answer, missing, attempt, errors, writer=None) -> str | None:
     """The judge dropped required headings. Show it its own answer and ask for the complete answer again.
     Attempt 2 starts on a different model, because the same one may keep making the same mistake."""
-    spec = config.SYNTHESIZER if attempt == 0 else config.rotated(config.SYNTHESIZER)
+    base = writer or config.SYNTHESIZER
+    spec = base if attempt == 0 else config.rotated(base)
     health.set_stage(f"repair{attempt + 1}")
     messages = base_messages + [
         {"role": "assistant", "content": answer},
@@ -376,10 +377,10 @@ async def audit_answer(client, question, answer, lang, errors) -> dict:
     return {"ran": True, "issues": issues}
 
 
-async def revise_answer(client, messages, errors) -> str | None:
+async def revise_answer(client, messages, errors, writer=None) -> str | None:
     health.set_stage("revise")
     try:
-        return await chat(client, config.SYNTHESIZER, messages, temperature=0.1, max_tokens=config.FINAL_MAX_TOKENS)
+        return await chat(client, writer or config.SYNTHESIZER, messages, temperature=0.1, max_tokens=config.FINAL_MAX_TOKENS)
     except LLMError as e:
         errors["reviser"] = str(e)
         return None

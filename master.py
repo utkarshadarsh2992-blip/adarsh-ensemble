@@ -33,6 +33,8 @@ SECTIONS = (
 NOT_IN = "Paste kiye answers me nahi hai."
 RAW_ANSWER_CAP = 4000   # per pasted answer shown to the writer (the claims list covers the whole text)
 RAW_TOTAL_CAP = 24000
+GROUND_ANSWER_CAP = 3500  # the grounding check also gets the claims list, which covers the whole text of each answer
+GROUND_TOTAL_CAP = 14000
 KINDS = ("unsupported", "invented_history", "misattributed", "contradiction", "repeat")
 
 _TAG = re.compile(r"\[\s*([A-Z](?:\s*[,/&]\s*[A-Z])*)\s*\]")
@@ -147,7 +149,7 @@ def ground_messages(question, anon, claims_text, master, lessons_block, language
     )
     user = (
         f"Question:\n{question}\n\n"
-        f"## Pasted answers\n{_answers_text(anon, 6000, 30000)}\n\n"
+        f"## Pasted answers\n{_answers_text(anon, GROUND_ANSWER_CAP, GROUND_TOTAL_CAP)}\n\n"
         f"## Atomic claims taken from each answer\n{claims_text}\n\n"
         f"## Master answer to check\n{master}\n\n{past}{prompts.UNTRUSTED}"
         "Check the master answer against the pasted answers ONLY. Report:\n"
@@ -199,7 +201,7 @@ def ground_revise_messages(question, anon, master, issues, language_hint) -> lis
 async def _write(client, messages, errors) -> str | None:
     health.set_stage("judge")  # shown as "Master writer" in the council view
     try:
-        return await chat(client, config.SYNTHESIZER, messages, temperature=0.2, max_tokens=config.FINAL_MAX_TOKENS)
+        return await chat(client, config.MASTER_WRITER, messages, temperature=0.2, max_tokens=config.FINAL_MAX_TOKENS)
     except LLMError as e:
         errors["master"] = str(e)
         return None
@@ -216,7 +218,7 @@ async def enforce(client, messages, answer, letters, errors, log):
         if not missing:
             break
         config.emit("Format theek kar raha hu: " + ", ".join(missing) + " section gayab tha")
-        fixed = await verified._repair(client, messages, answer, missing, repairs, errors)
+        fixed = await verified._repair(client, messages, answer, missing, repairs, errors, writer=config.MASTER_WRITER)
         log.append({"attempt": repairs + 1, "missing": list(missing), "before": answer, "after": fixed})
         repairs += 1
         if fixed:
@@ -236,7 +238,7 @@ async def ground_check(client, question, anon, claims_text, master, lessons_bloc
     health.set_stage("audit")
     try:
         out = await chat(
-            client, config.AUDITOR, ground_messages(question, anon, claims_text, master, lessons_block, lang),
+            client, config.MASTER_AUDITOR, ground_messages(question, anon, claims_text, master, lessons_block, lang),
             temperature=0.1, max_tokens=config.GROUND_MAX_TOKENS,
             timeout=config.GROUND_TIMEOUT_S, retries=0, budget=config.GROUND_BUDGET_S,  # optional check: fail fast, never take minutes
         )
@@ -337,9 +339,9 @@ async def run_master(client, question, anon, letter_to_name, lang, lang_full, er
             actionable = [i for i in issues if i["confidence"] in ("high", "medium")]
             if actionable:
                 config.emit("Bina source wali baatein hata raha hu")
-                rev = ground_revise_messages(question, anon, answer, actionable, lang_full)
+                rev = ground_revise_messages(question, anon, answer, actionable, lang)
                 audit_texts["before"] = answer
-                revised = await verified.revise_answer(client, rev, errors)
+                revised = await verified.revise_answer(client, rev, errors, writer=config.MASTER_WRITER)
                 if revised:
                     r_answer, r_w, r_kinds, r_repairs = await enforce(client, rev, revised, letters, errors, repair_log)
                     if not missing_sections(r_answer):  # never end up worse: a rewrite that lost sections is thrown away
