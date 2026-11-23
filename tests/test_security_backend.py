@@ -55,6 +55,7 @@ def test_auth_fails_closed_and_docs_are_disabled(monkeypatch):
     monkeypatch.setenv("APP_API_KEY", "test-secret")
     monkeypatch.setenv("ALLOW_ANONYMOUS", "0")
     monkeypatch.setenv("ENABLE_DOCS", "0")
+    pytest.importorskip("fastapi")
     main = importlib.import_module("main")
     main = importlib.reload(main)
     assert not main._authorized(None, None)
@@ -66,6 +67,7 @@ def test_auth_fails_closed_and_docs_are_disabled(monkeypatch):
 def test_chat_body_limit_is_checked_before_json_parsing(monkeypatch):
     monkeypatch.setenv("APP_API_KEY", "test-secret")
     monkeypatch.setenv("ALLOW_ANONYMOUS", "0")
+    pytest.importorskip("fastapi")
     main = importlib.import_module("main")
     main = importlib.reload(main)
     old = main.MAX_CHAT_BODY_BYTES
