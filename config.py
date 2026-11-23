@@ -196,7 +196,11 @@ JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", "mis
 SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
 # fact auditor: a DIFFERENT model family from the judge (Gemini) so they do not share blind spots. Its input is only the
 # question + final answer, so it fits Groq's 8K tokens/min.
-AUDITOR = use("gpt-oss-120b", "judge", ["nemotron-ultra", "gemini-3.8-flash", "qwen3.8-27b", "mistral-large-4"])
+# The same chain also runs the Manual-mode grounding check, whose input is BIG (pasted answers + claims + master answer):
+# the two Groq models are then skipped at once (8K tokens/min) and the Gemini lite models take over. They have their own
+# quota, unlike gemini-3.8-flash which has just written the answer. nemotron-ultra (slow reasoning model, often an empty
+# answer on a small token budget) comes late, gemini-3.8-flash last.
+AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"])
 
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
 # images; the tts / live / translate / lyria / recraft / rerank models are not chat models.
@@ -279,6 +283,9 @@ MASTER_ENABLED = os.getenv("MASTER", "1") == "1"
 LEARNER_PROFILE = os.getenv("LEARNER_PROFILE", "1") == "1"  # teach Utkarsh in his style (see prompts.LEARNER_PROFILE)
 GROUND_ENABLED = os.getenv("GROUND", "1") == "1"  # grounding check + rewrite of the master answer
 GROUND_MAX_ISSUES = 6
+GROUND_MAX_TOKENS = int(os.getenv("GROUND_MAX_TOKENS", "3000"))  # reasoning models spend part of it on thinking: 1800 was too little
+GROUND_TIMEOUT_S = float(os.getenv("GROUND_TIMEOUT_S", "60"))    # per model attempt (the check is optional: do not sit on it)
+GROUND_BUDGET_S = float(os.getenv("GROUND_BUDGET_S", "150"))     # total for the whole chain; then the answer is shown unchecked
 MAX_CHECKS = 4
 SANDBOX_TIMEOUT_S = int(os.getenv("SANDBOX_TIMEOUT_S", "10"))
 SANDBOX_MEM_MB = int(os.getenv("SANDBOX_MEM_MB", "1024"))
@@ -316,6 +323,23 @@ TPM_LIMIT = {
     "meta-llama/llama-prompt-guard-2-22m": 15000,
     "meta-llama/llama-prompt-guard-2-86m": 15000,
 }
+
+
+# Requests per minute we allow OURSELVES per quota key (see health.reserve_slot). 0 = no local cap, real 429s still fail over.
+# Set a little under the real limit. OpenRouter's 20 RPM is shared by all :free models together.
+OPENROUTER_RPM = int(os.getenv("OPENROUTER_RPM", "18"))
+GROQ_RPM = int(os.getenv("GROQ_RPM", "25"))      # real: 30 per model
+GEMINI_RPM = int(os.getenv("GEMINI_RPM", "9"))   # per model; the docs do not say: free tiers are often 10-15. If 429s remain, lower it
+NVIDIA_RPM = int(os.getenv("NVIDIA_RPM", "30"))  # free dev tier is about 40
+RPM_LIMIT = {"openai/gpt-oss-safeguard-20b": 3}  # per-model exceptions (Groq: safeguard is 3 RPM)
+RL_MAX_WAIT_S = float(os.getenv("RL_MAX_WAIT_S", "12"))        # wait this long for a free slot, else try the next model
+RL_ROUND_WAIT_S = float(os.getenv("RL_ROUND_WAIT_S", "45"))    # if EVERY model is only rate-limited, wait up to this long once
+
+
+def rpm_limit(spec: ModelSpec) -> int:
+    if spec.model in RPM_LIMIT:
+        return RPM_LIMIT[spec.model]
+    return {"openrouter": OPENROUTER_RPM, "groq": GROQ_RPM, "gemini": GEMINI_RPM, "nvidia": NVIDIA_RPM}.get(spec.provider, 0)
 
 
 def tpm_limit(spec: ModelSpec) -> int:
