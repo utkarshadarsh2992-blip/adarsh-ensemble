@@ -62,6 +62,10 @@ const TTS = (() => {
       if (nativeDev()) {
         const id = 'tts' + (++seq);
         job.waiting = { id, done };
+        if (N.ttsSetVoice && S.settings.deviceVoice !== devVoice) {   // the voice picked in Settings (blank = automatic)
+          devVoice = S.settings.deviceVoice || '';
+          try { N.ttsSetVoice(devVoice); } catch (e) {}
+        }
         try { N.ttsSpeak(id, text, S.settings.lang || 'en-IN', rate()); } catch (e) { job.waiting = null; done(false); }
         return;
       }
@@ -93,7 +97,7 @@ const TTS = (() => {
       } catch (e) { done(false); }
     });
   }
-  const fetchClip = (text, ms) => Backend.tts({ text, voice: S.settings.voiceName || 'Kore', lang: S.settings.lang }, ms)
+  const fetchClip = (text, ms) => Backend.tts({ text, voice: S.settings.voiceName || 'Orus', lang: S.settings.lang }, ms)
     .then(r => (r && r.type === 'audio' ? r : Promise.reject(new Error((r && r.error) || 'no audio'))));
   /* first sentence alone (so the voice starts fast), then the rest in one piece */
   function pieces(text) {
@@ -306,3 +310,4 @@ const Voice = (() => {
   });
   return { open, close, get isOpen() { return openFlag; } };
 })();
+  let devVoice = null;   // last phone voice pushed to Kotlin (S.settings.deviceVoice)

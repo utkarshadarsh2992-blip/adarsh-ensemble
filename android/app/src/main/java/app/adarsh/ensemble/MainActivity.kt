@@ -378,3 +378,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
+        /** Phone voices the user can choose from (Settings > Voice & language > Phone voice). */
+        fun ttsVoices(): String = onMain { current?.speaker?.voiceList() ?: "[]" }
+        fun ttsSetVoice(name: String) = ui { it.speaker?.wanted = name.ifBlank { null } }

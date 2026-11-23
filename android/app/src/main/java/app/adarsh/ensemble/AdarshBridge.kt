@@ -32,6 +32,11 @@ class AdarshBridge(
     fun ttsPlayFile(id: String, path: String, rate: Float) = MainActivity.ttsPlayFile(id, path, rate)
     @JavascriptInterface
     fun ttsStop() = MainActivity.ttsStop()
+    /** Phone voices (JSON) and the one the user picked; blank means pick automatically. */
+    @JavascriptInterface
+    fun ttsVoices(): String = MainActivity.ttsVoices()
+    @JavascriptInterface
+    fun ttsSetVoice(name: String) = MainActivity.ttsSetVoice(name)
 
     // V6 offline neural voice (Piper via sherpa-onnx): fallback below the natural voice, above the phone voice.
     @JavascriptInterface

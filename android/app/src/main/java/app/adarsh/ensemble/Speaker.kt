@@ -57,6 +57,36 @@ class Speaker(private val ctx: Context, private val emit: (String, String) -> Un
 
     fun available(): Boolean = ready
 
+    /** Voice name picked in Settings > Voice & language > Phone voice (blank = choose automatically). */
+    @Volatile var wanted: String? = null
+
+    /** Many engines put the gender in the voice name; the phone's default is usually female. */
+    private fun genderOf(name: String): String {
+        val n = name.lowercase()
+        return when {
+            n.contains("female") || n.contains("woman") -> "female"
+            n.contains("male") || n.contains("man") -> "male"
+            else -> ""
+        }
+    }
+
+    /** Installed voices for the languages this app speaks, so the user can pick one in Settings. */
+    fun voiceList(): String {
+        val arr = org.json.JSONArray()
+        if (!ready) return arr.toString()
+        val all = try { tts?.voices } catch (_: Exception) { null } ?: return arr.toString()
+        all.filter { !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+            .filter { it.locale.language == "hi" || it.locale.language == "en" }
+            .sortedWith(compareBy({ it.locale.language != "hi" }, { it.locale.country != "IN" }, { it.name }))
+            .forEach { v ->
+                arr.put(
+                    org.json.JSONObject().put("name", v.name).put("locale", v.locale.toLanguageTag())
+                        .put("network", v.isNetworkConnectionRequired).put("gender", genderOf(v.name))
+                )
+            }
+        return arr.toString()
+    }
+
     private fun end(id: String, type: String) {
         releaseFocus()
         emit(type, id)
@@ -73,13 +103,16 @@ class Speaker(private val ctx: Context, private val emit: (String, String) -> Un
     /** Best installed voice for this locale: not network-only when offline is likely, highest quality, lowest latency. */
     private fun pickVoice(loc: Locale): Voice? {
         val all = try { tts?.voices } catch (_: Exception) { null } ?: return null
-        val same = all.filter { it.locale.language == loc.language && !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+        val installed = all.filter { !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+        wanted?.let { w -> installed.firstOrNull { it.name == w }?.let { return it } }
+        val same = installed.filter { it.locale.language == loc.language }
         if (same.isEmpty()) return null
         return same.sortedWith(
-            compareByDescending<Voice> { it.locale.country == loc.country }
+            compareByDescending<Voice> { genderOf(it.name) != "female" }
+                .thenByDescending { it.locale.country == loc.country }
+                .thenBy { it.isNetworkConnectionRequired }
                 .thenByDescending { it.quality }
                 .thenBy { it.latency }
-                .thenBy { it.isNetworkConnectionRequired }
         ).first()
     }
 

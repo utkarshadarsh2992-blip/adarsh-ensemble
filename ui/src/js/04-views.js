@@ -174,7 +174,7 @@ const App = (() => {
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Kore') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -233,8 +233,31 @@ const App = (() => {
       };
       const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.05', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
       const pick = h('select', { 'aria-label': 'Natural voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit', on: { change: () => { S.settings.voiceName = pick.value; save(); TTS.speak('Namaste, main Adarsh hoon. Ye meri nayi awaaz hai.'); } } },
-        TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Kore') === v) o.selected = true; return o; }));
+        TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Orus') === v) o.selected = true; return o; }));
       const status = h('p', { class: 'muted' });
+      /* phone TTS voices come from the system engine: names are cryptic, so the gender is shown and each tap is spoken */
+      const devPick = (() => {
+        const A = window.AdarshNative;
+        if (!(A && A.ttsVoices)) return null;
+        let list = [];
+        try { list = JSON.parse(A.ttsVoices()) || []; } catch (e) { list = []; }
+        if (!list.length) return null;
+        const sel = h('select', { 'aria-label': 'Phone voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
+          on: { change: () => {
+            S.settings.deviceVoice = sel.value === '__auto' ? '' : sel.value; save();
+            try { A.ttsSetVoice(S.settings.deviceVoice || ''); } catch (e) {}
+            try { A.ttsSpeak('pv' + Date.now(), 'Namaste Sir, ye phone ki awaaz hai.', S.settings.lang, +S.settings.rate || 1); } catch (e) {}
+          } } },
+          h('option', { value: '__auto' }, 'Auto · best available (male preferred)'));
+        list.forEach(v => {
+          const o = h('option', { value: v.name }, v.name + (v.gender ? ' · ' + v.gender : '') + ' · ' + v.locale + (v.network ? ' · net' : ''));
+          if ((S.settings.deviceVoice || '') === v.name) o.selected = true;
+          sel.append(o);
+        });
+        if (!S.settings.deviceVoice) sel.value = '__auto';
+        return h('div', {}, h('label', { class: 'l' }, 'Phone voice'), sel,
+          h('p', { class: 'muted' }, 'Phone mode aur fallback ki awaaz. Female lag rahi ho to yahan se male choose karo — tap par sample bolega.'));
+      })();
       const note = () => {
         const n = Backend.canTts() && !Backend.isDemo();
         status.textContent = (n ? 'Natural voice: Gemini TTS (Gemini API key chahiye; free quota limited). ' : 'Natural voice is backend me nahi hai. ')
@@ -246,6 +269,7 @@ const App = (() => {
         segOf([['auto', 'Auto'], ['natural', 'Natural'], ['device', 'Phone']], () => S.settings.voiceEngine || 'auto', v => { S.settings.voiceEngine = v; }),
         h('p', { class: 'muted' }, 'Auto: natural (Gemini) awaaz, aur fail ho to phone ki voice. Phone: sirf device TTS, offline bhi chalta hai.'),
         h('label', { class: 'l' }, 'Natural voice'), pick,
+        devPick || null,
         h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
         segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
         h('label', { class: 'l' }, 'Speaking speed'), rate,
