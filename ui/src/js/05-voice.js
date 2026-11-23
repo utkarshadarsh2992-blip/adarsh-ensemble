@@ -210,9 +210,10 @@ const Voice = (() => {
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
     el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, 'VOICE · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, BackgroundVoice.supported() ? h('button', { class: 'chipbtn', on: { click: () => BackgroundVoice.open() } }, 'Outside app') : null), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
   function open() {
+    if (BackgroundVoice.active()) return BackgroundVoice.open();
     if (openFlag) return; session++; openFlag = true; build(); el.hidden = false; setState('idle');
     caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);

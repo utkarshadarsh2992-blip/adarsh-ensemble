@@ -93,7 +93,7 @@ function makeHarness({ route, storage, native = false, nativeOverrides = {} } = 
   for (const { relative, source } of sourceList()) {
     new vm.Script(source, { filename: path.join(UI, 'src', relative) }).runInContext(context);
   }
-  new vm.Script('globalThis.TEST = { S, App, Chat, Actions, Productivity, Voice, STT, TTS, Modes, Bus, load, saveNow, speechOf };', { filename: 'test-hooks.js' }).runInContext(context);
+  new vm.Script('globalThis.TEST = { S, App, Chat, Actions, Productivity, Voice, STT, TTS, Modes, Bus, MobileUpdates, BackgroundVoice, load, saveNow, speechOf };', { filename: 'test-hooks.js' }).runInContext(context);
 
   const api = {
     dom,
@@ -631,4 +631,127 @@ test('safe-setting rule values execute end-to-end and successful local plans hav
   await app.Chat.submit('settings haptics off'); assert.equal(app.S.settings.haptics, false);
   await app.Chat.submit('task add karo no duplicate'); assert.equal(app.S.tasks.length, 1);
   assert.equal(app.document.querySelector('#v-chat button[aria-label="Retry"]'), null);
+});
+
+
+test('updater checks on boot but only explicit buttons download and invoke the installer', async t => {
+  const calls = []; let update = { ok: true, state: 'current', installedVersion: '1.0.1' };
+  const app = makeHarness({ native: true, nativeOverrides: {
+    updateStatus: () => JSON.stringify(update),
+    updateCheck: force => { calls.push(['check', force]); return JSON.stringify(update); },
+    updateDownload: () => { calls.push(['download']); update = { ...update, state: 'downloading', progress: 0 }; return JSON.stringify(update); },
+    updateInstall: () => { calls.push(['install']); return JSON.stringify({ ...update, state: 'permission_required' }); }
+  } }); t.after(() => app.close());
+  assert.deepEqual(calls, [['check', false]]);
+  app.App.show('settings'); await clickButton(app.document, 'App updates');
+  await clickButton(app.document.querySelector('.shade'), 'Check for updates');
+  assert.deepEqual(calls.at(-1), ['check', true]);
+  app.window.__adarshUpdate({ ok: true, state: 'available', versionCode: 2, versionName: '1.0.2', notes: '<script>never execute</script>' });
+  assert.equal(calls.some(x => x[0] === 'download'), false);
+  const shade = app.document.querySelector('.shade'); await clickButton(shade, 'Update now');
+  assert.equal(calls.filter(x => x[0] === 'download').length, 1);
+  app.window.__adarshUpdate({ ok: true, state: 'ready', versionCode: 2 });
+  assert.equal(calls.some(x => x[0] === 'install'), false);
+  await clickButton(shade, 'Install update'); assert.equal(calls.filter(x => x[0] === 'install').length, 1);
+});
+
+test('background voice is off at boot, rejects Manual without switching, and snapshots selected mode without credentials', async t => {
+  const starts = []; let status = { ok: true, active: false, state: 'stopped' };
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => JSON.stringify(status), backgroundVoicePeek: () => '[]',
+    backgroundVoiceStart: raw => { const config = JSON.parse(raw); starts.push(config); status = { ok: true, active: true, state: 'listening', mode: config.mode }; return JSON.stringify(status); },
+    backgroundVoiceStop: () => { status = { ok: true, active: false, state: 'stopped' }; return JSON.stringify(status); }, backgroundVoiceAck: () => '{"ok":true}'
+  } }); t.after(() => app.close());
+  assert.equal(starts.length, 0); app.S.settings.source = 'manual'; app.BackgroundVoice.start();
+  assert.equal(starts.length, 0); assert.equal(app.S.settings.source, 'manual');
+  app.S.settings.source = 'auto'; app.S.conn.token = 'PRIVATE_TOKEN'; app.S.lock = null;
+  app.Modes.set('physics'); app.BackgroundVoice.start();
+  assert.equal(starts.length, 1); assert.equal(starts[0].mode, 'physics'); assert.equal(starts[0].source, 'auto');
+  assert.equal(JSON.stringify(starts[0]).includes('PRIVATE_TOKEN'), false);
+  assert.equal(starts[0].access.personalOnline, false);
+  app.Modes.set('coding'); assert.equal(app.BackgroundVoice.active(), false);
+  app.BackgroundVoice.start(); app.App.show('settings'); assert.equal(app.BackgroundVoice.active(), false);
+});
+
+test('background inbox persists once, preserves mode/localOnly and never executes already completed actions', async t => {
+  const actions = [], acks = []; let rows = [];
+  const app = makeHarness({ native: true, nativeOverrides: {
+    recordsList: () => '{"ok":true,"records":[]}', backgroundVoiceStatus: () => '{"active":false,"state":"stopped"}',
+    backgroundVoiceStart: () => '{"ok":true,"active":true}', backgroundVoiceStop: () => '{"ok":true,"active":false}',
+    backgroundVoicePeek: () => JSON.stringify(rows), backgroundVoiceAck: raw => { acks.push(JSON.parse(raw)); return '{"ok":true}'; },
+    runActions: raw => { actions.push(raw); return '{"results":[]}'; }
+  } }); t.after(() => app.close());
+  rows = [{ id: 'turn1', chatId: 'voice-chat', text: 'task add private', mode: 'standard', ts: Date.now(), localOnly: true,
+    reply: { ...plan([step('s1', 'task.add', { title: 'private' })]), run: { state: 'done', results: { s1: { id: 's1', ok: true, message: 'saved' } } } } }];
+  app.BackgroundVoice.sync(); app.BackgroundVoice.sync();
+  assert.equal(actions.length, 0); assert.equal(app.S.chats[0].msgs.length, 2); assert.equal(acks.length, 2);
+  assert.equal(app.S.chats[0].msgs[0].localOnly, true);
+  assert.equal(app.S.chats[0].msgs[1].reply.uiMode, 'standard');
+  assert.equal(JSON.stringify(app.Chat.history(app.S.chats[0])), '[]');
+  assert.equal(JSON.parse(app.window.localStorage.getItem(STORAGE_KEY)).chats[0].msgs.length, 2);
+});
+
+test('background inbox remains unacknowledged on failed browser persistence', async t => {
+  const acks = []; let rows = [];
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => '{"active":false}', backgroundVoiceStart: () => '{"ok":true}', backgroundVoiceStop: () => '{"ok":true,"active":false}',
+    backgroundVoicePeek: () => JSON.stringify(rows), backgroundVoiceAck: raw => { acks.push(raw); return '{"ok":true}'; }
+  } }); t.after(() => app.close());
+  rows = [{ id: 'pending', chatId: 'v', text: 'question', mode: 'coding', reply: { type: 'text', text: 'answer' } }];
+  const prototype = Object.getPrototypeOf(app.window.localStorage), original = prototype.setItem;
+  prototype.setItem = () => { throw new Error('quota full'); };
+  app.BackgroundVoice.sync(); assert.equal(acks.length, 0);
+  prototype.setItem = original; app.BackgroundVoice.sync(); assert.equal(acks.length, 1);
+  assert.equal(app.S.chats.find(c => c.id === 'v').msgs.length, 2);
+});
+
+test('background reply events preserve active state and permission starts remain cancellable on source changes', async t => {
+  let stops = 0, rows = [], status = { ok: true, active: false, state: 'inactive' };
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => JSON.stringify(status),
+    backgroundVoiceStart: () => { status = { ok: true, active: false, state: 'permission_required' }; return JSON.stringify(status); },
+    backgroundVoiceStop: () => { stops++; return '{"ok":true,"active":false,"state":"stopped"}'; },
+    backgroundVoicePeek: () => JSON.stringify(rows), backgroundVoiceAck: () => '{"ok":true}'
+  } }); t.after(() => app.close());
+  app.BackgroundVoice.start(); assert.equal(app.BackgroundVoice.active(), true);
+  app.BackgroundVoice.open(); assert.ok(button(app.document.querySelector('.shade'), 'Stop background voice'));
+  await clickButton(app.document.querySelector('.shade'), 'Close controls');
+  app.Chat.sourceSheet(); await clickButton(app.document.querySelector('.shade'), 'Manual');
+  assert.equal(stops, 1); assert.equal(app.BackgroundVoice.active(), false); assert.equal(app.S.settings.source, 'manual');
+  await clickButton(app.document.querySelector('.shade'), 'Done');
+  app.window.__adarshBackgroundVoice({ ok: true, active: true, state: 'listening', mode: 'coding' });
+  rows = [{ id: 'reply-event', chatId: 'current', text: 'query', mode: 'coding', reply: { type: 'text', text: 'answer' } }];
+  app.window.__adarshBackgroundVoice({ type: 'reply', record: rows[0] });
+  assert.equal(app.BackgroundVoice.active(), true); assert.equal(app.BackgroundVoice.status().mode, 'coding');
+  assert.equal(app.S.chats.find(c => c.id === 'current').msgs.length, 2);
+  app.BackgroundVoice.stop(); assert.equal(app.BackgroundVoice.active(), false);
+});
+
+test('native background errors are visible and voice typing stops a competing session', async t => {
+  let stops = 0;
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => '{"active":false}', backgroundVoicePeek: () => '[]',
+    backgroundVoiceStart: () => '{"ok":false,"error":"Enable notifications before starting background voice"}',
+    backgroundVoiceStop: () => { stops++; return '{"ok":true,"active":false,"state":"stopped"}'; }
+  } }); t.after(() => app.close());
+  app.BackgroundVoice.open(); await clickButton(app.document.querySelector('.shade'), 'Start background voice');
+  assert.equal(app.BackgroundVoice.active(), false);
+  assert.match(textOf(app.document.querySelector('.shade')), /Enable notifications/);
+  await clickButton(app.document.querySelector('.shade'), 'Close controls');
+  app.window.__adarshBackgroundVoice({ active: true, state: 'listening' });
+  await clickButton(app.document, 'Dictate'); assert.equal(stops, 1); assert.equal(app.BackgroundVoice.active(), false);
+});
+
+test('one foreground sync imports the complete bounded native inbox in acknowledged batches', async t => {
+  let rows = [], ackCount = 0;
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => '{"active":false}', backgroundVoiceStart: () => '{"ok":true}', backgroundVoiceStop: () => '{"active":false}',
+    backgroundVoicePeek: () => JSON.stringify(rows), backgroundVoiceAck: raw => {
+      const ids = JSON.parse(raw); rows = rows.filter(r => !ids.includes(r.id)); ackCount++; return '{"ok":true}';
+    }
+  } }); t.after(() => app.close());
+  rows = Array.from({ length: 64 }, (_, i) => ({ id: 'batch-' + i, chatId: 'batch-chat', text: 'q' + i, mode: 'standard', reply: { type: 'text', text: 'a' + i } }));
+  app.BackgroundVoice.sync(); await settle(20);
+  assert.equal(rows.length, 0); assert.equal(ackCount, 2);
+  assert.equal(app.S.chats.find(c => c.id === 'batch-chat').msgs.length, 128);
 });

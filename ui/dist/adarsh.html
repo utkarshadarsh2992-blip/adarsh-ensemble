@@ -907,7 +907,8 @@ function save() { clearTimeout(_st); _st = setTimeout(saveNow, 250); }
 function saveNow() {
   try {
     localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' || k === '_ctx' ? undefined : v)));
-  } catch (e) { console.warn('save failed', e); }
+    return true;
+  } catch (e) { console.warn('save failed', e); return false; }
 }
 window.addEventListener('pagehide', saveNow);
 
@@ -2080,6 +2081,7 @@ const Chat = (() => {
         host.textContent = '';
         const mode = srcMode();
         host.append(h('div', { class: 'seg' }, Object.keys(SRC).map(k => h('button', { 'aria-pressed': String(mode === k), on: { click: () => {
+          if (k !== mode && BackgroundVoice.active()) BackgroundVoice.stop('Answer source changed. Restart background voice explicitly.');
           S.settings.source = k; save();
           if (k !== 'auto' && !pasted.length) pasted.push({ source: '', text: '' });
           drawAtts(); draw();
@@ -2136,6 +2138,7 @@ const Chat = (() => {
   let dictating = false;
   function dictate() {
     if (dictating) { STT.stop(); return; }
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for voice typing.');
     let base = ta.value;
     const ok = STT.start({
       onPartial: (t) => { ta.value = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); onInput(); },
@@ -2155,6 +2158,7 @@ const Chat = (() => {
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for chat.');
     if (!meta && App.view !== 'chat') App.show('chat');
     const source = srcMode(), modeId = Modes.current().id;
     const answers = source !== 'auto' ? validAnswers() : [];
@@ -2263,8 +2267,29 @@ const Chat = (() => {
     } catch (e) { toast('Mission update failed'); }
   }
 
+  function importBackground(rows) {
+    const ids = [];
+    rows.slice(0, 40).forEach(row => {
+      if (!row || typeof row.id !== 'string' || typeof row.chatId !== 'string' || typeof row.text !== 'string' || !row.reply) return;
+      if (S.chats.some(c => c.msgs.some(m => m.backgroundId === row.id))) { ids.push(row.id); return; }
+      let c = S.chats.find(x => x.id === row.chatId);
+      if (!c) { c = { id: row.chatId, title: row.text.slice(0, 42) || 'Background voice', ts: row.ts || Date.now(), msgs: [] }; S.chats.unshift(c); if (!S.cur) S.cur = c.id; }
+      if (!c.msgs.length) c.title = row.text.slice(0, 42) || 'Background voice';
+      c.msgs.push({ id: 'bg-u-' + row.id, backgroundId: row.id, role: 'user', text: row.text, ts: row.ts || Date.now(), requestSource: 'auto', localOnly: !!row.localOnly, personalContext: !!row.personalContext });
+      (Array.isArray(row.reply) ? row.reply : [row.reply]).filter(Boolean).forEach(value => {
+        const r = normReply(value); r.uiMode = row.mode || 'standard'; r.personalContext = !!row.personalContext;
+        // Native session already resolved its safe steps. Rendering/import never executes them again.
+        c.msgs.push({ id: uid('bg-a'), role: 'ai', ts: row.ts || Date.now(), reply: r, personalContext: !!row.personalContext });
+      });
+      c.ts = row.ts || Date.now(); ids.push(row.id);
+    });
+    if (ids.length) { Bus.emit('chats:changed'); renderThread(); }
+    return ids;
+  }
+
   return {
     mount, renderThread, newChat, open, remove, cur, submit, sourceSheet,
+    history: histText, importBackground,
     setDraft(t) { ta.value = t; onInput(); ta.focus(); }, addFile, isBusy: () => busy,
     push(r, { chatId } = {}) { const c = (chatId && S.chats.find(x => x.id === chatId)) || newChat(); deliver(c, normReply(r)); save(); Bus.emit('chats:changed'); renderThread(); }
   };
@@ -2958,6 +2983,7 @@ const App = (() => {
   }
   function show(name) {
     view = name; $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + name));
+    if (name === 'settings' && BackgroundVoice.active()) BackgroundVoice.stop('Settings opened. Restart background voice after changes.');
     drawer(false); if (name !== 'chat') build(name); else Chat.renderThread();
     drawerList();
   }
@@ -3079,7 +3105,7 @@ const App = (() => {
   /* ================= Settings ================= */
   const swItem = (ic, title, sub, get, set) => h('button', { class: 'item', role: 'switch', 'aria-checked': String(!!get()), on: { click: (e) => { set(!get()); save(); e.currentTarget.setAttribute('aria-checked', String(!!get())); } } },
     icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), h('span', { class: 'sw' }));
-  const navItem = (ic, title, sub, fn) => h('button', { class: 'item', on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
+  const navItem = (ic, title, sub, fn) => h('button', { class: 'item', 'aria-label': title, on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
   BUILD.settings = (st, redraw) => {
     const label = (t) => h('div', { class: 'glabel' }, t);
     st.append(h('button', { class: 'prof', on: { click: nameSheet } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()), h('span', { class: 't' }, h('b', {}, S.settings.name || 'Adarsh'), h('small', {}, 'Personal · private to this device')), icon('chev', 'chev')));
@@ -3092,6 +3118,9 @@ const App = (() => {
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+    st.append(label('Android'), h('div', { class: 'grp' },
+      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open()),
+      navItem('voice', 'Background live voice', 'Explicit Start · continue outside app · notification Stop', () => BackgroundVoice.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -3556,9 +3585,10 @@ const Voice = (() => {
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
     el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, 'VOICE · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, BackgroundVoice.supported() ? h('button', { class: 'chipbtn', on: { click: () => BackgroundVoice.open() } }, 'Outside app') : null), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
   function open() {
+    if (BackgroundVoice.active()) return BackgroundVoice.open();
     if (openFlag) return; session++; openFlag = true; build(); el.hidden = false; setState('idle');
     caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
@@ -3840,11 +3870,11 @@ const Lock = (() => {
 
   /* ----- full-screen lock ----- */
   function lockNow() {
-    if (!S.lock) return; Voice.close(); const root = $('#lock'); root.textContent = ''; root.hidden = false;
+    if (!S.lock) return; BackgroundVoice.stop(); Voice.close(); const root = $('#lock'); root.textContent = ''; root.hidden = false;
     const msg = h('p', { class: 'lk-msg', role: 'status' }, 'Enter your PIN');
     const pad = pinPad(S.lock.len || 4, async (pin, p) => {
       if (Date.now() < until) { p.shake(); msg.textContent = 'Too many tries. Wait ' + Math.ceil((until - Date.now()) / 1000) + 's.'; return; }
-      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; return; }
+      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; Bus.emit('lock:unlocked'); return; }
       fails++; p.shake(); vibe(30);
       if (fails >= 5) { until = Date.now() + 30000; fails = 0; msg.textContent = 'Too many tries. Locked for 30 s.'; } else msg.textContent = 'Wrong PIN. ' + (5 - fails) + ' tries left.';
     });
@@ -4083,6 +4113,143 @@ const Backend = (() => {
 })();
 
 'use strict';
+/* Android-only updates and explicit outside-app voice. No credentials are sent to GitHub. */
+const MobileUpdates = (() => {
+  let state = { state: 'idle' }, redraw = null;
+  const announced = new Set();
+  const native = () => window.AdarshNative;
+  const supported = () => !!(native() && native().updateCheck);
+  function apply(value) {
+    if (!value || typeof value !== 'object') return state;
+    state = value;
+    if (redraw) redraw();
+    if (state.state === 'available' && state.versionCode && !announced.has(state.versionCode) && !document.hidden && $('#lock').hidden) {
+      announced.add(state.versionCode);
+      banner({ title: 'ADARSH update available', text: String(state.versionName || '') + ' · verified APK download', label: 'Update now', onOpen: open, ms: 0 });
+    }
+    return state;
+  }
+  function call(method, ...args) {
+    try { return apply(JSON.parse(native()[method](...args))); }
+    catch (e) { return apply({ ok: false, state: 'error', message: 'Update check nahi hua. Internet aur GitHub availability check karo.' }); }
+  }
+  function check(force = true) { if (supported()) return call('updateCheck', !!force); }
+  function open() {
+    if (!supported()) return toast('App updates Android APK mein available hain.');
+    const close = sheet({ title: 'App updates', tall: true, build(b) {
+      const draw = () => {
+        b.textContent = '';
+        b.append(h('p', {}, 'Installed: ' + String(state.installedVersion || 'ADARSH')), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Ready')));
+        if (state.versionName) b.append(h('p', {}, 'Published version: ' + state.versionName));
+        if (state.notes) b.append(h('pre', { style: 'white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px' }, String(state.notes).slice(0, 3000)));
+        if (state.state === 'downloading') b.append(h('p', {}, 'Download: ' + Math.max(0, Math.min(100, Number(state.progress) || 0)) + '%'));
+        const running = ['checking', 'downloading'].includes(state.state);
+        b.append(h('button', { class: 'btn ghost', disabled: running, on: { click: () => check(true) } }, 'Check for updates'));
+        if (state.state === 'available') b.append(h('button', { class: 'btn pri', on: { click: () => { BackgroundVoice.stop(); Voice.close(); TTS.stop(); call('updateDownload'); } } }, 'Update now'));
+        if (['ready', 'permission_required'].includes(state.state)) b.append(h('button', { class: 'btn pri', on: { click: () => { BackgroundVoice.stop(); call('updateInstall'); } } }, 'Install update'));
+        b.append(h('p', { class: 'muted' }, 'Only successful published builds. APK hash, package, version and signing identity are checked. Android asks before installation; if permission is needed, allow it and tap Install update again. No uninstall or automatic installation.'), h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Later'));
+      };
+      redraw = draw; draw();
+      const observer = new MutationObserver(() => { if (!b.isConnected) { observer.disconnect(); if (redraw === draw) redraw = null; } });
+      observer.observe($('#phone'), { childList: true });
+    } });
+  }
+  window.__adarshUpdate = apply;
+  function init() {
+    if (!supported()) return;
+    call('updateStatus'); check(false);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('updateStatus'); check(false); } });
+  }
+  return { init, open, check, supported, status: () => state };
+})();
+
+const BackgroundVoice = (() => {
+  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false;
+  const N = () => window.AdarshNative;
+  const supported = () => !!(N() && N().backgroundVoiceStart);
+  const active = () => !!state.active || ['starting', 'permission_required'].includes(state.state);
+  function apply(value) {
+    if (!value || typeof value !== 'object') return state;
+    if (value.type === 'reply') return state;
+    state = { ...value, message: value.message || value.error || '', state: value.state || (value.ok === false ? 'error' : value.active ? 'listening' : 'stopped') };
+    if (redraw) redraw();
+    Bus.emit('background:state', state);
+    return state;
+  }
+  function call(method, ...args) {
+    try { return apply(JSON.parse(N()[method](...args))); }
+    catch (e) { return apply({ active: false, state: 'error', message: 'Background voice nahi chala. App dobara kholo aur permissions check karo.' }); }
+  }
+  function start() {
+    if (!supported() || !Backend.isNative()) return toast('Outside-app voice ke liye embedded Android engine chahiye.');
+    if (active()) return toast('Background voice is already starting or active. Stop it first.');
+    if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
+    if (Chat.isBusy()) return toast('Current answer complete hone do.');
+    if ((S.settings.source || 'auto') !== 'auto') return toast('Background voice ko Auto source chahiye. Manual/Hybrid change nahi kiya; app mein answers paste karke use karo.');
+    const c = Chat.cur() || Chat.newChat(), access = Productivity.access();
+    const config = {
+      chatId: c.id, mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
+      access, history: access.currentChat ? Chat.history(c) : [],
+      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' },
+      voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
+    };
+    Voice.close(); STT.stop(); TTS.stop();
+    const out = call('backgroundVoiceStart', JSON.stringify(config));
+    if (!out.ok && out.message) toast(out.message);
+    return out;
+  }
+  function stop(message) {
+    if (!supported()) return;
+    const was = active(); const out = call('backgroundVoiceStop');
+    if (was && message) toast(message);
+    return out;
+  }
+  function sync() {
+    if (!supported() || syncing || !$('#lock').hidden) return;
+    syncing = true;
+    try {
+      const rows = JSON.parse(N().backgroundVoicePeek());
+      if (!Array.isArray(rows) || !rows.length) return;
+      const ids = Chat.importBackground(rows);
+      if (ids.length && saveNow()) {
+        const ack = JSON.parse(N().backgroundVoiceAck(JSON.stringify(ids)));
+        if (ack.ok && rows.length > ids.length) setTimeout(sync, 0);
+      }
+      Productivity.sync(); Bus.emit('records:changed');
+    } catch (e) { /* Inbox is not acknowledged until UI persistence succeeds. */ }
+    finally { syncing = false; }
+  }
+  function open() {
+    if (!supported()) return toast('Background live voice Android APK mein available hai.');
+    call('backgroundVoiceStatus');
+    const close = sheet({ title: 'Background live voice', tall: true, build(b) {
+      const draw = () => {
+        b.textContent = '';
+        b.append(h('p', {}, 'Start here, then use Home or another app. ADARSH keeps listening and speaking in this explicit session; the ongoing notification has Stop.'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
+          h('p', {}, 'Session mode: ' + (state.mode || Modes.current().name)));
+        b.append(h('button', { class: 'btn ' + (active() ? 'ghost' : 'pri'), on: { click: () => active() ? stop() : start() } }, active() ? 'Stop background voice' : 'Start background voice'));
+        b.append(h('p', { class: 'muted' }, 'Mic and notification permission required. Off by default; no boot restart. Up to 30 minutes per session. The mode and voice are captured at Start. Auto source only; other sources are not silently changed. Calls/messages and screen-only edits require reopening the app.'),
+          h('p', { class: 'muted' }, 'Background sessions do not attach stored notes, tasks, memory or old chats as extra model context. Safe local commands can read allowed records on the phone. Current-chat history follows your sharing controls.'),
+          h('p', { class: 'muted' }, 'Phone recognition may use the recognition provider online. AI/TTS use your existing configured providers. No raw recording is saved by ADARSH. Android battery restrictions and your installed recognizer can interrupt the session.'),
+          h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Close controls'));
+      };
+      redraw = draw; draw();
+      const observer = new MutationObserver(() => { if (!b.isConnected) { observer.disconnect(); if (redraw === draw) redraw = null; } });
+      observer.observe($('#phone'), { childList: true });
+    } });
+  }
+  window.__adarshBackgroundVoice = value => { apply(value); if (!document.hidden) sync(); };
+  function init() {
+    if (!supported()) return;
+    call('backgroundVoiceStatus'); sync();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('backgroundVoiceStatus'); sync(); } });
+    Bus.on('mode:changed', () => { if (active()) stop('Mode changed. Restart background voice in the selected mode.'); });
+    Bus.on('lock:unlocked', sync);
+  }
+  return { init, open, start, stop, sync, active, supported, status: () => state };
+})();
+
+'use strict';
 /* 08-boot.js : start-up + public UI hooks */
 (function boot() {
   load();
@@ -4102,5 +4269,7 @@ const Backend = (() => {
   if (window.__adarshDictation) STT.dict = window.__adarshDictation;
   try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || STT.dict || null; }).catch(() => {}); } catch (e) {}
   if (S.lock) Lock.lockNow();
+  MobileUpdates.init();
+  BackgroundVoice.init();
 })();
 </script></body></html>

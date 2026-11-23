@@ -32,6 +32,8 @@ ANDROID = {
     "Dictation.kt": "Android SpeechRecognizer for mic input; recognition provider may send audio online. No guaranteed offline-only STT.",
     "MainActivity.kt": "WebView app shell, main-thread bridges, permissions, speech and native records.",
     "AdarshBridge.kt": "Explicit JavaScript interfaces, not unrestricted code/file access.",
+    "UpdateManager.kt": "User-controlled updates from successful GitHub Releases: APK hash/package/version/signature verification, then Android installer approval. Not an AI code-edit capability.",
+    "BackgroundVoiceService.kt": "Explicitly started native microphone/media foreground session outside the Activity; selected-mode Engine requests, natural/Piper/phone speech and notification Stop. Never starts at boot.",
 }
 UI = {
     "04-productivity.js": "Shared Tasks/Reminders/Alarms/Notes/Work lists, native migration, local memory/settings actions and data access boundaries.",
@@ -40,11 +42,12 @@ UI = {
     "04-views.js": "Drawer navigation, settings and explicit AI access toggles.",
     "05-actions.js": "Action cards, per-step execution state and confirmation. Rejects remote/untrusted action objects.",
     "05-voice.js": "Tap-to-talk conversation, actual action result speech, optional in-session hands-free. No default wake-word listener.",
+    "05-mobile.js": "User-only update controls and explicit outside-app voice controls; persisted inbox synchronization never reexecutes action plans.",
 }
 
 
 def relevant(text: str) -> bool:
-    return bool(re.search(r"architecture|adarsh.*(?:kaise|how|model|code|feature)|(?:tumhara|tumhare|apna|your|this app|is app|isme).*(?:architecture|engine|tts|piper|module|mode|model|code|feature|fallback)|(?:phone tts|gemini tts|voice engine|sherpa|ActionRunner|mode_plans)", text, re.I))
+    return bool(re.search(r"architecture|adarsh.*(?:kaise|how|model|code|feature)|(?:tumhara|tumhare|apna|your|this app|is app|isme).*(?:architecture|engine|tts|piper|module|mode|model|code|feature|fallback|update|background)|(?:phone tts|gemini tts|voice engine|sherpa|ActionRunner|mode_plans|background voice|app updates)", text, re.I))
 
 
 def reference(mode: str = "standard") -> dict:
@@ -67,14 +70,14 @@ def reference(mode: str = "standard") -> dict:
     active = mode_plans.get(mode)
     chains = {r: [s.label for s in config.chain_of(spec)] for r, spec in active.chains.items()}
     return {
-        "readOnly": True, "selectedMode": mode, "factsVersion": "tasks-work-v1", "modules": modules,
+        "readOnly": True, "selectedMode": mode, "factsVersion": "mobile-updates-voice-v2", "modules": modules,
         "android": ANDROID, "ui": UI, "plans": plans, "selectedRoleFallbacks": chains,
         "quick": {"primary": config.QUICK.label, "fallbacks": list(config.QUICK.fallbacks), "enabledByDefault": True},
         "voice": {"auto": "Gemini -> Groq English where applicable -> Piper if ready -> system TTS",
                   "phone": "System TTS only; Gemini voice dropdown does not choose the system voice.",
                   "offline": "Piper hi rohan / en ryan after the model pack download; no provider text requests.",
                   "microphone": "System recognizer may be online even for a local action."},
-        "boundaries": ["No code writes, shell execution, self-update or deploy.", "No keys, PIN, account tokens or secret contents in this reference.",
+        "boundaries": ["AI cannot write code, run a shell, install updates or deploy. APK updates are explicit user controls, not AI capabilities.", "No keys, PIN, account tokens or secret contents in this reference.",
                        "Local actions are not model calls. App opening sends a launch intent, not another app's screen contents.",
                        "Online answers/voice/search can send text to their providers; permitted personal context is bounded and relevant only.",
                        "Missing reference details must be acknowledged; do not invent runtime/device observations."],

@@ -29,9 +29,10 @@ android {
         minSdk = 26
         targetSdk = 34
 
-        // GitHub run number
-        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "1.0.0"
+        // GitHub run number; release metadata and the APK must agree exactly.
+        val ciRun = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = ciRun
+        versionName = "1.0.$ciRun"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")

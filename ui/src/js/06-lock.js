@@ -43,11 +43,11 @@ const Lock = (() => {
 
   /* ----- full-screen lock ----- */
   function lockNow() {
-    if (!S.lock) return; Voice.close(); const root = $('#lock'); root.textContent = ''; root.hidden = false;
+    if (!S.lock) return; BackgroundVoice.stop(); Voice.close(); const root = $('#lock'); root.textContent = ''; root.hidden = false;
     const msg = h('p', { class: 'lk-msg', role: 'status' }, 'Enter your PIN');
     const pad = pinPad(S.lock.len || 4, async (pin, p) => {
       if (Date.now() < until) { p.shake(); msg.textContent = 'Too many tries. Wait ' + Math.ceil((until - Date.now()) / 1000) + 's.'; return; }
-      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; return; }
+      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; Bus.emit('lock:unlocked'); return; }
       fails++; p.shake(); vibe(30);
       if (fails >= 5) { until = Date.now() + 30000; fails = 0; msg.textContent = 'Too many tries. Locked for 30 s.'; } else msg.textContent = 'Wrong PIN. ' + (5 - fails) + ' tries left.';
     });

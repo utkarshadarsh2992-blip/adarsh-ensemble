@@ -28,6 +28,7 @@ const App = (() => {
   }
   function show(name) {
     view = name; $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + name));
+    if (name === 'settings' && BackgroundVoice.active()) BackgroundVoice.stop('Settings opened. Restart background voice after changes.');
     drawer(false); if (name !== 'chat') build(name); else Chat.renderThread();
     drawerList();
   }
@@ -149,7 +150,7 @@ const App = (() => {
   /* ================= Settings ================= */
   const swItem = (ic, title, sub, get, set) => h('button', { class: 'item', role: 'switch', 'aria-checked': String(!!get()), on: { click: (e) => { set(!get()); save(); e.currentTarget.setAttribute('aria-checked', String(!!get())); } } },
     icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), h('span', { class: 'sw' }));
-  const navItem = (ic, title, sub, fn) => h('button', { class: 'item', on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
+  const navItem = (ic, title, sub, fn) => h('button', { class: 'item', 'aria-label': title, on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
   BUILD.settings = (st, redraw) => {
     const label = (t) => h('div', { class: 'glabel' }, t);
     st.append(h('button', { class: 'prof', on: { click: nameSheet } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()), h('span', { class: 't' }, h('b', {}, S.settings.name || 'Adarsh'), h('small', {}, 'Personal · private to this device')), icon('chev', 'chev')));
@@ -162,6 +163,9 @@ const App = (() => {
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+    st.append(label('Android'), h('div', { class: 'grp' },
+      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open()),
+      navItem('voice', 'Background live voice', 'Explicit Start · continue outside app · notification Stop', () => BackgroundVoice.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;

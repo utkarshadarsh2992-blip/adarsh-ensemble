@@ -224,6 +224,7 @@ const Chat = (() => {
         host.textContent = '';
         const mode = srcMode();
         host.append(h('div', { class: 'seg' }, Object.keys(SRC).map(k => h('button', { 'aria-pressed': String(mode === k), on: { click: () => {
+          if (k !== mode && BackgroundVoice.active()) BackgroundVoice.stop('Answer source changed. Restart background voice explicitly.');
           S.settings.source = k; save();
           if (k !== 'auto' && !pasted.length) pasted.push({ source: '', text: '' });
           drawAtts(); draw();
@@ -280,6 +281,7 @@ const Chat = (() => {
   let dictating = false;
   function dictate() {
     if (dictating) { STT.stop(); return; }
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for voice typing.');
     let base = ta.value;
     const ok = STT.start({
       onPartial: (t) => { ta.value = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); onInput(); },
@@ -299,6 +301,7 @@ const Chat = (() => {
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for chat.');
     if (!meta && App.view !== 'chat') App.show('chat');
     const source = srcMode(), modeId = Modes.current().id;
     const answers = source !== 'auto' ? validAnswers() : [];
@@ -407,8 +410,29 @@ const Chat = (() => {
     } catch (e) { toast('Mission update failed'); }
   }
 
+  function importBackground(rows) {
+    const ids = [];
+    rows.slice(0, 40).forEach(row => {
+      if (!row || typeof row.id !== 'string' || typeof row.chatId !== 'string' || typeof row.text !== 'string' || !row.reply) return;
+      if (S.chats.some(c => c.msgs.some(m => m.backgroundId === row.id))) { ids.push(row.id); return; }
+      let c = S.chats.find(x => x.id === row.chatId);
+      if (!c) { c = { id: row.chatId, title: row.text.slice(0, 42) || 'Background voice', ts: row.ts || Date.now(), msgs: [] }; S.chats.unshift(c); if (!S.cur) S.cur = c.id; }
+      if (!c.msgs.length) c.title = row.text.slice(0, 42) || 'Background voice';
+      c.msgs.push({ id: 'bg-u-' + row.id, backgroundId: row.id, role: 'user', text: row.text, ts: row.ts || Date.now(), requestSource: 'auto', localOnly: !!row.localOnly, personalContext: !!row.personalContext });
+      (Array.isArray(row.reply) ? row.reply : [row.reply]).filter(Boolean).forEach(value => {
+        const r = normReply(value); r.uiMode = row.mode || 'standard'; r.personalContext = !!row.personalContext;
+        // Native session already resolved its safe steps. Rendering/import never executes them again.
+        c.msgs.push({ id: uid('bg-a'), role: 'ai', ts: row.ts || Date.now(), reply: r, personalContext: !!row.personalContext });
+      });
+      c.ts = row.ts || Date.now(); ids.push(row.id);
+    });
+    if (ids.length) { Bus.emit('chats:changed'); renderThread(); }
+    return ids;
+  }
+
   return {
     mount, renderThread, newChat, open, remove, cur, submit, sourceSheet,
+    history: histText, importBackground,
     setDraft(t) { ta.value = t; onInput(); ta.focus(); }, addFile, isBusy: () => busy,
     push(r, { chatId } = {}) { const c = (chatId && S.chats.find(x => x.id === chatId)) || newChat(); deliver(c, normReply(r)); save(); Bus.emit('chats:changed'); renderThread(); }
   };

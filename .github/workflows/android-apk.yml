@@ -8,6 +8,7 @@ on:
       - "android/**"
       - "ui/**"
       - "*.py"
+      - "scripts/**"
       - "tests/**"
       - "requirements-android.txt"
       - ".github/workflows/android-apk.yml"
@@ -16,7 +17,13 @@ on:
       - "android/**"
       - "ui/**"
       - "*.py"
+      - "scripts/**"
       - "tests/**"
+
+# Do not let an older main build publish after a newer main build starts.
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -25,8 +32,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -83,9 +94,182 @@ jobs:
           unzip -l "$APK" | grep -q "assets/chaquopy"
           ls -lh "$APK"
 
+      # Keep the existing downloadable CI artifact unchanged.
       - uses: actions/upload-artifact@v4
         with:
           name: adarsh-ensemble-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+
+      - name: Prepare verified release assets
+        if: github.event_name != 'pull_request'
+        env:
+          RELEASE_TAG: v1.0.${{ github.run_number }}
+          RELEASE_ASSET: adarsh-ensemble-1.0.${{ github.run_number }}.apk
+        run: |
+          mkdir -p release-assets
+          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
+          cp "$APK" "release-assets/$RELEASE_ASSET"
+          python scripts/publish_android_release.py manifest \
+            --apk "release-assets/$RELEASE_ASSET" \
+            --application-id app.adarsh.ensemble \
+            --version-code "$GITHUB_RUN_NUMBER" \
+            --version-name "1.0.$GITHUB_RUN_NUMBER" \
+            --commit "$GITHUB_SHA" \
+            --tag "$RELEASE_TAG" \
+            --asset-name "$RELEASE_ASSET" \
+            --output release-assets/update.json
+          printf '%s\n' "$GITHUB_SHA" > release-assets/built-sha.txt
+          RELEASE_ASSET="$RELEASE_ASSET" RELEASE_TAG="$RELEASE_TAG" BUILT_SHA="$GITHUB_SHA" RUN_NUMBER="$GITHUB_RUN_NUMBER" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from scripts.publish_android_release import verify_release_fixture
+          manifest = json.loads(Path("release-assets/update.json").read_text())
+          verify_release_fixture(
+              Path("release-assets") / os.environ["RELEASE_ASSET"],
+              manifest,
+              expected_commit=os.environ["BUILT_SHA"],
+              expected_version_code=int(os.environ["RUN_NUMBER"]),
+              tag=os.environ["RELEASE_TAG"],
+          )
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: android-release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-release-assets
+          path: release-assets
+
+      - name: Gate and publish the matching current-main release idempotently
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: v1.0.${{ github.run_number }}
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          BUILT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          DECISION=$(python scripts/publish_android_release.py gate \
+            --event "$EVENT_NAME" \
+            --ref "$GIT_REF" \
+            --built-sha "$BUILT_SHA" \
+            --head-sha "$MAIN_SHA")
+          if [ "$DECISION" != publish ]; then
+            echo "Skipping obsolete or non-main build (built=$BUILT_SHA main=$MAIN_SHA)."
+            exit 0
+          fi
+          APK=$(find release-assets -maxdepth 1 -name '*.apk' -print -quit)
+          test -n "$APK"
+          test -f release-assets/update.json
+
+          # A published latest release supplies the monotonic version gate. Drafts are not
+          # latest and are handled separately by the immutable same-tag decision below.
+          LATEST_RELEASE_JSON="$RUNNER_TEMP/latest-release.json"
+          LATEST_UPDATE_JSON="$RUNNER_TEMP/latest-update.json"
+          LATEST_VERSION_CODE=0
+          LATEST_ERROR="$RUNNER_TEMP/latest-release.err"
+          if gh api "repos/utkarshadarsh2992-blip/adarsh-ensemble/releases/latest" > "$LATEST_RELEASE_JSON" 2>"$LATEST_ERROR"; then
+            LATEST_UPDATE_ID=$(python - "$LATEST_RELEASE_JSON" <<'PY'
+          import json
+          import sys
+          release = json.load(open(sys.argv[1], encoding="utf-8"))
+          matches = [a["id"] for a in release.get("assets", []) if a.get("name") == "update.json"]
+          if len(matches) != 1:
+              raise SystemExit("latest release does not have exactly one update.json asset")
+          print(matches[0])
+          PY
+            )
+            gh api -H "Accept: application/octet-stream" \
+              "repos/utkarshadarsh2992-blip/adarsh-ensemble/releases/assets/$LATEST_UPDATE_ID" > "$LATEST_UPDATE_JSON"
+            LATEST_VERSION_CODE=$(python scripts/publish_android_release.py manifest-version --manifest "$LATEST_UPDATE_JSON")
+          elif ! grep -q 'HTTP 404' "$LATEST_ERROR"; then
+            echo "Cannot verify latest published version; refusing publication."
+            cat "$LATEST_ERROR"
+            exit 1
+          fi
+
+          EXISTING_RELEASE_JSON="$RUNNER_TEMP/existing-release.json"
+          EXISTING_ARG=()
+          if gh api "repos/utkarshadarsh2992-blip/adarsh-ensemble/releases/tags/$RELEASE_TAG" > "$EXISTING_RELEASE_JSON" 2>/dev/null; then
+            EXISTING_ARG=(--existing-release "$EXISTING_RELEASE_JSON")
+          else
+            rm -f "$EXISTING_RELEASE_JSON"
+          fi
+          PUBLISH_DECISION=$(python scripts/publish_android_release.py decide \
+            --tag "$RELEASE_TAG" \
+            --expected-commit "$BUILT_SHA" \
+            --expected-version-code "$RUN_NUMBER" \
+            --run-number "$RUN_NUMBER" \
+            --latest-version-code "$LATEST_VERSION_CODE" \
+            --apk "$APK" \
+            --manifest release-assets/update.json \
+            "${EXISTING_ARG[@]}")
+
+          if [ "$PUBLISH_DECISION" = skip ]; then
+            echo "Release $RELEASE_TAG is already verified and published, or this run is older than latest."
+            exit 0
+          fi
+
+          if [ "$PUBLISH_DECISION" = create ]; then
+            gh release create "$RELEASE_TAG" "$APK" release-assets/update.json \
+              --draft \
+              --target "$BUILT_SHA" \
+              --title "Adarsh Ensemble $RELEASE_TAG" \
+              --notes "Automated Android release for commit $BUILT_SHA."
+          elif [ "$PUBLISH_DECISION" = retry_draft ]; then
+            # The helper has already rejected any existing digest mismatch. Upload only absent
+            # assets so a failed draft can be resumed without replacing immutable bytes.
+            for ASSET in "$APK" release-assets/update.json; do
+              NAME=$(basename "$ASSET")
+              if ! python - "$EXISTING_RELEASE_JSON" "$NAME" <<'PY'
+          import json
+          import sys
+          release = json.load(open(sys.argv[1], encoding="utf-8"))
+          raise SystemExit(0 if any(a.get("name") == sys.argv[2] for a in release.get("assets", [])) else 1)
+          PY
+              then
+                gh release upload "$RELEASE_TAG" "$ASSET"
+              fi
+            done
+          fi
+
+          # Re-check immediately before advertising the release. If main advanced, leave the
+          # release as a draft; a newer successful run must become latest instead.
+          MAIN_SHA=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+          FINAL_GATE=$(python scripts/publish_android_release.py gate \
+            --event "$EVENT_NAME" \
+            --ref "$GIT_REF" \
+            --built-sha "$BUILT_SHA" \
+            --head-sha "$MAIN_SHA")
+          if [ "$FINAL_GATE" != publish ]; then
+            echo "Main advanced before undrafting; leaving $RELEASE_TAG as draft."
+            exit 0
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest=true

@@ -111,7 +111,8 @@ function save() { clearTimeout(_st); _st = setTimeout(saveNow, 250); }
 function saveNow() {
   try {
     localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' || k === '_ctx' ? undefined : v)));
-  } catch (e) { console.warn('save failed', e); }
+    return true;
+  } catch (e) { console.warn('save failed', e); return false; }
 }
 window.addEventListener('pagehide', saveNow);
 

@@ -40,17 +40,28 @@ class MainActivity : AppCompatActivity() {
 
     private val notifPermission = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { /* the service still runs without it; only the notification is hidden */ }
+    ) { ok ->
+        val pending = pendingBackground
+        if (pending != null && pending.token == backgroundNotificationToken) {
+            backgroundPermissionResult(pending.token, ok, "Notification permission is required. Enable app notifications and tap Start again.")
+        }
+    }
 
     private var micCallback: ((Boolean) -> Unit)? = null
     private val micPermission = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-    ) { ok -> micCallback?.invoke(ok); micCallback = null }
+    ) { ok -> val cb = micCallback; micCallback = null; cb?.invoke(ok) }
     private val dictation by lazy { Dictation(this) }
     private var speaker: Speaker? = null
     private var neural: VoiceManager? = null
+    private var updater: UpdateManager? = null
     private var actions: ActionRunner? = null
     @Volatile private var resumed = false
+    private var backgroundGeneration = 0
+    private data class PendingBackground(val token: Int, val json: String)
+    private var pendingBackground: PendingBackground? = null
+    private var backgroundAwaitingPermission = false
+    private var backgroundNotificationToken = -1
     // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private val filePicker = registerForActivityResult(
@@ -81,6 +92,46 @@ class MainActivity : AppCompatActivity() {
 
     /** Ask for the microphone (the system dialog) and report the answer. Used the first time voice typing starts. */
     fun askMic(cb: (Boolean) -> Unit) { micCallback = cb; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
+
+    private fun backgroundPermissionResult(token: Int, granted: Boolean, denied: String) {
+        if (destroyed || token != backgroundGeneration || pendingBackground?.token != token) return
+        backgroundAwaitingPermission = false
+        if (!granted) {
+            pendingBackground = null
+            backgroundVoiceEvent(JSONObject().put("ok", false).put("active", false).put("state", "error").put("message", denied))
+        } else resumeBackgroundStart()
+    }
+
+    /** A grant received before onResume remains pending; never starts a mic foreground service from a paused screen. */
+    private fun resumeBackgroundStart(): JSONObject {
+        val pending = pendingBackground ?: return BackgroundVoiceService.status()
+        val waiting = JSONObject().put("ok", true).put("active", false).put("state", "permission_required")
+            .put("message", "Allow microphone and notification access; stay in the app while the session starts.")
+        if (destroyed || pending.token != backgroundGeneration) { pendingBackground = null; return waiting }
+        if (!resumed || backgroundAwaitingPermission) return waiting
+        return try {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                backgroundAwaitingPermission = true
+                askMic { ok -> backgroundPermissionResult(pending.token, ok, "Microphone permission is required. Tap Start again after allowing it.") }
+                waiting
+            } else if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                backgroundAwaitingPermission = true
+                backgroundNotificationToken = pending.token
+                notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                waiting
+            } else {
+                pendingBackground = null
+                dictation.destroy(); speaker?.stopAll(silent = true); neural?.stop()
+                BackgroundVoiceService.start(this, pending.json).also { backgroundVoiceEvent(it) }
+            }
+        } catch (_: Exception) {
+            pendingBackground = null
+            backgroundAwaitingPermission = false
+            JSONObject().put("ok", false).put("active", false).put("state", "error")
+                .put("message", "Could not request voice permissions. Reopen the app and tap Start again.")
+                .also { backgroundVoiceEvent(it) }
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -147,6 +198,7 @@ class MainActivity : AppCompatActivity() {
         speaker = Speaker(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
         actions = ActionRunner(this)
         neural = VoiceManager(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
+        updater = UpdateManager(this) { value -> runOnUiThread { js("window.__adarshUpdate&&window.__adarshUpdate($value)") } }
         web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
 
         // Back never closes the app mid-request: it sends it to the background.
@@ -192,6 +244,7 @@ class MainActivity : AppCompatActivity() {
         getSystemService(NotificationManager::class.java)?.cancel(REPLY_ID)
         web.onResume()
         flush()   // answers that arrived while the app was in the background
+        web.post { if (resumed && !destroyed && pendingBackground != null) backgroundVoiceEvent(resumeBackgroundStart()) }
     }
 
     override fun onPause() {
@@ -205,10 +258,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         destroyed = true
+        backgroundGeneration++
+        pendingBackground = null
         if (current === this) current = null
         dictation.destroy()
         speaker?.destroy()
         neural?.destroy()
+        updater?.destroy()
         web.removeJavascriptInterface("AdarshNative")
         web.destroy()
         super.onDestroy()
@@ -223,6 +279,36 @@ class MainActivity : AppCompatActivity() {
         private fun prefs(c: Context) = c.getSharedPreferences("adarsh_ui", Context.MODE_PRIVATE)
         private fun ui(f: (MainActivity) -> Unit) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) f(a) } } }
 
+        // These are user UI controls, not AI action capabilities. Never included in the action allowlist.
+        fun updateStatus(): String = onMain { current!!.updater!!.status().toString() }
+        fun updateCheck(force: Boolean): String = onMain { current!!.updater!!.check(force).toString() }
+        fun updateDownload(): String = onMain { current!!.updater!!.download().toString() }
+        fun updateInstall(): String = onMain { current!!.updater!!.install().toString() }
+        fun backgroundVoiceStatus(): String = onMain {
+            if (current!!.pendingBackground != null) JSONObject().put("ok", true).put("active", false).put("state", "permission_required")
+                .put("message", "Voice start is waiting for permissions. Stay in the app or tap Stop to cancel.").toString()
+            else BackgroundVoiceService.status().toString()
+        }
+        fun backgroundVoiceStart(json: String): String = onMain {
+            val a = current!!
+            if (!a.resumed) return@onMain JSONObject().put("ok", false).put("active", false).put("state", "error").put("message", "Open the app before starting background voice.").toString()
+            if (a.pendingBackground != null || BackgroundVoiceService.status().optBoolean("active")) return@onMain backgroundVoiceStatus()
+            a.pendingBackground = PendingBackground(++a.backgroundGeneration, json)
+            a.backgroundAwaitingPermission = false
+            a.resumeBackgroundStart().toString()
+        }
+        fun backgroundVoiceStop(): String = onMain {
+            val a = current!!
+            a.backgroundGeneration++; a.pendingBackground = null; a.backgroundAwaitingPermission = false
+            BackgroundVoiceService.stop(a).toString()
+        }
+        fun backgroundVoicePeek(): String = onMain { BackgroundVoiceService.peek(current!!).toString() }
+        fun backgroundVoiceAck(json: String): String = onMain {
+            try { BackgroundVoiceService.ack(current!!, org.json.JSONArray(json)).toString() }
+            catch (_: Exception) { JSONObject().put("ok", false).toString() }
+        }
+        fun backgroundVoiceEvent(value: JSONObject) = ui { a -> a.js("window.__adarshBackgroundVoice&&window.__adarshBackgroundVoice($value)") }
+
         // ---- speech out (Speaker.kt). Results come back as window.__adarshTts(type, id)
         fun ttsAvailable(): Boolean = current?.speaker?.let { !it.failed } ?: false
         fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.speak(id, text, lang, rate) }
@@ -235,10 +321,13 @@ class MainActivity : AppCompatActivity() {
         // ---- Standard-mode actions (ActionRunner.kt). Called from JS; must answer synchronously.
         private fun onMain(block: () -> String): String {
             val a = current ?: return """{"error":"no screen"}"""
-            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return block()
+            fun safeBlock(): String = try {
+                if (a.destroyed || current !== a) """{"ok":false,"error":"no screen"}""" else block()
+            } catch (_: Exception) { """{"ok":false,"error":"Native operation failed"}""" }
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return safeBlock()
             var out = """{"error":"timeout"}"""
             val latch = java.util.concurrent.CountDownLatch(1)
-            a.runOnUiThread { try { out = block() } finally { latch.countDown() } }
+            a.runOnUiThread { try { out = safeBlock() } finally { latch.countDown() } }
             latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
             return out
         }

@@ -23,6 +23,25 @@ class AdarshBridge(
     @JavascriptInterface
     fun cancel(id: String) = Engine.cancel(id)
 
+    @JavascriptInterface
+    fun updateStatus(): String = MainActivity.updateStatus()
+    @JavascriptInterface
+    fun updateCheck(force: Boolean): String = MainActivity.updateCheck(force)
+    @JavascriptInterface
+    fun updateDownload(): String = MainActivity.updateDownload()
+    @JavascriptInterface
+    fun updateInstall(): String = MainActivity.updateInstall()
+    @JavascriptInterface
+    fun backgroundVoiceStatus(): String = MainActivity.backgroundVoiceStatus()
+    @JavascriptInterface
+    fun backgroundVoiceStart(config: String): String = MainActivity.backgroundVoiceStart(config)
+    @JavascriptInterface
+    fun backgroundVoiceStop(): String = MainActivity.backgroundVoiceStop()
+    @JavascriptInterface
+    fun backgroundVoicePeek(): String = MainActivity.backgroundVoicePeek()
+    @JavascriptInterface
+    fun backgroundVoiceAck(ids: String): String = MainActivity.backgroundVoiceAck(ids)
+
     // Speech out: the WebView has no speechSynthesis. Events come back via window.__adarshTts(type, id).
     @JavascriptInterface
     fun ttsAvailable(): Boolean = MainActivity.ttsAvailable()
