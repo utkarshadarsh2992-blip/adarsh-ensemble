@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     ) { ok -> micCallback?.invoke(ok); micCallback = null }
     private val dictation by lazy { Dictation(this) }
     private var speaker: Speaker? = null
+    private var neural: VoiceManager? = null
     @Volatile private var resumed = false
     // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -143,6 +144,7 @@ class MainActivity : AppCompatActivity() {
         }
         appCtx = applicationContext
         speaker = Speaker(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
+        neural = VoiceManager(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
         web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
 
         // Back never closes the app mid-request: it sends it to the background.
@@ -204,6 +206,7 @@ class MainActivity : AppCompatActivity() {
         if (current === this) current = null
         dictation.destroy()
         speaker?.destroy()
+        neural?.destroy()
         web.removeJavascriptInterface("AdarshNative")
         web.destroy()
         super.onDestroy()
@@ -222,7 +225,17 @@ class MainActivity : AppCompatActivity() {
         fun ttsAvailable(): Boolean = current?.speaker?.let { !it.failed } ?: false
         fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.speak(id, text, lang, rate) }
         fun ttsPlayFile(id: String, path: String, rate: Float) = ui { it.speaker?.playFile(id, path, rate) }
-        fun ttsStop() = ui { it.speaker?.stopAll(silent = true) }
+        fun ttsStop() = ui { it.speaker?.stopAll(silent = true); it.neural?.stop() }
+
+        // ---- V6 offline neural voice (VoiceManager.kt)
+        fun neuralReady(): Boolean = current?.neural?.ready() ?: false
+        fun neuralStatus(): String = current?.neural?.status() ?: """{"hi":false,"en":false,"installing":false,"progress":0,"error":""}"""
+        fun neuralInstall() = ui { a ->
+            a.neural?.install { ok -> a.runOnUiThread { a.js("window.__adarshNeural&&window.__adarshNeural($ok)") } }
+        }
+        fun neuralSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.stopAll(silent = true); it.neural?.speak(id, text, lang, rate) }
+        fun neuralPause() = ui { it.neural?.pause() }
+        fun neuralResume() = ui { it.neural?.resume() }
 
         // ---- small native helpers the WebView cannot do itself
         fun haptic(ms: Int) = ui {

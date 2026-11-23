@@ -81,7 +81,20 @@ chaquopy {
     }
 }
 
+// Offline neural voice runtime (sherpa-onnx, static onnxruntime; arm64 + x86_64 used). Downloaded once, not kept in git.
+val sherpaVersion = "1.12.40"
+val sherpaAar = file("libs/sherpa-onnx-$sherpaVersion.aar")
+if (!sherpaAar.exists() || sherpaAar.length() < 1_000_000) {
+    sherpaAar.parentFile.mkdirs()
+    val tmp = File(sherpaAar.path + ".part")
+    val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/sherpa-onnx-static-link-onnxruntime-$sherpaVersion.aar"
+    java.net.URI(url).toURL().openStream().use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+    tmp.renameTo(sherpaAar)
+}
+
 dependencies {
+    implementation(files(sherpaAar))
+    implementation("org.apache.commons:commons-compress:1.26.2")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.11.0")
@@ -91,6 +104,7 @@ dependencies {
 val syncEngine = tasks.register<Copy>("syncEngine") {
     from(repoRoot) {
         include("*.py")
+        include("voice_v6/**/*.py")   // V6 voice layer (package)
         exclude("main.py")
     }
     into(engineDir)

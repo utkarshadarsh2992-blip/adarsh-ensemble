@@ -202,6 +202,24 @@ const App = (() => {
       b.append(i, h('button', { class: 'btn pri', on: { click: () => { S.settings.name = i.value.trim() || 'Adarsh'; save(); close(); buildDrawer(); drawerList(); build('settings'); } } }, 'Save'));
     } });
   }
+  /* V6: offline neural voice pack (Hindi + English male, ~42 MB once). Only shown inside the Android app. */
+  function offlineBlock() {
+    const N = window.AdarshNative;
+    if (!N || !N.neuralStatus) return h('span');
+    const msg = h('p', { class: 'muted' }); const btn = h('button', { class: 'btn', on: { click: () => { try { N.neuralInstall(); } catch (e) {} paint(); poll(); } } }, 'Download offline voice');
+    const st = () => { try { return JSON.parse(N.neuralStatus()); } catch (e) { return {}; } };
+    function paint() {
+      const s = st();
+      if (s.installing) { msg.textContent = 'Offline voice download ho rahi hai… ' + (s.progress || 0) + '%'; btn.disabled = true; return; }
+      btn.disabled = false;
+      if (s.hi && s.en) { msg.textContent = 'Offline neural voice taiyar (Hindi + English). Internet ya Gemini quota na ho tab ye bolti hai.'; btn.hidden = true; }
+      else msg.textContent = (s.error ? 'Download fail: ' + s.error + '. ' : '') + 'Offline voice (Piper, ~42 MB, ek baar) download karo: bina internet ke bhi natural awaaz.';
+    }
+    function poll() { paint(); if (st().installing) setTimeout(poll, 800); }
+    window.__adarshNeural = () => paint();
+    paint();
+    return h('div', {}, h('label', { class: 'l' }, 'Offline neural voice (fallback)'), msg, btn);
+  }
   function voiceSheet() {
     sheet({ title: 'Voice & language', tall: true, build(b) {
       const segOf = (opts, get, set) => {
@@ -227,6 +245,7 @@ const App = (() => {
         h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
         segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
         h('label', { class: 'l' }, 'Speaking speed'), rate,
+        offlineBlock(),
         TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
           : h('p', {}, 'Is browser me speech output nahi hai.'),
         status);

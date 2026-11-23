@@ -33,6 +33,20 @@ class AdarshBridge(
     @JavascriptInterface
     fun ttsStop() = MainActivity.ttsStop()
 
+    // V6 offline neural voice (Piper via sherpa-onnx): fallback below the natural voice, above the phone voice.
+    @JavascriptInterface
+    fun neuralReady(): Boolean = MainActivity.neuralReady()
+    @JavascriptInterface
+    fun neuralStatus(): String = MainActivity.neuralStatus()
+    @JavascriptInterface
+    fun neuralInstall() = MainActivity.neuralInstall()
+    @JavascriptInterface
+    fun neuralSpeak(id: String, text: String, lang: String, rate: Float) = MainActivity.neuralSpeak(id, text, lang, rate)
+    @JavascriptInterface
+    fun neuralPause() = MainActivity.neuralPause()
+    @JavascriptInterface
+    fun neuralResume() = MainActivity.neuralResume()
+
     // Things a plain WebView cannot do on Android: haptics, clipboard, saving/sharing files, notifications.
     @JavascriptInterface
     fun haptic(ms: Int) = MainActivity.haptic(ms)

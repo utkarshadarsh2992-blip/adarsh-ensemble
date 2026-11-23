@@ -200,3 +200,11 @@ language, speed, Test voice. Voice mode sends `meta.voice`, so Standard answers 
 | Connection | Showed "This server (/api/chat)" although the on-device engine is always used | Shows **On-device engine**: engine state, providers with keys, natural voice status, plan check, Test connection |
 | Voice & language | Test voice and read-aloud hidden (no speech output) | New voice engine (above) |
 | Reply style | No way to choose council size | Fast / Deep council switch |
+
+## V6 offline neural voice (fallback layer)
+
+Existing voice is unchanged: Gemini TTS, then Groq Orpheus, then the phone's own voice. V6 only adds an offline neural step.
+
+- **Android:** `VoiceManager.kt`, `NeuralTTS.kt`, `AudioPlayer.kt` run Piper voices (Hindi `rohan`, English `ryan`, both male, int8, ~21 MB each) through sherpa-onnx. Settings > Voice shows "Download offline voice" (one time). Order in the app: natural voice, offline neural, phone voice. Sentences are generated one by one, so playback starts early. Pause, resume and stop are supported.
+- **Python backend (`voice_v6/`):** language detector (Devanagari, Roman Hindi), text normalizer (numbers, symbols), Hinglish processor (sentences, spans), speech queue (duplicate prevention, interrupt), router with dead-provider cool-down, and a protocol `{"tts": {"v6": "plan|chunk|control|status|install"}}`. `voice.synth()` falls back to local Piper when `PIPER_DIR` has the models and the `piper-tts` package exists. Nothing paid is required.
+- Benchmarks (6-core sandbox): Piper RTF 0.04-0.05 (first audio about 0.15 s); sherpa int8 RTF about 0.3; Kokoro RTF 0.58, English only, so not chosen.

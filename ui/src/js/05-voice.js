@@ -37,6 +37,25 @@ const TTS = (() => {
   /* Kotlin -> page: ('start'|'done'|'error'|'stopped', id) */
   window.__adarshTts = (type, id) => { if (!cur || !cur.waiting || cur.waiting.id !== id) return; const w = cur.waiting; if (type === 'start') return; cur.waiting = null; w.done(type === 'done'); };
   const rate = () => +S.settings.rate || 1;
+  /* V6 offline neural voice (Piper on the phone): tried after the natural voice failed, before the phone's own voice */
+  const neuralOk = () => { try { return !!(N && N.neuralSpeak && N.neuralReady && N.neuralReady()); } catch (e) { return false; } };
+  function neural(job, text) {
+    return new Promise((done) => {
+      const id = 'tts' + (++seq);
+      job.waiting = { id, done };
+      try { N.neuralSpeak(id, text, S.settings.lang || 'en-IN', rate()); } catch (e) { job.waiting = null; done(false); }
+    });
+  }
+  /* neural first when installed, then the phone voice. Resolves true when something spoke. */
+  async function fallback(job, text) {
+    if (neuralOk()) {
+      info.last = 'offline';
+      const ok = await neural(job, text);
+      if (job !== cur || ok) return ok;
+    }
+    info.last = 'device';
+    return device(job, text);
+  }
   /* play one piece on the device voice; resolves true when it finished speaking */
   function device(job, text) {
     return new Promise((done) => {
@@ -93,22 +112,21 @@ const TTS = (() => {
         if (!clip) {
           if (S.settings.voiceEngine === 'natural' && !nativeDev() && !webDev()) return;
           naturalDown = Date.now() + 5 * 60e3;   // natural voice is down (no Gemini key / quota): device voice for 5 min
-          info.last = 'device';
-          await device(job, parts.slice(i).join(' '));
+          await fallback(job, parts.slice(i).join(' '));
           return;
         }
         info.last = 'natural'; info.model = clip.model || info.model;
         const ok = await playClip(job, clip);
         if (job !== cur) return;
-        if (!ok) { info.last = 'device'; await device(job, parts.slice(i).join(' ')); return; }
+        if (!ok) { await fallback(job, parts.slice(i).join(' ')); return; }
       }
       return;
     }
-    info.last = 'device';
-    await device(job, text);
+    if (S.settings.voiceEngine === 'device') { info.last = 'device'; await device(job, text); return; }
+    await fallback(job, text);
   }
   return {
-    VOICES, info,
+    VOICES, info, neuralOk,
     ok: () => natural() || nativeDev() || webDev(),
     /* speak(text, onEnd): onEnd runs once when speech finished or failed, never after stop() */
     speak(text, onEnd) {
@@ -119,6 +137,8 @@ const TTS = (() => {
       run(job, t).catch(() => {}).finally(() => { if (cur === job) { cur = null; if (onEnd) onEnd(); } });
     },
     speaking: () => !!cur,
+    pause() { try { if (N && N.neuralPause) N.neuralPause(); if (audio) audio.pause(); } catch (e) {} },
+    resume() { try { if (N && N.neuralResume) N.neuralResume(); if (audio) audio.play(); } catch (e) {} },
     stop() {
       const j = cur; cur = null;
       if (j && j.waiting) { const w = j.waiting; j.waiting = null; w.done(false); }

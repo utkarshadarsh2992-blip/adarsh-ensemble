@@ -199,7 +199,7 @@ async def _groq(client: httpx.AsyncClient, text: str) -> tuple[bytes, str]:
     return wav(pcm, RATE), GROQ_MODEL
 
 
-async def synth(text: str, voice: str = DEFAULT_VOICE) -> tuple[bytes, str]:
+async def synth(text: str, voice: str = DEFAULT_VOICE, offline: bool = True) -> tuple[bytes, str]:
     """(wav bytes, model label). Raises VoiceError when no natural voice is available."""
     text = clean(text)
     if not text:
@@ -212,6 +212,15 @@ async def synth(text: str, voice: str = DEFAULT_VOICE) -> tuple[bytes, str]:
                 return await fn()
             except VoiceError as e:
                 errors.append(str(e))
+    if not offline:
+        raise VoiceError("; ".join(errors))
+    try:  # V6 offline fallback (Piper). Silent when not installed.
+        from voice_v6 import offline
+        return await offline.synth(text)
+    except VoiceError:
+        raise
+    except Exception as e:
+        errors.append(f"offline: {str(e)[:80]}")
     raise VoiceError("; ".join(errors))
 
 
@@ -258,6 +267,9 @@ def status() -> dict:
 
 
 async def handle(req: dict) -> dict:
+    if req.get("v6"):  # V6 streaming protocol (additive)
+        from voice_v6 import protocol
+        return await protocol.handle(req, remote=lambda t, v: synth(t, v, offline=False))
     if req.get("status"):
         return {"type": "voice", **status()}
     text = str(req.get("text") or "")
