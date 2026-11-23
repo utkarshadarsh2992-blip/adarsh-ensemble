@@ -64,8 +64,15 @@
     /* lessons: quick synchronous file work on the device (no model call) */
     lessons(op) { try { return Promise.resolve(JSON.parse(N.lessons(JSON.stringify(op)))); } catch (e) { return Promise.resolve({ ok: false, error: 'Lessons nahi khule.' }); } },
     ping: async () => {
-      try { const s = JSON.parse(N.status()); return { ok: !!s.ready, label: s.ready ? 'On-device engine' : 'Engine starting…' }; }
-      catch (e) { return { ok: false, label: 'Engine not reachable' }; }
+      /* Python (Chaquopy) needs a few seconds to start after the app opens: report "starting" so the UI asks again
+         instead of showing Offline for good. A real start error, or no API key at all, gets its own label. */
+      try {
+        const s = JSON.parse(N.status());
+        if (!s.ready) return s.error ? { ok: false, label: 'Engine error', error: s.error } : { ok: false, starting: true, label: 'Engine starting…' };
+        const p = s.providers || {}, core = ['groq', 'gemini', 'openrouter'].filter(k => p[k]).length;
+        if (!core) return { ok: false, label: 'No API keys', hint: 'Settings > API keys me Groq / Gemini / OpenRouter key daalo.' };
+        return { ok: true, label: 'On-device engine', providers: p };
+      } catch (e) { return { ok: false, starting: true, label: 'Engine starting…' }; }
     }
   };
 

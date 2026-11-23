@@ -24,6 +24,7 @@ import time
 
 import config
 import health
+import mode_plans
 import prompts
 import research
 import role_prompts as RP
@@ -202,12 +203,23 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     style = f"roles:{fmt}"
     warnings: list[str] = []
     notes: list[dict] = []
-    roles_dbg: dict = {"mode": mode, "format": fmt}
+    # every mode has its OWN model combination + behaviour (mode_plans.py)
+    mp = mode_plans.get(mode)
+    pol = mp.policy
+    chk = pol.checks
+    asked_deep = deep
+    if pol.depth == "deep" and not deep:
+        deep = True
+    combo = mode_plans.describe(mode)
+    roles_dbg: dict = {"mode": mode, "format": fmt, "combo": combo}
+    config.emit(f"Mode {mp.title}: apna model combo (judge {mp.spec('judge').label}, "
+                f"drafters {mp.spec('theorist').label} + {mp.spec('empiricist').label})"
+                + (" · deep zaroori" if deep and not asked_deep else ""))
     # [Q] Quota: when today's free quota is running out, save calls on our own instead of hitting 429s
     review_on, debate_on = config.REVIEW_ENABLED, config.DEBATE_ENABLED
     quota = {"level": "ok", "left": 1.0, "asked": "deep" if deep else "fast", "saved": []}
     if config.QUOTA_AUTO:
-        quota["level"], quota["left"] = health.pressure(quota_chains())
+        quota["level"], quota["left"] = health.pressure(quota_chains(mode))
         if quota["level"] != "ok" and deep:
             deep = False
             quota["saved"].append("deep -> fast (specialist, Pattern Finder, 3rd falsifier, 2nd debate round, 2nd reviewer band)")
@@ -224,10 +236,11 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
             config.emit(msg)
             warnings.append(msg)
     roles_dbg["quota"] = quota
+    saver = quota["level"] != "ok"  # quota is short: the "always" extras of a mode are dropped, the judge is kept
 
     # [A] Architect
     plan = await _call(
-        client, "architect", config.ARCHITECT,
+        client, "architect", mp.spec("architect"),
         _m(RP.system_for("architect", mode, writer_hint=lang, extra=RP.ENGINE_EXTRA["architect"]), f"Question:\n{question}"),
         errors, temperature=0.2, emit_start="Architect: jawab ka dhancha bana raha hai",
     )
@@ -235,11 +248,15 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
 
     # [R] Research
     sources: list[dict] = []
-    queries = research.queries_from_plan(plan, question) if config.RESEARCH_ENABLED else []
+    queries = []
+    if config.RESEARCH_ENABLED and pol.research != "off":
+        queries = research.queries_from_plan(plan, question)
+        if not queries and pol.research == "must":  # Architect said SEARCH: none, but this mode always checks the web
+            queries = research.queries_from_plan(None, question)
     if queries:
         config.emit("Research: web par dhoondh raha hu (" + " | ".join(queries) + ")")
         t0 = time.perf_counter()
-        sources = await research.gather(client, queries)
+        sources = await research.gather(client, queries, max_sources=pol.max_sources)
         config.emit(f"Research: {len(sources)} source mile ({time.perf_counter() - t0:.0f}s)" if sources
                     else "Research: koi kaam ka source nahi mila, sirf models ki jaankari se chalenge")
     roles_dbg["queries"], roles_dbg["sources"] = queries, sources
@@ -249,15 +266,15 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     plan_note = "" if plan else "\n(No plan: the Architect failed. Work from the question.)"
 
     # [B] Drafters
-    drafters = [("theorist", config.THEORIST), ("empiricist", config.EMPIRICIST)]
-    if deep:
-        spec = config.SPECIALISTS.get(mode, config.SPECIALISTS["standard"])
+    drafters = [("theorist", mp.spec("theorist")), ("empiricist", mp.spec("empiricist"))]
+    if deep or (pol.specialist == "always" and not saver):
+        spec = mp.spec("specialist")
         drafters.append((spec.role, spec))
     config.emit(f"{len(drafters)} roles draft likh rahe hain: " + ", ".join(prompts.ROLE_INFO.get(r, (r,))[0] for r, _ in drafters))
     outs = await asyncio.gather(*[
         _call(client, f"panel:{role}", spec,
               _m(_drafter_system(role, spec.role, mode, lang_full, has_src), ctx + plan_note),
-              errors, max_tokens=config.PANEL_MAX_TOKENS, temperature=0.5)
+              errors, max_tokens=config.PANEL_MAX_TOKENS, temperature=pol.draft_temp)
         for role, spec in drafters
     ])
     panel_drafts = {role: text for (role, _), text in zip(drafters, outs) if text}
@@ -272,25 +289,27 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     flagged = {l for l, n in letter_to_name.items() if (guard_report or {}).get(n, {}).get("flagged")}
 
     claim_map, skeptic, pattern, reports, debate, proofs = None, None, None, {}, [], []
+    use_pattern = deep or (pol.pattern == "always" and not saver)
     if anon:
         # [C] claims map + Skeptic + Pattern Finder, in parallel
-        config.emit("Claims map, Skeptic" + (" aur Pattern Finder" if deep else "") + " chal rahe hain")
+        config.emit("Claims map, Skeptic" + (" aur Pattern Finder" if use_pattern else "") + " chal rahe hain")
         drafts_tag = _drafts_block(anon)
         jobs = [
             verified.strip_to_claims(client, question, anon, flagged),
-            _call(client, "skeptic", config.SKEPTIC,
-                  _m(RP.system_for("skeptic", mode, writer_hint=lang, sources=has_src), f"Question:\n{question}\n\n{drafts_tag}"),
+            _call(client, "skeptic", mp.spec("skeptic"),
+                  _m(RP.system_for("skeptic", mode, writer_hint=lang, sources=has_src, extra=chk.get("skeptic", "")),
+                     f"Question:\n{question}\n\n{drafts_tag}"),
                   errors, temperature=0.3),
         ]
-        if deep:
-            pf = config.PANEL[-1]
+        if use_pattern:
+            pf = mp.spec("pattern")
             jobs.append(_call(client, "panel:pattern_finder", pf,
                               _m(RP.system_for("pattern_finder", mode, writer_hint=lang_full, sources=has_src),
                                  f"{ctx}\n\n{drafts_tag}"),
                               errors, max_tokens=config.PANEL_MAX_TOKENS, temperature=0.4))
         res = await asyncio.gather(*jobs)
         claim_map, skeptic = res[0], res[1]
-        pattern = res[2] if deep else None
+        pattern = res[2] if use_pattern else None
         if pattern:
             panel_drafts["pattern_finder"] = pattern  # council + provenance; not a claims-map draft (it came after)
         if claim_map:
@@ -301,11 +320,12 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
 
         # [D] Falsifiers (only factual claims; skeptic's doubts as leads)
         leads = "\n\n" + RP.tag("reports", "## Skeptic doubts (leads, not facts)\n" + skeptic) if skeptic else ""
-        fal_specs = config.DEBATERS if deep else config.DEBATERS[:2]
+        n_fal = pol.falsifiers[1 if deep else 0]
+        fal_specs = mp.falsifiers[: min(n_fal, 2) if saver else n_fal]
         config.emit(f"{len(fal_specs)} falsifiers claims todne ki koshish kar rahe hain")
         fal_outs = await asyncio.gather(*[
             _call(client, f"falsifier:{i}", spec,
-                  _m(RP.system_for("falsifier", mode, writer_hint=lang, sources=has_src),
+                  _m(RP.system_for("falsifier", mode, writer_hint=lang, sources=has_src, extra=chk.get("falsifier", "")),
                      f"Question:\n{question}\n\n{RP.tag('claims', compact_text)}{leads}"
                      + (f"\n\n{RP.tag('sources', src_text)}" if has_src else "")),
                   errors, max_tokens=config.FALSIFIER_MAX_TOKENS, temperature=0.3)
@@ -316,13 +336,13 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
 
         # [E] Debater (only where there is a real clash) + code proofs, in parallel
         async def run_debate():
-            rounds = 2 if deep else 1
+            rounds = pol.debate_rounds[1 if deep else 0]
             position = f"Question:\n{question}\n\n{RP.tag('claims', compact_text)}\n\n{RP.tag('reports', _cut(fals_text, 2500))}"
             out = []
             for r in range(1, rounds + 1):
                 extra = RP.ENGINE_EXTRA["debater_round2"] if r == 2 else ""
                 user = position if r == 1 else position + "\n\n" + RP.tag("reports", "## Round 1\n" + out[-1])
-                t = await _call(client, f"debate:{r}", config.DEBATER,
+                t = await _call(client, f"debate:{r}", mp.spec("debater"),
                                 _m(RP.system_for("debater", mode, writer_hint=lang, extra=extra), user),
                                 errors, temperature=0.4, emit_start=f"Debater round {r}: sabse mazboot ulta paksh")
                 if not t:
@@ -333,15 +353,20 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
             return out
 
         async def run_proofs():
-            if run_code and task in config.VERIFY_TASKS | {"science"} and config.CODE_EXEC_SUPPORTED:
+            by_task = task in config.VERIFY_TASKS | {"science"}
+            want = pol.code_proofs == "always" or (pol.code_proofs == "task" and by_task)
+            if run_code and want and config.CODE_EXEC_SUPPORTED:
                 config.emit("Python se claims check ho rahe hain")
-                return await verified.verify_with_code(client, question, task, compact_text, fals_text, errors)
+                return await verified.verify_with_code(client, question, task, compact_text, fals_text, errors,
+                                                       spec=mp.spec("verifier"))
             return []
 
-        do_debate = debate_on and needs_debate(claim_map, reports)
+        do_debate = debate_on and pol.debate != "off" and (pol.debate == "always" and not saver or needs_debate(claim_map, reports))
         debate, proofs = await asyncio.gather(run_debate() if do_debate else asyncio.sleep(0, result=[]), run_proofs())
         roles_dbg["debate_skipped"] = (None if do_debate else "quota bachane ke liye band" if not debate_on and config.DEBATE_ENABLED
-                                       else "band hai (DEBATE=0)" if not debate_on else "drafts me factual takraav nahi tha, koi claim nahi toota")
+                                       else "band hai (DEBATE=0)" if not debate_on
+                                       else f"{mp.title} mode me debate band hai" if pol.debate == "off"
+                                       else "drafts me factual takraav nahi tha, koi claim nahi toota")
     else:
         full_text = compact_text = "(no drafts: every drafter failed)"
         fals_text = "No falsification report available."
@@ -359,7 +384,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     for i, d in enumerate(debate, 1):
         report_parts.append(f"## Debater round {i}\n" + d)
     proofs_text = verified.format_proofs(proofs) if proofs else ""
-    judge_rules = [RP.JUDGE_FORMAT[fmt]]
+    judge_rules = [RP.JUDGE_FORMAT[fmt]] + ([chk["judge"]] if chk.get("judge") else [])
     if proofs:
         judge_rules.insert(0, RP.ENGINE_EXTRA["judge_proofs"])
     if has_src:
@@ -372,7 +397,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         RP.tag("reports", "## Executable proofs (Python sandbox)\n" + proofs_text) if proofs_text else "",
     ] if p)
     judge_msgs = _m(judge_sys, judge_user)
-    answer = await _call(client, "judge", config.SYNTHESIZER, judge_msgs, errors,
+    answer = await _call(client, "judge", mp.spec("judge"), judge_msgs, errors,
                          max_tokens=config.FINAL_MAX_TOKENS, temperature=0.2, emit_start="Judge: ek final jawab likh raha hai")
     judge_raw = answer
     repair_log: list[dict] = []
@@ -389,21 +414,22 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
 
         # [G] Reviewers
         if review_on and not verified.missing_sections(answer, style):
-            want_method = deep or mode in ("math", "physics", "coding")
-            want_evidence = deep or not want_method
+            wanted = pol.reviewers_deep if deep else pol.reviewers_fast
+            want_method, want_evidence = "method" in wanted, "evidence" in wanted
             config.emit("Reviewers: tareeka aur saboot jaanch rahe hain")
             material = "\n\n".join(p for p in [RP.tag("sources", src_text) if has_src else "",
                                                RP.tag("claims", compact_text)] if p)
             jobs = []
             if want_method:
-                jobs.append(_call(client, "review:method", config.METHOD_REVIEWER,
-                                  _m(RP.system_for("method_reviewer", mode, writer_hint=lang),
+                jobs.append(_call(client, "review:method", mp.spec("method"),
+                                  _m(RP.system_for("method_reviewer", mode, writer_hint=lang, extra=chk.get("method", "")),
                                      f"Question:\n{question}\n\n{RP.tag('draft', answer)}"
                                      + (f"\n\n{RP.tag('reports', 'Code proofs: ' + json.dumps(verified_summary(proofs)))}" if proofs else "")),
                                   errors, temperature=0.1))
             if want_evidence:
-                jobs.append(_call(client, "review:evidence", config.EVIDENCE_REVIEWER,
-                                  _m(RP.system_for("evidence_reviewer", mode, writer_hint=lang, sources=has_src),
+                jobs.append(_call(client, "review:evidence", mp.spec("evidence"),
+                                  _m(RP.system_for("evidence_reviewer", mode, writer_hint=lang, sources=has_src,
+                                                   extra=chk.get("evidence", "")),
                                      f"Question:\n{question}\n\n{RP.tag('draft', answer)}\n\nMaterial the answer was built from:\n{material}"),
                                   errors, temperature=0.1))
             outs = await asyncio.gather(*jobs)
@@ -433,7 +459,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
                     "Keep the CONFIDENCE line (lower it if a critique shows a real error). A changed step loses "
                     "[PROVEN by code] and becomes [REASONED].",
                 )
-                raw = await _call(client, "refine", config.REFINER, ref_msgs, errors,
+                raw = await _call(client, "refine", mp.spec("refiner"), ref_msgs, errors,
                                   max_tokens=config.FINAL_MAX_TOKENS, temperature=0.1, emit_start="Refiner: galtiyan sudhar raha hai")
                 revised, changes, skipped = parse_refiner(raw)
                 refiner_dbg = {"changes": changes, "skipped": skipped, "raw_ok": bool(revised)}
@@ -456,6 +482,8 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     if has_src:
         answer = strip_bad_cites(answer, sources)
     confidence = parse_confidence(answer)
+    if pol.low_conf_warn and confidence == "low":
+        warnings.append(f"{mp.title} mode: is jawab ki CONFIDENCE low hai. Isko pakka fact mat maano; sources khud check karo.")
     roles_dbg.update({"reviews": reviews, "refiner": refiner_dbg, "confidence": confidence})
 
     if skeptic:
@@ -477,6 +505,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         "confidence": confidence,
         "sources": sources,
         "quota": quota,
+        "combo": combo,
         "debug": {
             "claims_map": claim_map,
             "falsification": reports,
@@ -490,10 +519,16 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     return answer, extras, panel_drafts, letter_to_name
 
 
-def quota_chains() -> list:
-    """The role chains one question leans on (first model of each = where the load goes)."""
-    return [config.ARCHITECT, config.THEORIST, config.EMPIRICIST, config.SKEPTIC, config.DEBATER,
-            config.SYNTHESIZER, config.METHOD_REVIEWER, config.EVIDENCE_REVIEWER, config.REFINER, *config.DEBATERS[:2]]
+def quota_chains(mode: str = "standard") -> list:
+    """The role chains one question in this mode leans on (first model of each = where the load goes)."""
+    mp = mode_plans.get(mode)
+    n = mp.policy.falsifiers[0]
+    roles_used = ["architect", "theorist", "empiricist", "skeptic", "debater", "judge", "method", "evidence", "refiner"]
+    if mp.policy.specialist == "always":
+        roles_used.append("specialist")
+    if mp.policy.pattern == "always":
+        roles_used.append("pattern")
+    return [mp.spec(r) for r in roles_used] + list(mp.falsifiers[:n])
 
 
 def verified_summary(proofs: list[dict]) -> dict:

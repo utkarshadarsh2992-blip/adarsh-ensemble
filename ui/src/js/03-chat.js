@@ -25,7 +25,7 @@ const Chat = (() => {
   /* ---------- build ---------- */
   function mount(root) {
     titleEl = h('h1', { class: 'wm' }, 'ADARSH');
-    statusEl = h('span', { class: 'status' }, h('i'), h('span', {}, ''));
+    statusEl = h('span', { class: 'status', role: 'button', title: 'Tap to check the engine again', on: { click: () => Backend.refresh() } }, h('i'), h('span', {}, ''));
     callsBtn = ibtn('search2', 'Model calls dikhao', toggleCalls, 'calls');
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
@@ -72,6 +72,8 @@ const Chat = (() => {
   function setStatus(s) {
     statusEl.className = 'status' + (s.demo ? ' demo' : ''); statusEl.lastChild.textContent = s.label;
     statusEl.firstChild.style.background = s.ok === false ? 'var(--bad)' : '';
+    statusEl.title = s.hint ? s.hint + ' (tap to check again)' : 'Tap to check the engine again';
+    if (s.hint && s.ok === false && s.label !== 'Offline') toast(s.label + ': ' + s.hint);
   }
 
   /* ---------- thread ---------- */
@@ -328,6 +330,7 @@ const Chat = (() => {
           }
           lv.push(s);
         } });
+      if (!Backend.isDemo() && Backend.markUp) Backend.markUp();
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
       if (arr[0] && Array.isArray(arr[0].calls) && arr[0].calls.length) {  // final list from the engine (also for the HTTP backend, which sends no live events)
         callRows = arr[0].calls.map(c => ({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails || [] }));

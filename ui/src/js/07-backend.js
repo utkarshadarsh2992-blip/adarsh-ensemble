@@ -157,8 +157,20 @@ const Backend = (() => {
     async ping() { const b = impl(); return b.ping ? b.ping() : { ok: true, label: 'Custom backend' }; },
     async refresh() {
       if (this.isDemo()) return Bus.emit('backend:status', { label: 'Demo mode', demo: true });
+      const tok = (this._tok = (this._tok || 0) + 1);  /* a newer refresh() cancels this loop */
       Bus.emit('backend:status', { label: 'Connecting…' });
-      const r = await this.ping(); Bus.emit('backend:status', { label: r.ok ? 'Connected' : 'Offline', ok: r.ok });
-    }
+      let r = await this.ping();
+      /* the on-device engine boots in the background: keep asking for up to ~2 minutes instead of giving up */
+      for (let i = 0; r && r.starting && i < 80 && tok === this._tok; i++) {
+        Bus.emit('backend:status', { label: 'Starting…' });
+        await new Promise(ok => setTimeout(ok, 1500));
+        r = await this.ping();
+      }
+      if (tok !== this._tok) return;
+      const label = r.ok ? 'Connected' : r.starting ? 'Offline' : (r.label && r.label !== 'Engine not reachable' ? r.label : 'Offline');
+      Bus.emit('backend:status', { label, ok: r.ok, hint: r.hint || r.error || '' });
+    },
+    /* a reply that came back from the engine proves it is up, whatever the last ping said */
+    markUp() { Bus.emit('backend:status', { label: 'Connected', ok: true }); }
   };
 })();

@@ -69,7 +69,7 @@ def status() -> str:
             "android": config.ON_ANDROID,
             "code_proofs": config.CODE_EXEC_SUPPORTED,
             "providers": {k: bool(v.api_key) for k, v in config.PROVIDERS.items()},
-            "plan_problems": config.PLAN_PROBLEMS,
+            "plan_problems": config.PLAN_PROBLEMS + __import__("mode_plans").PLAN_PROBLEMS,
             "python": sys.version.split()[0],
         }
     )

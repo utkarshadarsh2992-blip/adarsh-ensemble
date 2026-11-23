@@ -182,6 +182,11 @@ async def handle(body: dict) -> dict | list[dict]:
         steps = ["Manual · master answer (sirf tumhare answers se)"]
     elif res.get("engine") == "roles":
         steps = [f"Task: {res.get('task_type', 'general')} · mode {res.get('mode', 'standard')} · 11-role council"]
+        cb = res.get("combo") or {}
+        if cb:
+            m = cb.get("models") or {}
+            steps.append(f"{cb.get('title', '')} model combo: judge {m.get('judge')}, drafters {m.get('theorist')} + {m.get('empiricist')}"
+                         f" + {m.get('specialist')}, falsifiers {', '.join(cb.get('falsifiers') or [])}")
         if res.get("sources"):
             steps.append(f"Research: {len(res['sources'])} web sources padhe")
         if res.get("confidence"):

@@ -95,7 +95,7 @@ def queries_from_plan(plan: str | None, question: str) -> list[str]:
     return [q[:120]] if q else []
 
 
-async def gather(client: httpx.AsyncClient, queries: list[str]) -> list[dict]:
+async def gather(client: httpx.AsyncClient, queries: list[str], max_sources: int | None = None) -> list[dict]:
     """Run all lookups in parallel, drop duplicates, number them S1..Sn. Never raises."""
     if not config.RESEARCH_ENABLED or not queries:
         return []
@@ -122,8 +122,10 @@ async def gather(client: httpx.AsyncClient, queries: list[str]) -> list[dict]:
     # web results first (fresher), then Wikipedia; total size kept small (Groq allows 8K tokens/min per model)
     out.sort(key=lambda s: s["via"] != "web")
     picked, used = [], 0
+    cap = min(max_sources or config.RESEARCH_MAX_SOURCES, config.RESEARCH_MAX_SOURCES + 2)
+    total = config.RESEARCH_TOTAL_CHARS
     for s in out:
-        if len(picked) >= config.RESEARCH_MAX_SOURCES or used + len(s["text"]) > config.RESEARCH_TOTAL_CHARS:
+        if len(picked) >= cap or used + len(s["text"]) > total:
             continue
         picked.append(s)
         used += len(s["text"])

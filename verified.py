@@ -262,11 +262,11 @@ async def falsify(client, question, map_text, lang, deep):
     return reports, errors
 
 
-async def verify_with_code(client, question, task, map_text, fals_text, errors) -> list[dict]:
+async def verify_with_code(client, question, task, map_text, fals_text, errors, spec=None) -> list[dict]:
     health.set_stage("verifier")
     try:
         out = await chat(
-            client, config.VERIFIER,
+            client, spec or config.VERIFIER,
             prompts.verifier_messages(question, map_text, fals_text[:2500], task, config.MAX_CHECKS),
             temperature=0.2, max_tokens=2500,
         )

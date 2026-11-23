@@ -87,7 +87,7 @@ def script(monkeypatch):
             raise v
         return v
 
-    async def fake_gather(client, queries):
+    async def fake_gather(client, queries, max_sources=None):
         s["queries"].append(list(queries))
         return [dict(x) for x in SOURCES]
 

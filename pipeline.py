@@ -385,7 +385,7 @@ def _pack(
         out["audit"] = extras.get("audit")
         if extras.get("master"):
             out["master"] = extras["master"]
-        for k in ("sources", "confidence", "mode", "role_notes", "quota"):
+        for k in ("sources", "confidence", "mode", "role_notes", "quota", "combo"):
             if extras.get(k):
                 out[k] = extras[k]
     if rec is not None:

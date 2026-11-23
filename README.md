@@ -53,11 +53,52 @@ Mode: UI ka mode (Standard/V/Physics/Math/Business/Coding) mode hint chunta hai;
 
 Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din limit dhyan me rakho). Switches (0 = band): `RESEARCH`, `REVIEW`, `DEBATE`, `RESEARCH_TIMEOUT_S`, `ROLE_MAX_TOKENS`. Purana engine chahiye to `CHAT_ENGINE=verified`.
 
+## Har mode ka alag model combo (`mode_plans.py`)
+
+Chat ke 6 modes (Standard, V, Physics, Math, Business, Coding) ab sirf prompt hint nahi badalte. Har mode ka **apna model
+combination** hai (kaunsa model kaunsa role karega) aur **apna behaviour** (kitni jaanch). Ek mode badlo, baaki par asar nahi.
+Standard "auto" hai: classifier math/science/coding bataye to us mode ka plan lagta hai, warna lite plan.
+Model choice models ki jaani-maani strengths aur free quotas par based judgement hai, benchmark nahi.
+Har chain `config.check_chains` se check hoti hai (teeno core providers, pehla fallback doosre provider par, koi model do baar nahi).
+Quota kam ho to "always" wale extras (specialist, pattern finder, 3rd falsifier, always-debate) apne aap band ho jaate hain.
+
+| Role | Standard | V (verified) | Physics | Math | Business | Coding |
+|---|---|---|---|---|---|---|
+| architect | gemini-3.1-flash-lite | gemma-4-31b-g | gemma-4-31b-g | gpt-oss-20b | gemini-3.1-flash-lite | gemma-4-31b-g |
+| theorist | gpt-oss-20b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b |
+| empiricist | gemma-4-26b-g | qwen3.8-27b | gemini-3.8-flash | qwen3.8-27b | gemini-3.8-flash | qwen3.8-27b |
+| specialist | gemini-3.8-flash | nemotron-ultra | nemotron-ultra | nemotron-ultra | mistral-large-4 | glm-5-3-flash |
+| pattern | mistral-large-4 | mistral-large-4 | mistral-large-4 | gemini-3.5-flash-lite | nemotron-ultra | mistral-large-4 |
+| skeptic | gemini-2.5-flash-lite | gpt-oss-20b | gpt-oss-20b | gemini-3.1-flash-lite | gpt-oss-20b | gpt-oss-20b |
+| debater | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b |
+| judge | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash |
+| method | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b |
+| evidence | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-20b | gpt-oss-120b | gpt-oss-120b |
+| refiner | gemini-3.5-flash-lite | mistral-large-4 | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash |
+| falsifiers | gpt-oss-120b, gemma-4-31b-g, nemotron-ultra | gemma-4-31b-g, ernie-5.5-flash, glm-5-3-flash | qwen3.8-27b, gemma-4-31b-g, glm-5-3-flash | nemotron-ultra, gpt-oss-20b, glm-5-3-flash | qwen3.8-27b, gemma-4-31b-g, glm-5-3-flash | qwen3.8-27b, laguna-xs-2.1, gemma-4-26b-g |
+
+| Behaviour | Standard | V (verified) | Physics | Math | Business | Coding |
+|---|---|---|---|---|---|---|
+| depth | inherit | deep | inherit | inherit | inherit | inherit |
+| falsifiers fast / deep | 1 / 2 | 3 / 3 | 2 / 3 | 2 / 3 | 2 / 3 | 2 / 3 |
+| specialist | deep | always | deep | deep | always | always |
+| pattern finder | deep | always | deep | always | deep | deep |
+| debate | conflict | always | conflict | conflict | conflict | conflict |
+| reviewers fast / deep | evidence / method+evidence | method+evidence / method+evidence | method / method+evidence | method / method+evidence | evidence / evidence+method | method / method+evidence |
+| research | auto (max 3) | must (max 6) | auto (max 4) | auto (max 2) | must (max 6) | auto (max 3) |
+| code proofs | task | always | always | always | never | always |
+
+Mode-specific rules bhi judge / falsifier / reviewer prompts me jaate hain (jaise Physics: units + limiting cases, Business: har number ka [S#] ya (assumption), Coding: edge-case inputs). Council page par "<mode> mode ka model combo" fold me poora plan dikhta hai.
+
 ## Chat UI: "Model calls" toggle
 
 Chat screen ke top-right corner me ek chhota icon (pulse line) hai. Woh on ho to sawaal bhejte hi composer ke upar ek chhota panel khulta hai jo har model call dikhata hai: kaunsa role, kaunsa model, kitna time laga, aur jo fail hua uska reason (jaise "daily token quota used up"). Header par "N calls · 1 chal raha · 2 fail" bhi dikhta hai. Jawab aane ke baad wahi list us jawab ke neeche "Model calls: N" me folded rehti hai, aur chat me save rehti hai. Toggle band karne par panel aur lists chhup jaate hain (data save rehta hai).
 
 Kaise: engine har model call par ek structured line bhejta hai (`config.emit_call`, prefix `\u0001call `), jo Android bridge se seedha JS tak jaati hai (`ui/src/js/03-chat.js`). HTTP backend live lines nahi bhej sakta, isliye wahan jawab ke saath `calls` list aati hai (`pipeline._compact_calls`) aur wahi panel bharta hai.
+
+## App status "Offline" fix
+
+Android par Python engine app khulne ke kuch second baad start hota hai. Pehle UI sirf ek baar ping karta tha, isliye status "Offline" par atak jaata tha. Ab UI engine ready hone tak har 1.5s puchhta hai ("Starting…"), app par wapas aane par aur status par tap karne par dobara check karta hai, koi bhi reply aate hi "Connected" dikhata hai, aur alag se "No API keys" / "Engine error" batata hai.
 
 ## Quota bachao (automatic)
 

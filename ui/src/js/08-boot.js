@@ -16,6 +16,8 @@
   };
 
   Backend.refresh();
+  /* coming back to the app: the engine may have started (or been killed) meanwhile */
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) Backend.refresh(); });
 
   if (window.__adarshDictation) STT.dict = window.__adarshDictation;  // Android app: native SpeechRecognizer
   /* platform dictation (Chromium tabs / desktop app); Web Speech is the fallback inside STT */

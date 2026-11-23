@@ -89,7 +89,7 @@ async def health_check():
     return {
         "status": "ok",
         "providers_configured": {k: bool(v.api_key) for k, v in config.PROVIDERS.items()},
-        "plan_problems": config.PLAN_PROBLEMS,  # empty = every role spans all 3 providers
+        "plan_problems": config.PLAN_PROBLEMS + __import__("mode_plans").PLAN_PROBLEMS,  # empty = every role spans all 3 providers
         "roles": _roles(),
         "usage": health.snapshot(),
     }

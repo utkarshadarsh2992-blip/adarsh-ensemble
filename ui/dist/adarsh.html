@@ -624,6 +624,8 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .mcr.run .st::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-right:6px;vertical-align:1px;animation:mc-pulse 1s infinite}
 @keyframes mc-pulse{50%{opacity:.25}}
 .mcalls-msg .mcl{max-height:none;border-top:0}
+.pop-item small.pi-how{font-size:11.5px;color:var(--fg2);opacity:.8}
+.combo-t{width:100%;border-collapse:collapse;font-size:13px}.combo-t td{padding:3px 6px;border-top:1px solid var(--line,rgba(127,127,127,.18))}.combo-t td:first-child{color:var(--muted);white-space:nowrap}
 
 </style></head><body><div class="phone" id="phone">
   <section class="view on" id="v-chat"></section>
@@ -708,8 +710,15 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
     /* lessons: quick synchronous file work on the device (no model call) */
     lessons(op) { try { return Promise.resolve(JSON.parse(N.lessons(JSON.stringify(op)))); } catch (e) { return Promise.resolve({ ok: false, error: 'Lessons nahi khule.' }); } },
     ping: async () => {
-      try { const s = JSON.parse(N.status()); return { ok: !!s.ready, label: s.ready ? 'On-device engine' : 'Engine starting…' }; }
-      catch (e) { return { ok: false, label: 'Engine not reachable' }; }
+      /* Python (Chaquopy) needs a few seconds to start after the app opens: report "starting" so the UI asks again
+         instead of showing Offline for good. A real start error, or no API key at all, gets its own label. */
+      try {
+        const s = JSON.parse(N.status());
+        if (!s.ready) return s.error ? { ok: false, label: 'Engine error', error: s.error } : { ok: false, starting: true, label: 'Engine starting…' };
+        const p = s.providers || {}, core = ['groq', 'gemini', 'openrouter'].filter(k => p[k]).length;
+        if (!core) return { ok: false, label: 'No API keys', hint: 'Settings > API keys me Groq / Gemini / OpenRouter key daalo.' };
+        return { ok: true, label: 'On-device engine', providers: p };
+      } catch (e) { return { ok: false, starting: true, label: 'Engine starting…' }; }
     }
   };
 
@@ -1439,6 +1448,14 @@ const Council = (() => {
           row('Confidence', R.confidence || '—'),
           R.quota ? row('Quota', (R.quota.level === 'ok' ? 'theek' : R.quota.level === 'tight' ? 'kam' : 'bahut kam') + ' · ~' + Math.round((R.quota.left || 0) * 100) + '% bacha') : null,
           R.quota && (R.quota.saved || []).length ? h('p', { class: 'warn' }, 'Quota bachane ke liye: ' + R.quota.saved.join(', ')) : null),
+        R.combo ? fold((R.combo.title || R.mode) + ' mode ka model combo', h('div', {},
+          R.combo.why ? h('p', { class: 'muted' }, R.combo.why) : null,
+          h('table', { class: 'combo-t' }, h('tbody', {},
+            Object.entries(R.combo.models || {}).map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', {}, v))),
+            h('tr', {}, h('td', {}, 'falsifiers'), h('td', {}, (R.combo.falsifiers || []).join(', '))))),
+          R.combo.policy ? h('p', { class: 'muted' }, 'Policy: depth ' + R.combo.policy.depth + ' · falsifiers ' + (R.combo.policy.falsifiers || []).join('/') +
+            ' · debate ' + R.combo.policy.debate + ' · reviewers fast ' + (R.combo.policy.reviewers_fast || []).join('+') + ', deep ' + (R.combo.policy.reviewers_deep || []).join('+') +
+            ' · research ' + R.combo.policy.research + ' (max ' + R.combo.policy.max_sources + ') · code proofs ' + R.combo.policy.code_proofs) : null)) : null,
         R.plan ? fold('Architect ka plan', md(R.plan), true) : null,
         one('architect') ? callCard(one('architect')) : null,
         h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Research'), pill(src.length + ' sources', src.length ? 'good' : 'mute')),
@@ -1666,27 +1683,28 @@ const Lessons = (() => {
    - Rename a mode, change its description, placeholder or starter prompts in MODES below. Nothing else needs to change.
    - The chosen mode id goes to the backend as `mode` on every request (07-backend.js). The UI never rewrites the question,
      so what a mode actually does is decided on your side, in your backend or adapter.
-   - ids used today: standard, v, physics, math, business, coding.
+   - ids used today: standard, v, physics, math, business, coding. Each id has its OWN model combination and checks on the
+     backend (mode_plans.py); `how` is only the one-line summary shown in the menu.
 
    Starter = { t: text on the card, p: text put in the box, send: true to send it straight away, ic: icon name }. */
 
 const Modes = (() => {
   const MODES = [
-    { id: 'standard', name: 'Standard', ic: 'sparkle', desc: 'Everyday questions, writing and quick help.',
+    { id: 'standard', how: 'Auto: math/physics/coding questions get that plan; else lite models, 1-2 falsifiers', name: 'Standard', ic: 'sparkle', desc: 'Everyday questions, writing and quick help.',
       placeholder: 'Message Adarsh', hello: 'What are we working on?',
       starters: [
         { ic: 'sun', t: 'Brief me on today', p: 'Brief me on today', send: true },
         { ic: 'globe', t: 'Research something', p: 'Research ' },
         { ic: 'tasks', t: 'Add a task or reminder', p: 'Remind me to ' }
       ] },
-    { id: 'v', name: 'V', ic: 'vee', desc: 'Double-checked answers for facts that matter.',
+    { id: 'v', how: 'Always deep · 3 falsifiers · always debates · both reviewers · must research', name: 'V', ic: 'vee', desc: 'Double-checked answers for facts that matter.',
       placeholder: 'Ask something that must be right…',
       starters: [
         { t: 'Fact-check a claim', p: 'Fact-check this claim: ' },
         { t: 'Verify a calculation', p: 'Verify this calculation step by step: ' },
         { t: 'Is this statistic reliable?', p: 'Is this statistic reliable? ' }
       ] },
-    { id: 'physics', name: 'Physics', ic: 'atom', desc: 'Derivations, units and sanity checks.',
+    { id: 'physics', how: 'gpt-oss + nemotron + gemini · units & limits checks · method review', name: 'Physics', ic: 'atom', desc: 'Derivations, units and sanity checks.',
       placeholder: 'Ask a physics question…',
       starters: [
         { t: 'Derive the escape velocity of Earth', p: 'Derive the escape velocity of Earth' },
@@ -1694,7 +1712,7 @@ const Modes = (() => {
         { t: 'Check the units of an equation', p: 'Check the units of this equation: ' },
         { t: 'Solve a projectile motion problem', p: 'A ball is thrown at 20 m/s at 30° above the horizontal. Find the range.' }
       ] },
-    { id: 'math', name: 'Math', ic: 'sigma', desc: 'Step-by-step working with exact results.',
+    { id: 'math', how: 'Strongest reasoners · counter-examples · every step re-derived', name: 'Math', ic: 'sigma', desc: 'Step-by-step working with exact results.',
       placeholder: 'Enter a problem to solve…',
       starters: [
         { t: 'Solve x² − 5x + 6 = 0', p: 'Solve x^2 - 5x + 6 = 0 step by step' },
@@ -1702,7 +1720,7 @@ const Modes = (() => {
         { t: 'Differentiate x·ln x', p: 'Find the derivative of x ln x' },
         { t: 'Explain eigenvalues intuitively', p: 'Explain eigenvalues and eigenvectors intuitively' }
       ] },
-    { id: 'business', name: 'Business', ic: 'trend', desc: 'Strategy, finance and market analysis.',
+    { id: 'business', how: 'mistral specialist · always researches · every number checked', name: 'Business', ic: 'trend', desc: 'Strategy, finance and market analysis.',
       placeholder: 'Describe your business question…',
       starters: [
         { t: 'Compare two pricing strategies', p: 'Compare these two pricing strategies: ' },
@@ -1710,7 +1728,7 @@ const Modes = (() => {
         { t: 'SWOT analysis', p: 'Do a SWOT analysis for ' },
         { t: 'Outline a go-to-market plan', p: 'Outline a go-to-market plan for ' }
       ] },
-    { id: 'coding', name: 'Coding', ic: 'code', desc: 'Write, debug and review code.',
+    { id: 'coding', how: 'qwen + glm + laguna · edge-case attacks · code review', name: 'Coding', ic: 'code', desc: 'Write, debug and review code.',
       placeholder: 'Paste code or describe what to build…',
       starters: [
         { t: 'Explain this error message', p: 'Explain this error and how to fix it:\n' },
@@ -1754,7 +1772,7 @@ const Modes = (() => {
       h('div', { class: 'pop-h' }, 'Mode'),
       MODES.map(m => h('button', { class: 'pop-item', role: 'menuitemradio', 'aria-checked': String(m.id === now), on: { click: () => { set(m.id); close(); } } },
         h('span', { class: 'pi-ic' }, icon(m.ic)),
-        h('span', { class: 'pi-t' }, h('b', {}, m.name), h('small', {}, m.desc)),
+        h('span', { class: 'pi-t' }, h('b', {}, m.name), h('small', {}, m.desc), m.how ? h('small', { class: 'pi-how' }, m.how) : null),
         h('span', { class: 'pi-ck' }, m.id === now ? icon('check', 's') : null))));
     layer = h('div', { class: 'pop-scrim', on: { click: (e) => { if (e.target === layer) close(); } } }, menu);
     phone.appendChild(layer);
@@ -1793,7 +1811,7 @@ const Chat = (() => {
   /* ---------- build ---------- */
   function mount(root) {
     titleEl = h('h1', { class: 'wm' }, 'ADARSH');
-    statusEl = h('span', { class: 'status' }, h('i'), h('span', {}, ''));
+    statusEl = h('span', { class: 'status', role: 'button', title: 'Tap to check the engine again', on: { click: () => Backend.refresh() } }, h('i'), h('span', {}, ''));
     callsBtn = ibtn('search2', 'Model calls dikhao', toggleCalls, 'calls');
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
@@ -1840,6 +1858,8 @@ const Chat = (() => {
   function setStatus(s) {
     statusEl.className = 'status' + (s.demo ? ' demo' : ''); statusEl.lastChild.textContent = s.label;
     statusEl.firstChild.style.background = s.ok === false ? 'var(--bad)' : '';
+    statusEl.title = s.hint ? s.hint + ' (tap to check again)' : 'Tap to check the engine again';
+    if (s.hint && s.ok === false && s.label !== 'Offline') toast(s.label + ': ' + s.hint);
   }
 
   /* ---------- thread ---------- */
@@ -2096,6 +2116,7 @@ const Chat = (() => {
           }
           lv.push(s);
         } });
+      if (!Backend.isDemo() && Backend.markUp) Backend.markUp();
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
       if (arr[0] && Array.isArray(arr[0].calls) && arr[0].calls.length) {  // final list from the engine (also for the HTTP backend, which sends no live events)
         callRows = arr[0].calls.map(c => ({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails || [] }));
@@ -2832,9 +2853,21 @@ const Backend = (() => {
     async ping() { const b = impl(); return b.ping ? b.ping() : { ok: true, label: 'Custom backend' }; },
     async refresh() {
       if (this.isDemo()) return Bus.emit('backend:status', { label: 'Demo mode', demo: true });
+      const tok = (this._tok = (this._tok || 0) + 1);  /* a newer refresh() cancels this loop */
       Bus.emit('backend:status', { label: 'Connecting…' });
-      const r = await this.ping(); Bus.emit('backend:status', { label: r.ok ? 'Connected' : 'Offline', ok: r.ok });
-    }
+      let r = await this.ping();
+      /* the on-device engine boots in the background: keep asking for up to ~2 minutes instead of giving up */
+      for (let i = 0; r && r.starting && i < 80 && tok === this._tok; i++) {
+        Bus.emit('backend:status', { label: 'Starting…' });
+        await new Promise(ok => setTimeout(ok, 1500));
+        r = await this.ping();
+      }
+      if (tok !== this._tok) return;
+      const label = r.ok ? 'Connected' : r.starting ? 'Offline' : (r.label && r.label !== 'Engine not reachable' ? r.label : 'Offline');
+      Bus.emit('backend:status', { label, ok: r.ok, hint: r.hint || r.error || '' });
+    },
+    /* a reply that came back from the engine proves it is up, whatever the last ping said */
+    markUp() { Bus.emit('backend:status', { label: 'Connected', ok: true }); }
   };
 })();
 
@@ -2856,6 +2889,8 @@ const Backend = (() => {
   };
 
   Backend.refresh();
+  /* coming back to the app: the engine may have started (or been killed) meanwhile */
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) Backend.refresh(); });
 
   if (window.__adarshDictation) STT.dict = window.__adarshDictation;  // Android app: native SpeechRecognizer
   /* platform dictation (Chromium tabs / desktop app); Web Speech is the fallback inside STT */

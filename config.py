@@ -209,6 +209,8 @@ AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-fla
 MASTER_WRITER = use("mistral-large-4", "synthesizer", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"])
 MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "gpt-oss-120b", "nemotron-lightning"])
 
+# NOTE: the roles engine now takes its chains PER CHAT MODE from mode_plans.py (Standard, V, Physics, Math, Business,
+# Coding each have their own combination). The chains below are the defaults kept for the other engines / tools.
 # ROLES ENGINE (roles.py, the 11 role prompts in role_prompts.py). Same rules: all 3 core providers in every chain,
 # first fallback on another provider. The two "fast" drafters (theorist, empiricist) are both on Groq but different
 # families (gpt-oss vs qwen), so fast mode does not touch OpenRouter's 50/day quota for drafting.
@@ -255,9 +257,10 @@ def all_roles() -> list[tuple[str, ModelSpec]]:
     return rows
 
 
-def validate_plan() -> list[str]:
+def check_chains(rows) -> list[str]:
+    """The fallback rules for (name, spec) rows: all core providers, first fallback elsewhere, no model twice."""
     problems = []
-    for name, spec in all_roles() + [("guard_llm", GUARD_LLM)]:
+    for name, spec in rows:
         chain = chain_of(spec)
         missing = set(CORE_PROVIDERS) - {c.provider for c in chain}
         if missing:
@@ -268,6 +271,10 @@ def validate_plan() -> list[str]:
         if len(set(labels)) != len(labels):
             problems.append(f"{name}: a model appears twice in its chain")
     return problems
+
+
+def validate_plan() -> list[str]:
+    return check_chains(all_roles() + [("guard_llm", GUARD_LLM)])
 
 
 PLAN_PROBLEMS = validate_plan()

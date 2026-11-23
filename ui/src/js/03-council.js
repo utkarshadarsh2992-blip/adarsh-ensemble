@@ -168,6 +168,14 @@ const Council = (() => {
           row('Confidence', R.confidence || '—'),
           R.quota ? row('Quota', (R.quota.level === 'ok' ? 'theek' : R.quota.level === 'tight' ? 'kam' : 'bahut kam') + ' · ~' + Math.round((R.quota.left || 0) * 100) + '% bacha') : null,
           R.quota && (R.quota.saved || []).length ? h('p', { class: 'warn' }, 'Quota bachane ke liye: ' + R.quota.saved.join(', ')) : null),
+        R.combo ? fold((R.combo.title || R.mode) + ' mode ka model combo', h('div', {},
+          R.combo.why ? h('p', { class: 'muted' }, R.combo.why) : null,
+          h('table', { class: 'combo-t' }, h('tbody', {},
+            Object.entries(R.combo.models || {}).map(([k, v]) => h('tr', {}, h('td', {}, k), h('td', {}, v))),
+            h('tr', {}, h('td', {}, 'falsifiers'), h('td', {}, (R.combo.falsifiers || []).join(', '))))),
+          R.combo.policy ? h('p', { class: 'muted' }, 'Policy: depth ' + R.combo.policy.depth + ' · falsifiers ' + (R.combo.policy.falsifiers || []).join('/') +
+            ' · debate ' + R.combo.policy.debate + ' · reviewers fast ' + (R.combo.policy.reviewers_fast || []).join('+') + ', deep ' + (R.combo.policy.reviewers_deep || []).join('+') +
+            ' · research ' + R.combo.policy.research + ' (max ' + R.combo.policy.max_sources + ') · code proofs ' + R.combo.policy.code_proofs) : null)) : null,
         R.plan ? fold('Architect ka plan', md(R.plan), true) : null,
         one('architect') ? callCard(one('architect')) : null,
         h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Research'), pill(src.length + ' sources', src.length ? 'good' : 'mute')),
