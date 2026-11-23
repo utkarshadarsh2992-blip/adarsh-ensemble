@@ -20,6 +20,12 @@ test('generated media fits mobile cards without cropping or excessive zoom', () 
   assert.match(APP_CSS, /\.generated-media>video\{aspect-ratio:16\/9\}/);
 });
 
+test('long chat titles stay within the header track beside action buttons', () => {
+  assert.match(APP_CSS, /\.hdr\{[^}]*grid-template-columns:44px minmax\(0,1fr\) auto/);
+  assert.match(APP_CSS, /\.hdr h1\{[^}]*width:100%;max-width:100%;[^}]*text-overflow:ellipsis/);
+  assert.match(APP_CSS, /\.ttl\{[^}]*min-width:0;width:100%/);
+});
+
 function mount({ mediaReply, nativeMethods = {} } = {}) {
   const dom = new JSDOM(INDEX, { url: 'https://appassets.androidplatform.net/assets/index.html', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;

@@ -62,11 +62,11 @@ details[open]>summary svg.i.chev{transform:rotate(90deg)}
 .stack{display:flex;flex-direction:column;gap:16px;padding-top:6px;padding-bottom:40px}
 
 /* ---------- header ---------- */
-.hdr{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;min-height:56px;padding-top:4px;padding-bottom:4px;border-bottom:1px solid transparent;transition:border-color .15s}
+.hdr{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;min-height:56px;padding-top:4px;padding-bottom:4px;border-bottom:1px solid transparent;transition:border-color .15s}
 .hdr.scrolled{border-bottom-color:var(--line)}
-.hdr h1{margin:0;text-align:center;font:600 16px/1.25 var(--sans);letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding:0 6px}
+.hdr h1{width:100%;max-width:100%;margin:0;text-align:center;font:600 16px/1.25 var(--sans);letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;padding:0 6px}
 .hdr h1.wm{font:500 21px/1.1 var(--serif);letter-spacing:.05em}
-.ttl{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;text-align:center}
+.ttl{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;width:100%;text-align:center}
 .ib{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;color:var(--fg)}
 .ib:active{background:var(--card)}
 .tag{font:500 10.5px/1 var(--mono);letter-spacing:.06em;padding:4px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
@@ -600,7 +600,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .stack>.glabel:first-child{padding-top:0}
 
 /* ---------- model calls: live panel in the chat (toggle in the header) ---------- */
-.hdr{grid-template-columns:44px 1fr auto}
+.hdr{grid-template-columns:44px minmax(0,1fr) auto}
 .hdr-r{display:flex;align-items:center;justify-content:flex-end;gap:0}
 .ib.on{color:var(--accent)}
 .mcalls{margin:0 2px 8px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden}
