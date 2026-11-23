@@ -81,6 +81,13 @@ jobs:
         with:
           packages: "platforms;android-34 build-tools;34.0.0"
 
+      # apksigner and aapt2 live in build-tools, which setup-android does not put on PATH.
+      - name: Put Android build-tools on PATH (apksigner, aapt2)
+        run: |
+          BT="$ANDROID_HOME/build-tools/34.0.0"
+          test -x "$BT/apksigner" && test -x "$BT/aapt2"
+          echo "$BT" >> "$GITHUB_PATH"
+
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           gradle-version: "8.9"
@@ -148,9 +155,16 @@ jobs:
           RELEASE_TAG: v1.0.${{ github.run_number }}
           RELEASE_ASSET: adarsh-ensemble-1.0.${{ github.run_number }}.apk
         run: |
+          set -euo pipefail
           mkdir -p release-assets
           APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
           cp "$APK" "release-assets/$RELEASE_ASSET"
+          CERT_SHA256=$(apksigner verify --print-certs -v "release-assets/$RELEASE_ASSET" 2>&1 | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          if [ -z "$CERT_SHA256" ]; then
+            echo "Could not read the APK signing certificate with apksigner" >&2
+            exit 1
+          fi
+          echo "APK signing certificate SHA-256: $CERT_SHA256"
           python scripts/publish_android_release.py manifest \
             --apk "release-assets/$RELEASE_ASSET" \
             --application-id app.adarsh.ensemble \
@@ -159,7 +173,7 @@ jobs:
             --commit "$GITHUB_SHA" \
             --tag "$RELEASE_TAG" \
             --asset-name "$RELEASE_ASSET" \
-            --certificate-sha256 "$(apksigner verify --print-certs -v "release-assets/$RELEASE_ASSET" 2>&1 | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]')" \
+            --certificate-sha256 "$CERT_SHA256" \
             --output release-assets/update.json
           printf '%s\n' "$GITHUB_SHA" > release-assets/built-sha.txt
           RELEASE_ASSET="$RELEASE_ASSET" RELEASE_TAG="$RELEASE_TAG" BUILT_SHA="$GITHUB_SHA" RUN_NUMBER="$GITHUB_RUN_NUMBER" python - <<'PY'
