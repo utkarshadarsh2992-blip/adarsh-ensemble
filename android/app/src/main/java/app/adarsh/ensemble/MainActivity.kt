@@ -228,6 +228,9 @@ class MainActivity : AppCompatActivity() {
         fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.speak(id, text, lang, rate) }
         fun ttsPlayFile(id: String, path: String, rate: Float) = ui { it.speaker?.playFile(id, path, rate) }
         fun ttsStop() = ui { it.speaker?.stopAll(silent = true); it.neural?.stop() }
+        /** Phone voices the user can choose from (Settings > Voice & language > Phone voice). */
+        fun ttsVoices(): String = onMain { current?.speaker?.voiceList() ?: "[]" }
+        fun ttsSetVoice(name: String) = ui { it.speaker?.wanted = name.ifBlank { null } }
 
         // ---- Standard-mode actions (ActionRunner.kt). Called from JS; must answer synchronously.
         private fun onMain(block: () -> String): String {
@@ -378,6 +381,3 @@ class MainActivity : AppCompatActivity() {
         }
     }
 }
-        /** Phone voices the user can choose from (Settings > Voice & language > Phone voice). */
-        fun ttsVoices(): String = onMain { current?.speaker?.voiceList() ?: "[]" }
-        fun ttsSetVoice(name: String) = ui { it.speaker?.wanted = name.ifBlank { null } }
