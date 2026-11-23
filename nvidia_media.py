@@ -188,14 +188,13 @@ async def generate(request: dict) -> dict:
 
     if kind == "image":
         body = {
-            "mode": "Image Generation",
+            "mode": "t2i",
             "prompt": prompt,
             "height": 1024,
             "width": 1024,
             "cfg_scale": 3.5,
             "steps": 35,
             "samples": 1,
-            "seed": 0,
         }
         data = await _post(FLUX_URL, body, api_key, timeout=240.0)
         artifacts = data.get("artifacts")

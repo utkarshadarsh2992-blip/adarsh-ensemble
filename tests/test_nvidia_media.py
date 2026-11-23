@@ -64,6 +64,8 @@ def test_flux_request_stores_jpeg_by_opaque_id_not_base64(monkeypatch, tmp_path)
 
     assert calls[0][0] == nvidia_media.FLUX_URL
     assert calls[0][1]["Authorization"] == "Bearer test-nvidia-key"
+    assert calls[0][2]["mode"] == "t2i"
+    assert "seed" not in calls[0][2]
     assert calls[0][2]["prompt"] == "A blue mountain at sunrise"
     assert calls[0][2]["height"] == calls[0][2]["width"] == 1024
     assert calls[0][2]["samples"] == 1
