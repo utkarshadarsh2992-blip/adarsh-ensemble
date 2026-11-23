@@ -237,7 +237,8 @@ async def ground_check(client, question, anon, claims_text, master, lessons_bloc
     try:
         out = await chat(
             client, config.AUDITOR, ground_messages(question, anon, claims_text, master, lessons_block, lang),
-            temperature=0.1, max_tokens=1800,
+            temperature=0.1, max_tokens=config.GROUND_MAX_TOKENS,
+            timeout=config.GROUND_TIMEOUT_S, retries=0, budget=config.GROUND_BUDGET_S,  # optional check: fail fast, never take minutes
         )
     except LLMError as e:
         errors["grounding"] = str(e)
