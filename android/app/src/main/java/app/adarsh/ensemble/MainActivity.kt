@@ -2,12 +2,23 @@ package app.adarsh.ensemble
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.HapticFeedbackConstants
 import android.view.View
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -36,6 +47,35 @@ class MainActivity : AppCompatActivity() {
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { ok -> micCallback?.invoke(ok); micCallback = null }
     private val dictation by lazy { Dictation(this) }
+    private var speaker: Speaker? = null
+    @Volatile private var resumed = false
+    // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
+    private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private val filePicker = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { r ->
+        val cb = fileCallback; fileCallback = null
+        val data = r.data
+        val uris: Array<Uri>? = if (r.resultCode != RESULT_OK || data == null) null else {
+            val clip = data.clipData
+            if (clip != null && clip.itemCount > 0) Array(clip.itemCount) { clip.getItemAt(it).uri }
+            else data.data?.let { arrayOf(it) }
+        }
+        cb?.onReceiveValue(uris)
+    }
+    // Export data: "Save file" writes the JSON wherever the user picks (Downloads, Drive...).
+    private var pendingSave: String? = null
+    private val saver = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val text = pendingSave; pendingSave = null
+        var ok = false
+        if (uri != null && text != null) {
+            ok = try { contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }; true } catch (_: Exception) { false }
+        }
+        js("window.__adarshSaved&&window.__adarshSaved(${if (uri == null) "null" else ok.toString()})")
+    }
+    private fun js(code: String) { if (!destroyed) web.evaluateJavascript(code, null) }
 
     /** Ask for the microphone (the system dialog) and report the answer. Used the first time voice typing starts. */
     fun askMic(cb: (Boolean) -> Unit) { micCallback = cb; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
@@ -61,7 +101,7 @@ class MainActivity : AppCompatActivity() {
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             setSupportZoom(false)
-            mediaPlaybackRequiresUserGesture = true
+            mediaPlaybackRequiresUserGesture = false   // spoken replies start after the answer arrives, not on a tap
         }
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
@@ -87,6 +127,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                fileCallback?.onReceiveValue(null)
+                fileCallback = cb
+                val types = params.acceptTypes.filter { it.isNotBlank() && it.contains('/') }
+                // "application/json" greys out .json files in many file managers: only images are filtered by type
+                val type = if (types.size == 1 && types[0].startsWith("image/")) types[0] else "*/*"
+                val i = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type)
+                if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                return try { filePicker.launch(Intent.createChooser(i, null)); true } catch (_: ActivityNotFoundException) {
+                    fileCallback = null; cb.onReceiveValue(null); false
+                }
+            }
+        }
+        appCtx = applicationContext
+        speaker = Speaker(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
         web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
 
         // Back never closes the app mid-request: it sends it to the background.
@@ -128,10 +184,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        resumed = true
+        getSystemService(NotificationManager::class.java)?.cancel(REPLY_ID)
         web.onResume()
         flush()   // answers that arrived while the app was in the background
     }
 
+    override fun onPause() {
+        resumed = false
+        super.onPause()
+    }
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         web.saveState(outState)
@@ -141,6 +203,7 @@ class MainActivity : AppCompatActivity() {
         destroyed = true
         if (current === this) current = null
         dictation.destroy()
+        speaker?.destroy()
         web.removeJavascriptInterface("AdarshNative")
         web.destroy()
         super.onDestroy()
@@ -148,7 +211,83 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HOST = "appassets.androidplatform.net"
+        private const val REPLY_CHANNEL = "replies"
+        private const val REPLY_ID = 8
         @Volatile var current: MainActivity? = null
+        @Volatile private var appCtx: Context? = null
+        private fun prefs(c: Context) = c.getSharedPreferences("adarsh_ui", Context.MODE_PRIVATE)
+        private fun ui(f: (MainActivity) -> Unit) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) f(a) } } }
+
+        // ---- speech out (Speaker.kt). Results come back as window.__adarshTts(type, id)
+        fun ttsAvailable(): Boolean = current?.speaker?.let { !it.failed } ?: false
+        fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.speak(id, text, lang, rate) }
+        fun ttsPlayFile(id: String, path: String, rate: Float) = ui { it.speaker?.playFile(id, path, rate) }
+        fun ttsStop() = ui { it.speaker?.stopAll(silent = true) }
+
+        // ---- small native helpers the WebView cannot do itself
+        fun haptic(ms: Int) = ui {
+            it.web.performHapticFeedback(if (ms >= 25) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.VIRTUAL_KEY)
+        }
+        fun copyText(text: String): Boolean {
+            val c = appCtx ?: return false
+            return try {
+                val cm = c.getSystemService(ClipboardManager::class.java)
+                cm.setPrimaryClip(ClipData.newPlainText("Adarsh", text)); true
+            } catch (_: Exception) { false }
+        }
+        fun shareText(text: String) = ui { a ->
+            val i = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+            try { a.startActivity(Intent.createChooser(i, null)) } catch (_: Exception) {}
+        }
+        fun saveFile(name: String, text: String) = ui { a ->
+            a.pendingSave = text
+            try { a.saver.launch(name) } catch (_: Exception) { a.pendingSave = null; a.js("window.__adarshSaved&&window.__adarshSaved(false)") }
+        }
+
+        // ---- reply notifications: the WebView has no Notification API, so the app posts them itself
+        /** "granted" | "asked" (system dialog shown) | "denied" | "off" */
+        fun setNotify(on: Boolean): String {
+            val c = appCtx ?: return "denied"
+            prefs(c).edit().putBoolean("notify", on).apply()
+            if (!on) return "off"
+            if (Build.VERSION.SDK_INT >= 33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ui { it.notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                return "asked"
+            }
+            return if (c.getSystemService(NotificationManager::class.java).areNotificationsEnabled()) "granted" else "denied"
+        }
+        private fun replySnippet(result: String?): String {
+            if (result == null) return "Jawab aa gaya."
+            return try {
+                val t = result.trim()
+                val o = if (t.startsWith("[")) org.json.JSONArray(t).optJSONObject(0) else JSONObject(t)
+                val txt = (o?.optString("text") ?: "").replace(Regex("[*#`>_]"), "").trim()
+                if (txt.isEmpty()) "Jawab aa gaya." else txt.take(160)
+            } catch (_: Exception) { "Jawab aa gaya." }
+        }
+        private fun maybeNotify(id: String, result: String?) {
+            val c = appCtx ?: return
+            if (!id.startsWith("r") || current?.resumed == true || !prefs(c).getBoolean("notify", false)) return
+            if (Build.VERSION.SDK_INT >= 33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+            try {
+                val nm = c.getSystemService(NotificationManager::class.java)
+                nm.createNotificationChannel(NotificationChannel(REPLY_CHANNEL, "Replies", NotificationManager.IMPORTANCE_DEFAULT))
+                val open = PendingIntent.getActivity(
+                    c, 1, Intent(c, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                val text = replySnippet(result)
+                val n = Notification.Builder(c, REPLY_CHANNEL)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle("Adarsh ka jawab tayyar hai")
+                    .setContentText(text)
+                    .setStyle(Notification.BigTextStyle().bigText(text))
+                    .setContentIntent(open)
+                    .setAutoCancel(true)
+                    .build()
+                nm.notify(REPLY_ID, n)
+            } catch (_: Exception) {}
+        }
 
         fun speechStart(lang: String) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.start(lang) } } }
         fun speechStop() { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.stop() } } }
@@ -178,6 +317,7 @@ class MainActivity : AppCompatActivity() {
         /** Engine thread -> page. Parked in Engine.undelivered if no screen is attached; flushed on the next resume. */
         fun deliver(id: String, result: String?, err: String?) {
             Engine.undelivered[id] = Pair(result, err)
+            maybeNotify(id, result)
             current?.let { a -> a.runOnUiThread { a.flush() } }
         }
     }

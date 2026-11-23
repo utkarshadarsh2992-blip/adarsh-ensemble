@@ -72,8 +72,11 @@ object Engine {
         }
     }
 
-    fun submit(id: String, requestJson: String, onProgress: (String) -> Unit, onDone: (String?, String?) -> Unit) {
-        if (inFlight.getAndIncrement() == 0) setForeground(true)
+    fun submit(
+        id: String, requestJson: String, onProgress: (String) -> Unit, foreground: Boolean = true,
+        onDone: (String?, String?) -> Unit
+    ) {
+        if (foreground && inFlight.getAndIncrement() == 0) setForeground(true)
         pool.execute {
             var result: String? = null
             var error: String? = null
@@ -86,7 +89,7 @@ object Engine {
                 // Never include the request body here: it can contain the user's text.
                 error = "Engine error: " + (t.message ?: t.javaClass.simpleName)
             } finally {
-                if (inFlight.decrementAndGet() == 0) setForeground(false)
+                if (foreground && inFlight.decrementAndGet() == 0) setForeground(false)
             }
             if (!cancelled.remove(id)) onDone(result, error)
         }

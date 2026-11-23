@@ -195,6 +195,9 @@ VERIFIER = use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "
 # final judge / synthesizer: big context (claims + reports + proofs) -> Gemini first, not Groq (8K TPM).
 JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
 SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
+# Standard mode: ONE fast call, no council. Groq first (fastest), then Gemini, then OpenRouter.
+QUICK = use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "nemotron-lightning", "gpt-oss-20b", "gemini-3.8-flash"],
+            {"reasoning_effort": "low"})
 # fact auditor: a DIFFERENT model family from the judge (Gemini) so they do not share blind spots. Its input is only the
 # question + final answer, so it fits Groq's 8K tokens/min.
 # The same chain also runs the Manual-mode grounding check, whose input is BIG (pasted answers + claims + master answer):
@@ -249,7 +252,7 @@ def chain_of(spec: ModelSpec) -> list[ModelSpec]:
 def all_roles() -> list[tuple[str, ModelSpec]]:
     rows = [(f"panel:{s.role}", s) for s in PANEL]
     rows += [(f"falsifier{i + 1}", s) for i, s in enumerate(DEBATERS)]
-    for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "AUDITOR", "MASTER_WRITER", "MASTER_AUDITOR"):
+    for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "QUICK", "AUDITOR", "MASTER_WRITER", "MASTER_AUDITOR"):
         rows.append((name.lower(), globals()[name]))
     for name in ("ARCHITECT", "THEORIST", "EMPIRICIST", "SKEPTIC", "DEBATER", "METHOD_REVIEWER", "EVIDENCE_REVIEWER", "REFINER"):
         rows.append((f"roles:{name.lower()}", globals()[name]))

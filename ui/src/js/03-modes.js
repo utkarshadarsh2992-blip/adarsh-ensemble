@@ -12,7 +12,7 @@
 
 const Modes = (() => {
   const MODES = [
-    { id: 'standard', how: 'Auto: math/physics/coding questions get that plan; else lite models, 1-2 falsifiers', name: 'Standard', ic: 'sparkle', desc: 'Everyday questions, writing and quick help.',
+    { id: 'standard', how: 'Instant: ONE fast model answers straight away. No council, no falsifiers. Use a mode below for deep checking', name: 'Standard', ic: 'sparkle', desc: 'Everyday questions, writing and quick help.',
       placeholder: 'Message Adarsh', hello: 'What are we working on?',
       starters: [
         { ic: 'sun', t: 'Brief me on today', p: 'Brief me on today', send: true },

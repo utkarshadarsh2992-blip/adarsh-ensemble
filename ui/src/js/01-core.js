@@ -64,7 +64,21 @@ function h(tag, props, ...kids) {
 const ibtn = (name, label, fn, cls = '') => h('button', { class: 'ib ' + cls, 'aria-label': label, on: { click: fn } }, icon(name));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-function vibe(ms = 8) { try { if (S.settings.haptics && navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+/* Haptics: the Android WebView ignores navigator.vibrate, so the app does it natively when it can */
+function vibe(ms = 8) {
+  if (!S.settings.haptics) return;
+  try { if (window.AdarshNative && AdarshNative.haptic) return AdarshNative.haptic(ms); if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+/* Copy that works in the Android WebView too (navigator.clipboard is often missing or blocked there) */
+async function copyText(text) {
+  text = String(text || '');
+  try { if (window.AdarshNative && AdarshNative.copyText && AdarshNative.copyText(text)) return true; } catch (e) {}
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
+  try {
+    const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return !!ok;
+  } catch (e) { return false; }
+}
 
 /* ---------- event bus ---------- */
 const Bus = (() => {
@@ -79,7 +93,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1 },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Kore', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1 },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();

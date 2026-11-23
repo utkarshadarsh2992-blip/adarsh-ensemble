@@ -136,6 +136,15 @@ const HttpBackend = {
       return (x && x.lessonsResult) || (x && x.ok !== undefined ? x : { ok: false, error: 'Backend ne lessons nahi diye.' });
     } catch (e) { return { ok: false, error: 'Lessons server tak nahi pahunche.' }; }
   },
+  async tts(req, ms) {
+    const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms || 30000);
+    try {
+      const r = await fetch(connUrl(), { method: 'POST', headers, signal: ctl.signal, body: JSON.stringify({ tts: req }) });
+      if (!r.ok) return { type: 'error', error: 'HTTP ' + r.status };
+      const j = await r.json(); return Array.isArray(j) ? j[0] : j;
+    } finally { clearTimeout(t); }
+  },
   async ping() {
     try {
       const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
@@ -150,6 +159,10 @@ const Backend = (() => {
   const impl = () => custom() || (connUrl() ? HttpBackend : DemoBackend);
   return {
     isDemo: () => !custom() && !connUrl(),
+    isNative: () => !!(custom() && custom().native),
+    /* natural voice from the engine; null when this backend has none (demo, custom without tts) */
+    canTts() { const b = impl(); return !!(b && b.tts); },
+    tts(req, ms) { const b = impl(); return b && b.tts ? b.tts(req, ms) : Promise.resolve(null); },
     send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; return impl().send(req, o); },
     async lessons(op) { const b = impl(); return b.lessons ? b.lessons(op) : { ok: false, error: 'Demo mode me lessons nahi hote.' }; },
     missionAction(id, a) { const b = impl(); return b.missionAction ? b.missionAction(id, a) : Promise.resolve(null); },

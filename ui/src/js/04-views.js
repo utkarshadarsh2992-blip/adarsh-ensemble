@@ -174,15 +174,22 @@ const App = (() => {
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet)));
+      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Kore') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
-      swItem('bell', 'Notifications', 'Alert me when a reply or reminder arrives', () => S.settings.notif, async (v) => { S.settings.notif = v; if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} } }),
-      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; })));
+      swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
+        S.settings.notif = v;
+        if (window.AdarshNative && AdarshNative.setNotify) {   // Android: the app posts the notification itself
+          let r = ''; try { r = AdarshNative.setNotify(v); } catch (e) {}
+          if (r === 'denied') { S.settings.notif = false; save(); toast('Notification permission blocked. Phone Settings > Apps > Adarsh > Notifications me allow karo'); redraw(); }
+          else if (r === 'granted') toast('Notifications on');
+        } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
+      }),
+      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
-      navItem('server', 'Connection', Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
+      navItem('server', 'Connection', Backend.isNative() ? 'On-device engine · tap for status' : Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
     st.append(label('Data'), h('div', { class: 'grp' },
       navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
       navItem('upload', 'Import data', 'Restore from an export', () => $('#f-import').click()),
@@ -196,18 +203,38 @@ const App = (() => {
     } });
   }
   function voiceSheet() {
-    sheet({ title: 'Voice & language', build(b, close) {
-      const langs = [['hi-IN', 'Hindi'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']];
-      const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.1', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
-      const seg = h('div', { class: 'seg' }, langs.map(([v, l]) => h('button', { 'aria-pressed': String(S.settings.lang === v), on: { click: (e) => { S.settings.lang = v; save(); $$('.seg button', b).forEach(x => x.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } } }, l)));
-      b.append(swItem('speaker', 'Speak replies', 'Read answers aloud in voice mode and on tap', () => S.settings.speak, v => { S.settings.speak = v; }),
-        h('label', { class: 'l' }, 'Recognition language'), seg, h('label', { class: 'l' }, 'Speaking speed'), rate,
-        TTS.ok() ? h('button', { class: 'btn ghost', on: { click: () => TTS.speak('Namaste. Main Adarsh hoon.') } }, 'Test voice') : h('p', {}, 'This browser has no speech output.'));
+    sheet({ title: 'Voice & language', tall: true, build(b) {
+      const segOf = (opts, get, set) => {
+        const seg = h('div', { class: 'seg' });
+        opts.forEach(([v, l]) => seg.append(h('button', { 'aria-pressed': String(get() === v), on: { click: (e) => { set(v); save(); [...seg.children].forEach(x => x.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } } }, l)));
+        return seg;
+      };
+      const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.05', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
+      const pick = h('select', { 'aria-label': 'Natural voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit', on: { change: () => { S.settings.voiceName = pick.value; save(); TTS.speak('Namaste, main Adarsh hoon. Ye meri nayi awaaz hai.'); } } },
+        TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Kore') === v) o.selected = true; return o; }));
+      const status = h('p', { class: 'muted' });
+      const note = () => {
+        const n = Backend.canTts() && !Backend.isDemo();
+        status.textContent = (n ? 'Natural voice: Gemini TTS (Gemini API key chahiye; free quota limited). ' : 'Natural voice is backend me nahi hai. ')
+          + 'Na chale to phone ki apni voice turant bolti hai.' + (TTS.info.last ? ' Last time: ' + (TTS.info.last === 'natural' ? 'natural voice' + (TTS.info.model ? ' (' + TTS.info.model + ')' : '') : 'phone voice' + (TTS.info.why ? ' · natural voice error: ' + TTS.info.why : '')) : '');
+      };
+      note();
+      b.append(swItem('speaker', 'Speak replies in chat', 'Har naya jawab apne aap padh ke sunaye (voice mode hamesha bolta hai)', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
+        h('label', { class: 'l' }, 'Voice engine'),
+        segOf([['auto', 'Auto'], ['natural', 'Natural'], ['device', 'Phone']], () => S.settings.voiceEngine || 'auto', v => { S.settings.voiceEngine = v; }),
+        h('p', { class: 'muted' }, 'Auto: natural (Gemini) awaaz, aur fail ho to phone ki voice. Phone: sirf device TTS, offline bhi chalta hai.'),
+        h('label', { class: 'l' }, 'Natural voice'), pick,
+        h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
+        segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
+        h('label', { class: 'l' }, 'Speaking speed'), rate,
+        TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
+          : h('p', {}, 'Is browser me speech output nahi hai.'),
+        status);
     } });
   }
   function replySummary() {
     const L = { auto: 'Auto language', hinglish: 'Hinglish', english: 'English', hindi: 'Hindi' }, D = { simple: 'Simple', normal: 'Normal', detailed: 'Detailed' };
-    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal');
+    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep council' : 'Fast council');
   }
   function replySheet() {
     sheet({ title: 'Reply style', build(b) {
@@ -223,6 +250,8 @@ const App = (() => {
       };
       group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
         'Auto answers in the language of your question.');
+      group('Council', 'think', 'fast', [['fast', 'Fast'], ['deep', 'Deep']],
+        'Sirf Verified/Physics/Math/Business/Coding modes me: Fast = kam models, quota bachta hai. Deep = zyada models aur falsifiers, slow aur quota-heavy. Standard hamesha 1 model, turant.');
       group('Depth', 'depth', 'normal', [['simple', 'Simple'], ['normal', 'Normal'], ['detailed', 'Detailed']],
         'Simple: everyday words and one example. Detailed: the mechanism, edge cases and a worked example.');
     } });
@@ -254,7 +283,26 @@ const App = (() => {
       } } }, 'Test connection'), res);
     } });
   }
+  /* Android: there is no server to point at. Show what the on-device engine is really doing. */
+  function engineSheet() {
+    sheet({ title: 'On-device engine', tall: true, build(b) {
+      const B = window.ADARSH_BACKEND, st = B.status ? B.status() : {};
+      const row = (k, v) => h('div', { class: 'item' }, h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, k), h('small', {}, v)));
+      const p = st.providers || {}; const on = Object.keys(p).filter(k => p[k]);
+      const v = st.voice || {};
+      b.append(h('p', {}, 'Is app me koi server nahi hai: engine isi phone par chalta hai aur sirf tumhare API keys se models ko call karta hai.'),
+        h('div', { class: 'grp' },
+          row('Engine', st.ready ? 'Running (Python ' + (st.python || '?') + ')' : st.error ? 'Error: ' + st.error : 'Starting…'),
+          row('Providers with a key', on.length ? on.join(', ') : 'None. Settings > API keys'),
+          row('Natural voice', v.gemini ? 'Ready (Gemini key found)' : v.groq_english ? 'English only (Groq key)' : 'Needs a Gemini key. Phone voice is used meanwhile'),
+          row('Plan check', (st.plan_problems || []).length ? st.plan_problems.slice(0, 3).join('; ') : 'All model chains valid')));
+      const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
+      b.append(h('button', { class: 'btn pri', on: { click: async () => { res.textContent = 'Testing…'; try { const r = await B.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); } catch (e) { res.textContent = 'Test failed: ' + e.message; } } } }, 'Test connection'), res,
+        h('button', { class: 'btn ghost', on: { click: () => { Backend.refresh(); toast('Checking…'); } } }, 'Recheck status'));
+    } });
+  }
   function connSheet() {
+    if (Backend.isNative()) return engineSheet();
     sheet({ title: 'Connection', tall: true, build(b, close) {
       const url = h('input', { type: 'text', placeholder: 'https://your-server.example/api/chat', value: S.conn.url, 'aria-label': 'Backend URL', autocapitalize: 'off', autocomplete: 'off' });
       const tok = h('input', { type: 'password', placeholder: 'Secret token', value: S.conn.token, 'aria-label': 'Secret token', autocomplete: 'off' });
@@ -270,8 +318,13 @@ const App = (() => {
     sheet({ title: 'Export data', tall: true, build(b) {
       const data = JSON.stringify({ chats: S.chats, memories: S.memories, tasks: S.tasks, missions: S.missions, settings: S.settings, abilities: S.abilities }, null, 1);
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
-      b.append(h('p', {}, 'Copy this JSON and keep it somewhere safe. It does not include your PIN or token.'), ta,
-        h('button', { class: 'btn pri', on: { click: async () => { try { await navigator.clipboard.writeText(data); toast('Copied'); } catch (e) { ta.select(); toast('Select all and copy'); } } } }, 'Copy JSON'));
+      const N = window.AdarshNative;
+      window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'Could not save the file'); };
+      b.append(h('p', {}, 'Save this JSON as a file or copy it, and keep it somewhere safe. It does not include your PIN or token.'), ta,
+        N && N.saveFile ? h('button', { class: 'btn pri', on: { click: () => { try { N.saveFile('adarsh-backup-' + new Date().toISOString().slice(0, 10) + '.json', data); } catch (e) { toast('Could not open the save dialog'); } } } }, 'Save as file') : null,
+        h('button', { class: N && N.saveFile ? 'btn ghost' : 'btn pri', on: { click: async () => { if (await copyText(data)) toast('Copied'); else { ta.focus(); ta.select(); toast('Select all and copy'); } } } }, 'Copy JSON'),
+        N && N.shareText ? h('button', { class: 'btn ghost', on: { click: () => { try { N.shareText(data); } catch (e) {} } } }, 'Share…') : null,
+        !(N && N.saveFile) ? h('button', { class: 'btn ghost', on: { click: () => { const a = h('a', { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: 'adarsh-backup.json' }); document.body.append(a); a.click(); a.remove(); } } }, 'Download file') : null);
     } });
   }
   document.addEventListener('change', (e) => {

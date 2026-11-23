@@ -22,6 +22,13 @@ JUDGE_TEXT = "1. Direct Core Truth: 4.\n2. Verified Mechanism: 2+2 [PROVEN by co
 
 
 @pytest.fixture(autouse=True)
+def _council_standard(monkeypatch):
+    """These tests check the full council path; the Standard quick path has its own tests (test_quick.py)."""
+    import chat_adapter
+    monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", False)
+
+
+@pytest.fixture(autouse=True)
 def fake_models(monkeypatch):
     calls = []
 

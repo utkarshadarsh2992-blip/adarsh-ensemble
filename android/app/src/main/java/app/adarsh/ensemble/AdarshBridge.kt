@@ -15,8 +15,35 @@ class AdarshBridge(
         Engine.submit(id, requestJson, { msg -> progress(id, msg) }) { result, error -> deliver(id, result, error) }
     }
 
+    /** Same as send, but no "working" notification / foreground service: short jobs like the natural voice. */
+    @JavascriptInterface
+    fun sendQuiet(id: String, requestJson: String) {
+        Engine.submit(id, requestJson, { msg -> progress(id, msg) }, foreground = false) { result, error -> deliver(id, result, error) }
+    }
     @JavascriptInterface
     fun cancel(id: String) = Engine.cancel(id)
+
+    // Speech out: the WebView has no speechSynthesis. Events come back via window.__adarshTts(type, id).
+    @JavascriptInterface
+    fun ttsAvailable(): Boolean = MainActivity.ttsAvailable()
+    @JavascriptInterface
+    fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = MainActivity.ttsSpeak(id, text, lang, rate)
+    @JavascriptInterface
+    fun ttsPlayFile(id: String, path: String, rate: Float) = MainActivity.ttsPlayFile(id, path, rate)
+    @JavascriptInterface
+    fun ttsStop() = MainActivity.ttsStop()
+
+    // Things a plain WebView cannot do on Android: haptics, clipboard, saving/sharing files, notifications.
+    @JavascriptInterface
+    fun haptic(ms: Int) = MainActivity.haptic(ms)
+    @JavascriptInterface
+    fun copyText(text: String): Boolean = MainActivity.copyText(text)
+    @JavascriptInterface
+    fun shareText(text: String) = MainActivity.shareText(text)
+    @JavascriptInterface
+    fun saveFile(name: String, text: String) = MainActivity.saveFile(name, text)
+    @JavascriptInterface
+    fun setNotify(on: Boolean): String = MainActivity.setNotify(on)
 
     @JavascriptInterface
     fun status(): String = Engine.status()

@@ -45,7 +45,20 @@
     };
   }
 
+  /* short engine jobs (natural voice): no foreground-service notification */
+  const quiet = (req, ms) => new Promise((res, rej) => {
+    const id = 'q' + (++seq) + '_' + Date.now();
+    pending[id] = { res, rej };
+    const t = setTimeout(() => { if (pending[id]) { delete pending[id]; try { N.cancel(id); } catch (e) {} rej(new Error('timeout')); } }, ms || 30000);
+    const done = pending[id];
+    pending[id] = { res: (v) => { clearTimeout(t); done.res(v); }, rej: (e) => { clearTimeout(t); done.rej(e); } };
+    try { (N.sendQuiet || N.send).call(N, id, JSON.stringify(req)); } catch (e) { clearTimeout(t); delete pending[id]; rej(e); }
+  });
   window.ADARSH_BACKEND = {
+    native: true,
+    /* {type:'audio', file} | {type:'error', error} */
+    tts(req, ms) { return quiet({ tts: req }, ms); },
+    status() { try { return JSON.parse(N.status()); } catch (e) { return { ready: false }; } },
     send(req, o) {
       return new Promise((res, rej) => {
         const id = 'r' + (++seq) + '_' + Date.now();

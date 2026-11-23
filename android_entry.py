@@ -20,6 +20,7 @@ def init(files_dir: str) -> str:
     os.makedirs(files_dir, exist_ok=True)
     os.environ["USAGE_FILE"] = os.path.join(files_dir, "usage.json")
     os.environ["LESSONS_FILE"] = os.path.join(files_dir, "lessons.json")
+    os.environ["TTS_DIR"] = os.path.join(files_dir, "tts")  # natural-voice clips (MediaPlayer plays the file)
     os.environ.setdefault("CHAT_MODE", "fast")  # phone default: fewer models, less quota
     _ready = True
     return "ok"
@@ -71,6 +72,7 @@ def status() -> str:
             "providers": {k: bool(v.api_key) for k, v in config.PROVIDERS.items()},
             "plan_problems": config.PLAN_PROBLEMS + __import__("mode_plans").PLAN_PROBLEMS,
             "python": sys.version.split()[0],
+            "voice": {"gemini": bool(os.environ.get("GEMINI_API_KEY")), "groq_english": bool(os.environ.get("GROQ_API_KEY"))},
         }
     )
 
@@ -149,6 +151,12 @@ def handle(request_json: str, progress=None) -> str:
 
     if isinstance(body.get("lesson"), dict):  # plain file work: needs no API key
         return lessons(json.dumps(body["lesson"]))
+    if isinstance(body.get("tts"), dict):  # natural voice: own short timeout, never the long chat path
+        import voice
+        try:
+            return json.dumps(asyncio.run(asyncio.wait_for(voice.handle(body["tts"]), timeout=75)))
+        except Exception as e:
+            return json.dumps({"type": "error", "error": _scrub(f"{type(e).__name__}: {e}")[:300]})
 
     if not body.get("ping") and not any(v.api_key for v in config.PROVIDERS.values()):
         return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini, OpenRouter, Cloudflare ya NVIDIA).")

@@ -57,7 +57,7 @@ Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din lim
 
 Chat ke 6 modes (Standard, V, Physics, Math, Business, Coding) ab sirf prompt hint nahi badalte. Har mode ka **apna model
 combination** hai (kaunsa model kaunsa role karega) aur **apna behaviour** (kitni jaanch). Ek mode badlo, baaki par asar nahi.
-Standard "auto" hai: classifier math/science/coding bataye to us mode ka plan lagta hai, warna lite plan.
+Standard ab sirf 1 quick model call hai (neeche "Standard mode = instant answer"). Council plan wale modes: V, Physics, Math, Business, Coding.
 Model choice models ki jaani-maani strengths aur free quotas par based judgement hai, benchmark nahi.
 Har chain `config.check_chains` se check hoti hai (teeno core providers, pehla fallback doosre provider par, koi model do baar nahi).
 Quota kam ho to "always" wale extras (specialist, pattern finder, 3rd falsifier, always-debate) apne aap band ho jaate hain.
@@ -163,3 +163,40 @@ Model IDs jo docs me confirm nahi hue (NVIDIA ke teen, OpenRouter ka inkling, Cl
 
 ## Council record
 `pipeline.run(..., record=True)` har model call ka stage, prompt, output, time, fallback/skip reasons rakhta hai aur `out["council"]` banata hai (`council.py`): drafts, claims map, patterns, falsifiers, proofs, judge ka pehla jawab, repair log, audit before/after, draft->final provenance (shabd-milan se andaaza). Default off (bada hota hai); chat adapter on rakhta hai.
+
+
+## Standard mode = instant answer
+
+Standard mode no longer runs the council. It makes **one** call (`config.QUICK`: gpt-oss-120b on Groq, then
+gemini-3.1-flash-lite, nemotron-lightning, gpt-oss-20b, gemini-3.8-flash) with a short, direct, confident prompt.
+Reply style > Depth still applies (simple / normal / detailed). If every model in that chain fails, it falls back to the
+full pipeline. For checked answers pick Verified, Physics, Math, Business or Coding. `STANDARD_QUICK=0` brings the old
+behaviour back.
+
+Settings > Reply style > **Council** (Fast / Deep) now really switches the council size for those modes (`reply.think`);
+before, only the `CHAT_MODE` env var did.
+
+## Voice engine (speaks in voice mode, read-aloud and "Speak replies")
+
+The Android WebView has no `speechSynthesis`, so the app never spoke. Now:
+
+| Layer | What it does |
+|---|---|
+| `voice.py` | Natural voice: Gemini TTS (`generateContent`, `responseModalities: AUDIO`) makes a 24 kHz WAV. Models in `TTS_MODELS` are tried in order; a missing model is skipped, a 429 rests it. Groq Orpheus is the English-only fallback. Clips are cached by text+voice. Request: `{"tts": {"text", "voice"}}` |
+| `Speaker.kt` | Plays the WAV (MediaPlayer, audio focus, speed) and also runs Android **TextToSpeech** with the best installed voice (hi-IN for Devanagari, en-IN for Hinglish), slightly lower pitch for a calmer, confident tone |
+| `05-voice.js` | Cleans the text for speaking (no markdown, links, [S1], code, confidence line). Voice mode speaks the "Short answer" part. First sentence and the rest are fetched in parallel so the voice starts fast. Natural voice fails or is slow (>15 s) -> phone voice at once, so it never goes silent |
+
+Settings > Voice & language: engine (Auto / Natural / Phone), 10 natural voices (Kore = firm, confident is the default),
+language, speed, Test voice. Voice mode sends `meta.voice`, so Standard answers come back short and speakable.
+
+## Settings audit (what was broken, what changed)
+
+| Setting | Before | Now |
+|---|---|---|
+| Notifications | `window.Notification` does not exist in the WebView: never fired | App posts the notification itself (`setNotify`, channel "Replies") when a reply arrives while the app is hidden; asks for permission when switched on |
+| Haptics | `navigator.vibrate` is ignored in the WebView | Native `performHapticFeedback` through the bridge |
+| Import data, attach file / image | No `WebChromeClient.onShowFileChooser`: tapping did nothing | File chooser added (multi-select, .json files not greyed out) |
+| Export / Copy | `navigator.clipboard` often fails in the WebView | Native clipboard; Export also has **Save as file** (system save dialog) and **Share** |
+| Connection | Showed "This server (/api/chat)" although the on-device engine is always used | Shows **On-device engine**: engine state, providers with keys, natural voice status, plan check, Test connection |
+| Voice & language | Test voice and read-aloud hidden (no speech output) | New voice engine (above) |
+| Reply style | No way to choose council size | Fast / Deep council switch |

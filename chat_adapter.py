@@ -6,11 +6,14 @@ and accepts a reply object, an array of replies, or {replies: [...]}.
 
 This module is the only place that knows both formats.
 """
+import os
 import re
+import time
 
 import httpx
 
 import config
+import health
 import lessons
 import pipeline
 from llm import LLMError, chat
@@ -26,6 +29,8 @@ CASUAL_SYSTEM = (
     "No headings, no lists, no disclaimers. Mirror the user's language (Hinglish stays Hinglish, Hindi stays Hindi)."
 )
 
+# Standard mode = one quick model call (STANDARD_QUICK=0 sends it through the full 11-role council again).
+QUICK_STANDARD = os.getenv("STANDARD_QUICK", "1") != "0"
 MAX_CONTEXT_CHARS = 2000   # how much earlier chat is passed along as context
 MAX_QUESTION_CHARS = 8000  # AskRequest.question limit
 
@@ -83,6 +88,45 @@ async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "norma
     return {"type": "text", "text": out.strip(), "steps": ["Quick reply"]}
 
 
+QUICK_SYSTEM = (
+    "You are Adarsh, a sharp, confident assistant. Answer the question directly in the first sentence, then add only what helps. "
+    "Be accurate: if you are not sure of a fact, say so briefly instead of guessing. No filler, no 'as an AI', no restating the question. "
+    "Use short paragraphs; use a list or code block only when it really helps."
+)
+QUICK_DEPTH = {
+    "simple": "Keep it very short: 1-3 sentences, plain words.",
+    "normal": "Keep it compact: usually under 150 words.",
+    "detailed": "Give a fuller explanation with steps or examples, but stay organised.",
+}
+QUICK_VOICE = (
+    "This will be read aloud. Plain spoken sentences only: no markdown, no lists, no code, no URLs, no emojis. "
+    "2 to 5 short sentences, conversational and confident."
+)
+async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool) -> dict | None:
+    """Standard mode: one model call, answer at once. None means: fall back to the full pipeline."""
+    system = QUICK_SYSTEM + " " + QUICK_DEPTH.get(depth, QUICK_DEPTH["normal"]) + " " + pipeline._language_hint(text, reply_lang)
+    if voice:
+        system += " " + QUICK_VOICE
+    user = text + (extra or "")
+    t0 = time.perf_counter()
+    trace = health.start_trace(False)
+    health.set_stage("quick")
+    try:
+        async with httpx.AsyncClient() as client:
+            out = await chat(client, config.QUICK, [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                             temperature=0.5, max_tokens=900 if depth != "detailed" else 1800, timeout=45, retries=0, budget=60)
+    except LLMError:
+        return None
+    out = out.strip()
+    if not out:
+        return None
+    used = list(health.summarize(trace).keys())
+    steps = ["Standard · quick answer (1 model" + (f": {used[0]}" if used else "") + ")", f"{round(time.perf_counter() - t0, 1)}s"]
+    rep = {"type": "text", "text": out, "steps": steps}
+    calls = pipeline._compact_calls(trace)
+    if calls:
+        rep["calls"] = calls
+    return rep
 def _audit_line(issue: dict, kind: str) -> str:
     quote = " ".join(str(issue.get("quote") or "").split())
     fix = " ".join(str(issue.get("fix") or "").split())
@@ -121,6 +165,9 @@ def _format_answer(res: dict) -> str:
 async def handle(body: dict) -> dict | list[dict]:
     if body.get("ping"):
         return {"ok": True}
+    if isinstance(body.get("tts"), dict):
+        import voice
+        return await voice.handle(body["tts"])  # natural voice for a reply: no chat model involved
     if isinstance(body.get("lesson"), dict):
         return lessons.handle_op(body["lesson"])  # list / add / edit / delete / clear / good: no model call
 
@@ -141,6 +188,7 @@ async def handle(body: dict) -> dict | list[dict]:
     reply_lang = rp.get("lang") if rp.get("lang") in ("auto", "hinglish", "english", "hindi") else "auto"
     depth = rp.get("depth") if rp.get("depth") in ("simple", "normal", "detailed") else "normal"
 
+    think = rp.get("think") if rp.get("think") in ("fast", "deep") else config.CHAT_MODE  # Settings > Reply style > Council
     source = body.get("source") if body.get("source") in ("auto", "manual", "hybrid") else "auto"
     answers = _clean_answers(body.get("answers"))
     if source != "auto" and not answers:
@@ -154,11 +202,16 @@ async def handle(body: dict) -> dict | list[dict]:
             return [quick]
 
     extra = _context(body.get("history"), text)
+    ui_mode = str(body.get("mode") or "standard")
+    if QUICK_STANDARD and source == "auto" and ui_mode == "standard" and not body.get("attachments") and not meta.get("deep"):
+        quick = await _quick_reply(text[:MAX_QUESTION_CHARS - len(extra)], extra, reply_lang, depth, bool(meta.get("voice")))
+        if quick:
+            return [quick]
     question = (text[: MAX_QUESTION_CHARS - len(extra)] + extra)[:MAX_QUESTION_CHARS]
 
     res = await pipeline.run(
         question,
-        deep=config.CHAT_MODE == "deep",
+        deep=think == "deep",
         engine=config.CHAT_ENGINE,
         source=source,
         answers=answers,

@@ -129,8 +129,8 @@ const Chat = (() => {
   function actionsEl(m, isLast) {
     const txt = () => stripMd(speechOf(m.reply)) || '';
     const a = h('div', { class: 'actions' });
-    a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { try { await navigator.clipboard.writeText(m.reply.text || speechOf(m.reply)); toast('Copied'); } catch (e) { toast('Copy not available here'); } } } }, icon('copy', 's')));
-    if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => TTS.speak(txt()) } }, icon('speaker', 's')));
+    a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { toast(await copyText(m.reply.text || speechOf(m.reply)) ? 'Copied' : 'Copy not available here'); } } }, icon('copy', 's')));
+    if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => { if (TTS.speaking()) { TTS.stop(); return; } toast('Bol raha hoon… dobara tap = stop'); TTS.speak(m.reply.type === 'text' ? m.reply.text : txt()); } } }, icon('speaker', 's')));
     ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
     if (isLast) a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
     const used = m.reply && m.reply.uiMode && m.reply.uiMode !== 'standard' ? Modes.get(m.reply.uiMode) : null;
@@ -322,7 +322,7 @@ const Chat = (() => {
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.charCodeAt(0) === 1) {  // structured model-call event (see config.emit_call)
             try { onCallEvent(JSON.parse(s.slice(s.indexOf('{')))); } catch (e) { /* ignore */ }
