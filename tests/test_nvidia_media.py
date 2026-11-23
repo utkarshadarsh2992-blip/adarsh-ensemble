@@ -55,6 +55,7 @@ def install_fake_client(monkeypatch, response, calls):
 def test_flux_request_stores_jpeg_by_opaque_id_not_base64(monkeypatch, tmp_path):
     jpeg = b"\xff\xd8\xff" + b"fake-jpeg-data"
     calls = []
+    assert nvidia_media.FLUX_URL == "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux-3-image-klein"
     install_fake_client(monkeypatch, FakeResponse({"artifacts": [{"base64": base64.b64encode(jpeg).decode()}]}), calls)
     monkeypatch.setenv("NVIDIA_API_KEY", "test-nvidia-key")
     monkeypatch.setenv("GENERATED_MEDIA_DIR", str(tmp_path))
@@ -75,6 +76,7 @@ def test_flux_request_stores_jpeg_by_opaque_id_not_base64(monkeypatch, tmp_path)
 def test_cosmos3_video_request_is_bounded_and_stores_mp4(monkeypatch, tmp_path):
     mp4 = b"\x00\x00\x00\x18ftypisom" + b"safe-mp4"
     calls = []
+    assert nvidia_media.COSMOS3_URL == "https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano"
     install_fake_client(monkeypatch, FakeResponse({"b64_video": base64.b64encode(mp4).decode()}), calls)
     monkeypatch.setenv("NVIDIA_API_KEY", "key")
     monkeypatch.setenv("GENERATED_MEDIA_DIR", str(tmp_path))

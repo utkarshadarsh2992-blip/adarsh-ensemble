@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 
-FLUX_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.3-image-klein"
+FLUX_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux-3-image-klein"
 COSMOS3_URL = "https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano"
 PROMPT_MAX = 2_000
 VIDEO_FRAMES = {25, 49, 73, 121}
