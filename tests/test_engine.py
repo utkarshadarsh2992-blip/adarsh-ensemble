@@ -148,6 +148,126 @@ def test_progress_callback_and_timeout(monkeypatch):
     assert "Test connection" in out["text"]
 
 
+def _handle_in_thread(request_json, request_id):
+    import threading
+
+    box = {}
+    t = threading.Thread(target=lambda: box.setdefault("out", android_entry.handle(request_json, None, request_id)))
+    t.start()
+    return t, box
+
+
+def _wait_running(request_id, seconds=3.0):
+    import time
+
+    end = time.monotonic() + seconds
+    while request_id not in android_entry._running:
+        assert time.monotonic() < end, "request never started"
+        time.sleep(0.01)
+
+
+def test_stop_cancels_running_request_and_its_model_calls(monkeypatch):
+    """Stop must end the Python request (no further model calls), not only drop the late answer."""
+    import threading
+
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    monkeypatch.setenv("ANDROID_TIMEOUT_S", "60")
+    seen = {"started": 0, "finished": 0, "cancelled": 0}
+    entered = threading.Event()
+
+    async def slow(*a, **k):
+        seen["started"] += 1
+        try:
+            entered.set()
+            await asyncio.sleep(30)  # stands in for a long chain of model calls
+        except asyncio.CancelledError:
+            seen["cancelled"] += 1
+            raise
+        seen["finished"] += 1
+
+    monkeypatch.setattr(pipeline, "run", slow)
+    t, box = _handle_in_thread(json.dumps({"text": "hello world"}), "stop-1")
+    assert entered.wait(3), "model call never started"
+    assert android_entry.cancel("stop-1") is True
+    t.join(5)
+    assert not t.is_alive(), "cancel did not stop the request"
+    assert json.loads(box["out"])["text"] == "Rok diya gaya."
+    assert seen == {"started": 1, "finished": 0, "cancelled": 1}
+    assert "stop-1" not in android_entry._running
+
+
+def test_stop_before_start_refuses_request_and_finished_ids_are_cleaned(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
+    calls = []
+
+    async def never(*a, **k):
+        calls.append(1)
+
+    monkeypatch.setattr(pipeline, "run", never)
+    assert android_entry.cancel("stop-2") is False  # Stop tapped before the pool thread reached Python
+    out = json.loads(android_entry.handle(json.dumps({"text": "hello world"}), None, "stop-2"))
+    assert out["text"] == "Rok diya gaya." and calls == []
+    assert "stop-2" not in android_entry._early_cancel and "stop-2" not in android_entry._running
+    # The id is used once: a normal request afterwards is not affected, and no id means the old behaviour.
+    android_entry.handle(json.dumps({"text": "hello world"}), None, "stop-3")
+    android_entry.handle(json.dumps({"text": "hello world"}))
+    assert calls == [1, 1] and android_entry._running == {}
+
+
+def test_stop_cancels_natural_voice_request(monkeypatch):
+    import voice
+
+    async def slow_tts(req):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(voice, "handle", slow_tts)
+    t, box = _handle_in_thread(json.dumps({"tts": {"text": "namaste"}}), "tts-1")
+    _wait_running("tts-1")
+    assert android_entry.cancel("tts-1") is True
+    t.join(5)
+    assert not t.is_alive()
+    assert json.loads(box["out"]) == {"type": "error", "error": "cancelled"}
+
+
+def test_stop_cancels_gather_children_without_stopping_another_request():
+    import threading
+
+    ready = threading.Event()
+    child_cancelled = []
+    results = {}
+
+    async def child(n):
+        try:
+            if n == 1:
+                ready.set()
+            await asyncio.sleep(30)
+        finally:
+            child_cancelled.append(n)
+
+    async def council():
+        return await asyncio.gather(child(0), child(1))
+
+    def run_council():
+        try:
+            android_entry._run_cancellable(council, 60, "council-stop")
+        except asyncio.CancelledError:
+            results["cancelled"] = True
+
+    async def other():
+        await asyncio.sleep(0.1)
+        return "unaffected"
+
+    t = threading.Thread(target=run_council)
+    t.start()
+    assert ready.wait(3)
+    assert android_entry.cancel("council-stop") is True
+    assert android_entry._run_cancellable(other, 5, "other-request") == "unaffected"
+    t.join(5)
+    assert not t.is_alive() and results == {"cancelled": True}
+    assert sorted(child_cancelled) == [0, 1]
+    assert android_entry._running == {}
+
+
 def test_diagnose_reports_network_key_and_missing_models(monkeypatch):
     import httpx
 

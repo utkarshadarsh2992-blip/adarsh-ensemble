@@ -82,9 +82,12 @@ object Engine {
             var error: String? = null
             try {
                 started.await()
-                val e = entry ?: throw IllegalStateException(startError ?: "Engine did not start")
-                val progress = java.util.function.Consumer<String> { msg -> onProgress(msg) }
-                result = e.callAttr("handle", requestJson, progress).toString()
+                if (!cancelled.contains(id)) {
+                    val e = entry ?: throw IllegalStateException(startError ?: "Engine did not start")
+                    val progress = java.util.function.Consumer<String> { msg -> onProgress(msg) }
+                    // Python also handles Stop arriving between this check and request registration.
+                    result = e.callAttr("handle", requestJson, progress, id).toString()
+                }
             } catch (t: Throwable) {
                 // Never include the request body here: it can contain the user's text.
                 error = "Engine error: " + (t.message ?: t.javaClass.simpleName)
@@ -95,8 +98,19 @@ object Engine {
         }
     }
 
-    /** Python cannot be interrupted safely mid-request; the answer is simply dropped when it arrives. */
-    fun cancel(id: String) { cancelled.add(id) }
+    /** Stop: the late answer is dropped here, and Python cancels the running request so no further model calls
+     *  (and tokens) are spent. Runs on the pool so the UI or main thread never waits for Python. */
+    fun cancel(id: String) {
+        cancelled.add(id)
+        pool.execute {
+            try {
+                started.await()
+                entry?.callAttr("cancel", id)
+            } catch (t: Throwable) {
+                // Best effort: the answer is still dropped even if Python could not be told to stop.
+            }
+        }
+    }
 
     // A foreground service keeps the process alive while a long multi-model request runs in the background.
     private fun setForeground(on: Boolean) {

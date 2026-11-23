@@ -4,9 +4,11 @@ Order matters: init() must run before the engine modules are imported, because h
 USAGE_FILE at import time and config.py reads the process environment.
 """
 import asyncio
+import collections
 import json
 import os
 import sys
+import threading
 
 # keep in sync with config.SECRET_ENVS (not imported here: config must load after init())
 KEY_NAMES = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
@@ -134,9 +136,56 @@ async def _run(body: dict, progress):
     return await chat_adapter.handle(body)
 
 
-def handle(request_json: str, progress=None) -> str:
+# Stop in the app must stop the model calls, not only hide the answer: tokens are spent per call.
+_running: dict = {}  # request id -> (event loop, main task)
+_early_cancel = collections.deque(maxlen=64)  # Stop arrived before the request had registered itself
+_cancel_lock = threading.Lock()
+
+
+def _run_cancellable(make_coro, timeout: float, request_id):
+    """asyncio.run(wait_for(make_coro(), timeout)) that cancel(request_id) can stop from another thread.
+    Cancelling the main task cancels everything under it: gather children, httpx requests, backoff sleeps."""
+    request_id = str(request_id) if request_id else None
+
+    async def main():
+        if request_id:
+            with _cancel_lock:
+                if request_id in _early_cancel:
+                    _early_cancel.remove(request_id)
+                    raise asyncio.CancelledError()
+                _running[request_id] = (asyncio.get_running_loop(), asyncio.current_task())
+        try:
+            return await asyncio.wait_for(make_coro(), timeout=timeout)
+        finally:
+            if request_id:
+                with _cancel_lock:
+                    _running.pop(request_id, None)
+
+    return asyncio.run(main())
+
+
+def cancel(request_id: str) -> bool:
+    """Kotlin calls this when the user taps Stop (or a native timeout fires).
+    True = a running request was told to stop. False = nothing running under this id (yet); a request that
+    starts later with the same id is refused."""
+    request_id = str(request_id)
+    with _cancel_lock:
+        item = _running.get(request_id)
+        if item is None:
+            _early_cancel.append(request_id)
+            return False
+    loop, task = item
+    try:
+        loop.call_soon_threadsafe(task.cancel)
+    except RuntimeError:  # the loop closed a moment ago: the request had just finished
+        return False
+    return True
+
+
+def handle(request_json: str, progress=None, request_id=None) -> str:
     """UI request JSON in, reply JSON (object or list) out. Never raises, never logs keys.
-    `progress` is an optional Java Consumer<String> (stage text for the UI)."""
+    `progress` is an optional Java Consumer<String> (stage text for the UI).
+    `request_id` lets cancel() stop this request while it runs."""
     import config
 
     try:
@@ -154,7 +203,9 @@ def handle(request_json: str, progress=None) -> str:
     if isinstance(body.get("tts"), dict):  # natural voice: own short timeout, never the long chat path
         import voice
         try:
-            return json.dumps(asyncio.run(asyncio.wait_for(voice.handle(body["tts"]), timeout=75)))
+            return json.dumps(_run_cancellable(lambda: voice.handle(body["tts"]), 75, request_id))
+        except asyncio.CancelledError:
+            return json.dumps({"type": "error", "error": "cancelled"})
         except Exception as e:
             return json.dumps({"type": "error", "error": _scrub(f"{type(e).__name__}: {e}")[:300]})
 
@@ -169,7 +220,9 @@ def handle(request_json: str, progress=None) -> str:
     cb = (lambda m: progress.accept(m)) if progress is not None else None
     limit = float(os.getenv("ANDROID_TIMEOUT_S", "10000"))
     try:
-        return json.dumps(asyncio.run(asyncio.wait_for(_run(body, cb), timeout=limit)))
+        return json.dumps(_run_cancellable(lambda: _run(body, cb), limit, request_id))
+    except asyncio.CancelledError:
+        return _text("Rok diya gaya.")
     except asyncio.TimeoutError:
         return _text(
             f"{int(limit)} second me jawab nahi aaya, isliye rok diya. Models ya network bahut slow hain. "

@@ -83,3 +83,13 @@ def test_legacy_note_delete_serializes_inside_string_main_thread_bridge():
     assert "val result = if" in body
     assert "result.toString()" in body
     assert "}.toString()" not in body
+
+
+def test_stop_cancels_the_python_request_off_the_ui_thread():
+    engine = source("Engine.kt")
+    assert 'callAttr("handle", requestJson, progress, id)' in engine
+    body = engine.split("fun cancel(id: String) {", 1)[1].split("private fun setForeground", 1)[0]
+    assert "cancelled.add(id)" in body  # a late answer is still dropped
+    assert "pool.execute" in body and 'callAttr("cancel", id)' in body  # Python stops, UI thread never waits
+    entry = (ROOT / "android_entry.py").read_text(encoding="utf-8")
+    assert "def cancel(request_id" in entry and "request_id=None" in entry
