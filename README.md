@@ -208,3 +208,13 @@ Existing voice is unchanged: Gemini TTS, then Groq Orpheus, then the phone's own
 - **Android:** `VoiceManager.kt`, `NeuralTTS.kt`, `AudioPlayer.kt` run Piper voices (Hindi `rohan`, English `ryan`, both male, int8, ~21 MB each) through sherpa-onnx. Settings > Voice shows "Download offline voice" (one time). Order in the app: natural voice, offline neural, phone voice. Sentences are generated one by one, so playback starts early. Pause, resume and stop are supported.
 - **Python backend (`voice_v6/`):** language detector (Devanagari, Roman Hindi), text normalizer (numbers, symbols), Hinglish processor (sentences, spans), speech queue (duplicate prevention, interrupt), router with dead-provider cool-down, and a protocol `{"tts": {"v6": "plan|chunk|control|status|install"}}`. `voice.synth()` falls back to local Piper when `PIPER_DIR` has the models and the `piper-tts` package exists. Nothing paid is required.
 - Benchmarks (6-core sandbox): Piper RTF 0.04-0.05 (first audio about 0.15 s); sherpa int8 RTF about 0.3; Kokoro RTF 0.58, English only, so not chosen.
+
+## Standard mode = Jarvis (in-app actions)
+
+Standard mode can now *do* things inside the app, not only answer. The engine plans, the phone executes.
+
+- **Local rule parser** (`actions/`): Hindi, Hinglish and English commands, no model call, no network. Reminders, alarms, timers, notes, opening apps, web search, phone status, calendar, voice mode. Multi-step ("reminder lagao aur note bhi bana do") runs up to 3 steps with per-step results, including partial failures.
+- **Execution** (`ActionRunner.kt`, `ActionStore.kt`): reminders/alarms/timers via `AlarmManager` + notification, re-armed after a reboot; notes in app-private JSON; apps, search, calendar, message draft and dialer via intents. `note.clear` and anything sensitive needs a tap first.
+- **Risk levels**: `safe` runs immediately; `confirm` (message, call, settings, DND) and `destructive` never run without the user's tap — enforced on the Kotlin side too, not only in the UI.
+- **Jarvis feel**: "Ji Sir" acknowledgements, a small HUD orb while work runs, a per-step card, and a spoken result. Only in Standard mode; toggle in Settings > Jarvis.
+- **Privacy**: commands never leave the device (no model sees them), no analytics, no new server, keys stay encrypted. Wi-Fi/Bluetooth cannot be toggled by an app on Android 10+; those commands open the system panel instead of pretending.

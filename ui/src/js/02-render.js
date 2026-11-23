@@ -161,6 +161,7 @@ function speechOf(d) {
     case 'approve': return 'Permission needed. ' + (d.title || '') + '. Should I go ahead?';
     case 'memory': return 'Saved to memory.';
     case 'task': return 'Task added: ' + (d.title || '');
+    case 'actions': return stripMd(d.text || 'Kaam kar raha hoon.');
     case 'mission': return 'Mission ' + (d.title || '') + ' is ' + (d.status || 'running') + '.';
     default: return '';
   }

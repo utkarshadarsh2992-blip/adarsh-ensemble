@@ -106,6 +106,7 @@ val syncEngine = tasks.register<Copy>("syncEngine") {
     from(repoRoot) {
         include("*.py")
         include("voice_v6/**/*.py")   // V6 voice layer (package)
+        include("actions/**/*.py")    // Standard-mode action parser (local rules, no model)
         exclude("main.py")
     }
     into(engineDir)

@@ -47,6 +47,16 @@ class AdarshBridge(
     @JavascriptInterface
     fun neuralResume() = MainActivity.neuralResume()
 
+    // Standard-mode actions (reminders, notes, apps, status...). Executed natively; never by a model.
+    @JavascriptInterface
+    fun runActions(json: String): String = MainActivity.runActions(json)
+    @JavascriptInterface
+    fun listNotes(): String = MainActivity.listNotes()
+    @JavascriptInterface
+    fun deleteNote(id: String) = MainActivity.deleteNote(id)
+    @JavascriptInterface
+    fun actionInfo(): String = MainActivity.actionInfo()
+
     // Things a plain WebView cannot do on Android: haptics, clipboard, saving/sharing files, notifications.
     @JavascriptInterface
     fun haptic(ms: Int) = MainActivity.haptic(ms)

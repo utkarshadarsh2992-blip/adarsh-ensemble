@@ -627,6 +627,41 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .pop-item small.pi-how{font-size:11.5px;color:var(--fg2);opacity:.8}
 .combo-t{width:100%;border-collapse:collapse;font-size:13px}.combo-t td{padding:3px 6px;border-top:1px solid var(--line,rgba(127,127,127,.18))}.combo-t td:first-child{color:var(--muted);white-space:nowrap}
 
+/* ---------- Standard-mode actions (Jarvis) ---------- */
+.act{padding:14px 14px 10px}
+.act-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14.5px}
+.act-h b{font-weight:600;line-height:1.35}
+.act-badge{font-size:9.5px;letter-spacing:.14em;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--acc,#3b6ef5);color:#fff;flex:none}
+.act-steps{display:flex;flex-direction:column;gap:2px}
+.act-step{display:flex;align-items:center;gap:10px;padding:8px 4px;border-radius:10px}
+.act-step+.act-step{border-top:1px solid var(--line,rgba(0,0,0,.07))}
+.as-ic{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:9px;background:var(--card2,rgba(0,0,0,.05))}
+.as-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.as-t b{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-t small{font-size:12px;color:var(--muted);line-height:1.35}
+.as-s{flex:none;font-size:13px;color:var(--muted);min-width:14px;text-align:center}
+.act-step[data-state="ok"] .as-s{color:var(--good,#18a05a)}
+.act-step[data-state="fail"] .as-s{color:var(--bad,#d33)}
+.act-step[data-state="run"] .as-s{color:var(--acc,#3b6ef5)}
+.act-step[data-state="ok"] .as-ic{background:color-mix(in srgb,var(--good,#18a05a) 14%,transparent)}
+.act-step[data-state="fail"] .as-ic{background:color-mix(in srgb,var(--bad,#d33) 14%,transparent)}
+
+/* working HUD: a small orb at the top while a task runs */
+.hud{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translate(-50%,-16px);z-index:60;
+  display:flex;align-items:center;gap:10px;padding:8px 14px 8px 10px;border-radius:999px;
+  background:rgba(18,20,26,.92);color:#fff;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.28);
+  opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s ease;max-width:min(92vw,420px)}
+.hud.on{opacity:1;transform:translate(-50%,0)}
+.hud-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud-orb{position:relative;width:20px;height:20px;flex:none;display:grid;place-items:center}
+.hud-orb i{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(120,170,255,.85);opacity:0}
+.hud.busy .hud-orb i{animation:hudpulse 1.5s ease-out infinite}
+.hud.busy .hud-orb i:nth-child(2){animation-delay:.5s}
+.hud.busy .hud-orb i:nth-child(3){animation-delay:1s}
+.hud-orb:after{content:'';width:7px;height:7px;border-radius:50%;background:#7fb0ff;box-shadow:0 0 10px #7fb0ff}
+@keyframes hudpulse{0%{opacity:.85;transform:scale(.45)}100%{opacity:0;transform:scale(1.5)}}
+@media (prefers-reduced-motion: reduce){.hud.busy .hud-orb i{animation:none}.hud{transition:none}}
+
 </style></head><body><div class="phone" id="phone">
   <section class="view on" id="v-chat"></section>
   <section class="view" id="v-today"></section>
@@ -847,7 +882,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Kore', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1 },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Kore', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -1300,6 +1335,7 @@ function speechOf(d) {
     case 'approve': return 'Permission needed. ' + (d.title || '') + '. Should I go ahead?';
     case 'memory': return 'Saved to memory.';
     case 'task': return 'Task added: ' + (d.title || '');
+    case 'actions': return stripMd(d.text || 'Kaam kar raha hoon.');
     case 'mission': return 'Mission ' + (d.title || '') + ' is ' + (d.status || 'running') + '.';
     default: return '';
   }
@@ -1928,7 +1964,7 @@ const Chat = (() => {
     const r = m.reply;
     const thought = Council.done(r);
     if (thought) wrap.append(thought);
-    else if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    else if (r.type !== 'actions' && r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
     if (callsOn() && r.calls && r.calls.length) {
       const bad = r.calls.filter(c => !c.ok).length;
       wrap.append(h('details', { class: 'steps mcalls-msg' }, h('summary', {}, icon('search2', 's'), 'Model calls: ' + r.calls.length + (bad ? ' · ' + bad + ' fail' : '')),
@@ -2395,7 +2431,11 @@ const App = (() => {
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
-      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
+      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
+      swItem('sparkle', 'Jarvis (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.jarvis !== false, v => { S.settings.jarvis = v; })));
+    st.append(label('Jarvis'), h('div', { class: 'grp' },
+      navItem('file', 'Notes', 'Notes jo aap bol ke save karte ho', () => Actions.notesSheet()),
+      navItem('bell', 'Reminders and alarms', 'Set time par notification aayega (app band ho to bhi)', () => Actions.infoSheet ? Actions.infoSheet() : toast('App mein reminders kaam karte hain'))));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
@@ -2829,6 +2869,188 @@ const Voice = (() => {
   });
   return { open, close, get isOpen() { return openFlag; } };
 })();
+
+'use strict';
+/* 05-actions.js : Standard-mode in-app actions (Jarvis feel). The engine only plans; the phone executes.
+   Safe steps run immediately, sensitive ones wait for a tap. Nothing here talks to a model. */
+const Actions = (() => {
+  const N = () => window.AdarshNative;
+  const native = () => !!(N() && N().runActions);
+  const LABEL = {
+    'reminder.add': ['Reminder', 'bell'], 'alarm.add': ['Alarm', 'bell'], 'timer.start': ['Timer', 'target'],
+    'note.add': ['Note', 'file'], 'note.clear': ['Notes', 'trash'], 'app.open': ['App', 'sliders'],
+    'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
+    'voice.open': ['Voice', 'voice'], 'message.draft': ['Message', 'send'], 'call.dial': ['Call', 'chat'],
+    'panel.open': ['Settings', 'sliders'], 'dnd.set': ['DND', 'shield'], 'torch.set': ['Torch', 'bolt']
+  };
+  const RISK = { confirm: 'Poochh ke karunga', destructive: 'Pakka? Ye delete karega' };
+
+  /* ---------- HUD: the little orb that shows while Jarvis is working ---------- */
+  let hudEl = null, hudTimer = 0;
+  function hud(text, busy) {
+    if (S.settings.jarvis === false) return;
+    if (!hudEl) {
+      hudEl = h('div', { class: 'hud', role: 'status', 'aria-live': 'polite' },
+        h('span', { class: 'hud-orb' }, h('i'), h('i'), h('i')), h('span', { class: 'hud-t' }));
+      document.body.append(hudEl);
+    }
+    hudEl.querySelector('.hud-t').textContent = text || 'Kaam kar raha hoon…';
+    hudEl.classList.toggle('busy', !!busy);
+    hudEl.classList.add('on');
+    clearTimeout(hudTimer);
+    if (!busy) hudTimer = setTimeout(() => hudEl.classList.remove('on'), 2600);
+  }
+
+  /* ---------- browser fallback (no native bridge): notes, timer, reminder, search ---------- */
+  const LS = 'adarsh.notes.v1';
+  const notes = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]'); } catch (e) { return []; } };
+  const saveNotes = (a) => { try { localStorage.setItem(LS, JSON.stringify(a)); } catch (e) {} };
+
+  function webStep(step) {
+    const a = step.args || {};
+    switch (step.action) {
+      case 'note.add': {
+        const list = notes(); list.unshift({ id: uid('n'), text: a.text, ts: Date.now() }); saveNotes(list);
+        return { ok: true, message: 'Note save ho gaya' };
+      }
+      case 'note.clear': saveNotes([]); return { ok: true, message: 'Saare notes hata diye' };
+      case 'timer.start': case 'reminder.add': case 'alarm.add': {
+        const at = a.at || (Date.now() + (a.seconds || 60) * 1000);
+        const ms = Math.max(1000, at - Date.now());
+        setTimeout(() => {
+          try { if ('Notification' in window && Notification.permission === 'granted') new Notification(a.text || 'Reminder', { body: 'Adarsh reminder' }); } catch (e) {}
+          toast((a.text || 'Reminder') + ' — time ho gaya');
+        }, ms);
+        return { ok: true, message: 'Set ho gaya (is tab mein)' };
+      }
+      case 'app.open': case 'web.search': {
+        const url = step.action === 'web.search' ? 'https://www.google.com/search?q=' + encodeURIComponent(a.query) : 'https://' + (a.app || 'google') + '.com';
+        try { window.open(url, '_blank', 'noopener'); } catch (e) {}
+        return { ok: true, message: 'Khol diya' };
+      }
+      case 'voice.open': try { Voice.open(); } catch (e) {} return { ok: true, message: 'Voice mode' };
+      case 'phone.status': return { ok: true, message: (navigator.onLine ? 'Online' : 'Offline') + ' · ' + (navigator.deviceMemory || '?') + ' GB RAM' };
+      default: return { ok: false, message: 'Ye kaam sirf app mein chalta hai' };
+    }
+  }
+
+  function runNative(steps, confirmed) {
+    try {
+      const out = JSON.parse(N().runActions(JSON.stringify({ steps, confirmed: !!confirmed })));
+      return (out && out.results) || [];
+    } catch (e) { return []; }
+  }
+
+  /* ---------- execution ---------- */
+  async function execute(d, confirmed, redraw) {
+    if (d.run && d.run.state === 'running') return;
+    d.run = { state: 'running', results: {} };
+    const steps = d.steps || [];
+    const risky = steps.filter(s => s.risk !== 'safe');
+    hud('Ji Sir, ' + (steps[0].pending || 'kaam kar raha hoon'), true);
+    if (redraw) redraw();
+    const results = native() ? runNative(steps, confirmed) : steps.map(webStep);
+    const byId = {};
+    results.forEach(r => { if (r && r.id) byId[r.id] = r; });
+    steps.forEach((s, i) => {
+      const r = byId[s.id] || results[i] || { ok: false, message: 'Koi jawab nahi mila' };
+      d.run.results[s.id] = r;
+      if (r.detail === 'voice' && s.action === 'voice.open') { try { Voice.open(); } catch (e) {} }
+    });
+    const done = steps.filter(s => (d.run.results[s.id] || {}).ok).length;
+    const failed = steps.length - done;
+    d.run.state = 'done';
+    const msgs = steps.map(s => (d.run.results[s.id] || {}).message).filter(Boolean);
+    d.text = 'Ji Sir, ' + (msgs.length ? msgs.join('. ') : 'kaam nahi ho paya') + (failed ? '' : '.');
+    d.done = done; d.failed = failed;
+    hud(failed ? 'Sir, ' + failed + ' kaam fail hua' : 'Ho gaya Sir', false);
+    try { save(); } catch (e) {}
+    if (redraw) redraw();
+    if (S.settings.speak && TTS.ok() && !(window.Voice && Voice.isOpen)) TTS.speak(msgs.join('. ') || 'Kaam nahi ho paya');
+    if (risky.length && !confirmed) return;   // handled by the confirm sheet
+    return d.run;
+  }
+
+  function confirm(d, ctx) {
+    const steps = d.steps.filter(s => s.risk !== 'safe');
+    sheet({ title: 'Confirm karo, Sir', build(b, close) {
+      b.append(h('p', { class: 'muted' }, 'Ye kaam aapke liye sensitive hain:'));
+      steps.forEach(s => b.append(h('div', { class: 'kvr' }, h('b', {}, (LABEL[s.action] || ['Kaam'])[0]), h('span', {}, s.detail || s.pending))));
+      b.append(h('div', { class: 'card-btns' },
+        h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { close(); d.run = { state: 'cancel', results: {} }; d.text = 'Ji Sir, cancel kar diya.'; save(); ctx.redraw(); } } }, 'Nahi'),
+        h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { close(); execute(d, true, ctx.redraw); } } }, 'Haan, karo')));
+    } });
+  }
+
+  function stepRow(d, s) {
+    const r = (d.run && d.run.results && d.run.results[s.id]) || null;
+    const state = r ? (r.ok ? 'ok' : 'fail') : (d.run && d.run.state === 'running' ? 'run' : 'wait');
+    const ic = (LABEL[s.action] || ['Kaam', 'sparkle'])[1];
+    return h('div', { class: 'act-step', 'data-state': state },
+      h('span', { class: 'as-ic' }, icon(ic, 's')),
+      h('span', { class: 'as-t' }, h('b', {}, (LABEL[s.action] || ['Kaam'])[0] + (s.detail ? ' · ' + s.detail : '')),
+        h('small', {}, r ? r.message : (s.risk !== 'safe' ? RISK[s.risk] || 'Confirm chahiye' : s.pending))),
+      h('span', { class: 'as-s' }, state === 'ok' ? icon('check', 's') : state === 'fail' ? icon('x', 's') : state === 'run' ? '…' : ''));
+  }
+
+  /* ---------- the card inside a chat message ---------- */
+  function card(d, ctx) {
+    const wrap = h('div', { class: 'card act' });
+    wrap.append(h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')));
+    wrap.append(h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));
+    const need = (d.steps || []).some(s => s.risk !== 'safe');
+    const st = d.run && d.run.state;
+    if (!st && need) {
+      wrap.append(h('div', { class: 'card-btns' },
+        h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { d.run = { state: 'cancel', results: {} }; d.text = 'Ji Sir, cancel kar diya.'; save(); ctx.redraw(); } } }, 'Nahi'),
+        h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => confirm(d, ctx) } }, 'Haan, karo')));
+    } else if (st === 'done' && d.failed) {
+      wrap.append(h('p', { class: 'muted' }, d.failed + ' kaam fail hua. Dobara bolo, main try karunga.'));
+    } else if (st === 'cancel') {
+      wrap.append(h('p', { class: 'muted' }, 'Cancel kar diya.'));
+    }
+    if (!st) setTimeout(() => { if (!d.run) execute(d, !need, ctx.redraw); }, 60);
+    return wrap;
+  }
+
+  /* ---------- notes (Settings > Notes) ---------- */
+  function notesSheet() {
+    const list = native() ? (() => { try { return JSON.parse(N().listNotes()).notes || []; } catch (e) { return []; } })() : notes();
+    sheet({ title: 'Notes', tall: true, build(b, close) {
+      if (!list.length) { b.append(h('p', { class: 'muted' }, 'Koi note nahi. Bolo: "note banao ki kal exam hai".')); return; }
+      list.forEach(n => b.append(h('div', { class: 'kvr' },
+        h('span', {}, n.text || ''),
+        h('button', { class: 'link', on: { click: () => {
+          if (native()) { try { N().deleteNote(n.id); } catch (e) {} }
+          else { saveNotes(notes().filter(x => x.id !== n.id)); }
+          close(); notesSheet(); toast('Note hata diya');
+        } } }, 'Delete'))));
+    } });
+  }
+
+  function info() {
+    if (!native()) return null;
+    try { return JSON.parse(N().actionInfo()); } catch (e) { return null; }
+  }
+
+  /* permission status, so nothing fails silently later */
+  function infoSheet() {
+    const i = info();
+    sheet({ title: 'Reminders and alarms', build(b, close) {
+      if (!i) { b.append(h('p', { class: 'muted' }, 'Ye feature app ke andar chalta hai. Browser mein reminders sirf is tab ke liye set hote hain.')); return; }
+      const row = (ok, t, sub) => h('div', { class: 'kvr' }, h('b', {}, t), h('span', { class: 'muted' }, (ok ? 'On · ' : 'Off · ') + sub));
+      b.append(row(i.notify, 'Notifications', 'reminder ka alert dikhne ke liye zaroori'),
+        row(i.exact, 'Exact alarms', i.exact ? 'theek time par bajega' : 'Android ne exact alarm band kiya hai — thoda late ho sakta hai'),
+        row(i.dnd, 'DND access', 'sirf "DND on/off" command ke liye'));
+      if (!i.notify) b.append(h('button', { class: 'btn pri', on: { click: () => { try { N().setNotify(true); } catch (e) {} close(); toast('Allow karo, phir reminder bajega'); } } }, 'Allow notifications'));
+      b.append(h('p', { class: 'muted' }, 'Wi-Fi/Bluetooth ko app khud band nahi kar sakti (Android rule) — wo sirf settings panel kholti hai.'));
+    } });
+  }
+
+  return { card, execute, notesSheet, info, infoSheet, hud, webStep, notes };
+})();
+
+RENDER.actions = (d, ctx) => Actions.card(d, ctx);
 
 'use strict';
 /* 06-lock.js : local PIN lock. A convenience screen lock for this device only.

@@ -184,7 +184,11 @@ const App = (() => {
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
-      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
+      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
+      swItem('sparkle', 'Jarvis (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.jarvis !== false, v => { S.settings.jarvis = v; })));
+    st.append(label('Jarvis'), h('div', { class: 'grp' },
+      navItem('file', 'Notes', 'Notes jo aap bol ke save karte ho', () => Actions.notesSheet()),
+      navItem('bell', 'Reminders and alarms', 'Set time par notification aayega (app band ho to bhi)', () => Actions.infoSheet ? Actions.infoSheet() : toast('App mein reminders kaam karte hain'))));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,

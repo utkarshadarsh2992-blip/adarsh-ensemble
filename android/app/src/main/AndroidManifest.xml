@@ -8,6 +8,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Standard-mode actions: reminders/alarms fire on time and survive a reboot. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <queries>
         <intent>
@@ -16,6 +20,32 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <intent><action android:name="android.media.action.STILL_IMAGE_CAMERA" /></intent>
+        <intent><action android:name="android.intent.action.DIAL" /></intent>
+        <intent><action android:name="android.intent.action.SENDTO" /><data android:scheme="smsto" /></intent>
+        <intent><action android:name="android.intent.action.INSERT" /><data android:scheme="content" /><data android:host="com.android.calendar" /></intent>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.google.android.youtube" />
+        <package android:name="com.instagram.android" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.google.android.gm" />
+        <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.android.settings" />
+        <package android:name="com.android.chrome" />
+        <package android:name="com.spotify.music" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.google.android.calculator" />
+        <package android:name="com.google.android.deskclock" />
+        <package android:name="com.google.android.apps.photos" />
+        <package android:name="com.google.android.calendar" />
+        <package android:name="com.google.android.apps.docs" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.netflix.mediaclient" />
+        <package android:name="net.one97.paytm" />
+        <package android:name="com.phonepe.app" />
+        <package android:name="com.google.android.apps.nbu.paisa.user" />
+        <package android:name="com.android.vending" />
     </queries>
 
     <application
@@ -44,5 +74,13 @@
             android:name=".EngineService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <!-- Reminders / alarms / timers: fire a notification at the right time. -->
+        <receiver android:name=".ActionReceiver" android:exported="false" />
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

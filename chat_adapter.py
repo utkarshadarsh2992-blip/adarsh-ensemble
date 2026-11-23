@@ -196,6 +196,13 @@ async def handle(body: dict) -> dict | list[dict]:
     if source == "auto":
         answers = []  # answers without manual/hybrid would be rejected by the pipeline
 
+    # Standard mode = Jarvis: in-app commands run on the phone, no model call at all (works offline).
+    if source == "auto" and str(body.get("mode") or "standard") == "standard" and not body.get("attachments") and not meta.get("deep"):
+        from actions import handle as _action
+        act = _action(text, "standard")
+        if act:
+            return [act]
+
     if source == "auto" and _is_casual(text):
         quick = await _casual_reply(text, reply_lang, depth)
         if quick:

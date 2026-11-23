@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private val dictation by lazy { Dictation(this) }
     private var speaker: Speaker? = null
     private var neural: VoiceManager? = null
+    private var actions: ActionRunner? = null
     @Volatile private var resumed = false
     // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
     private var fileCallback: ValueCallback<Array<Uri>>? = null
@@ -144,6 +145,7 @@ class MainActivity : AppCompatActivity() {
         }
         appCtx = applicationContext
         speaker = Speaker(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
+        actions = ActionRunner(this)
         neural = VoiceManager(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
         web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
 
@@ -226,6 +228,47 @@ class MainActivity : AppCompatActivity() {
         fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.speak(id, text, lang, rate) }
         fun ttsPlayFile(id: String, path: String, rate: Float) = ui { it.speaker?.playFile(id, path, rate) }
         fun ttsStop() = ui { it.speaker?.stopAll(silent = true); it.neural?.stop() }
+
+        // ---- Standard-mode actions (ActionRunner.kt). Called from JS; must answer synchronously.
+        private fun onMain(block: () -> String): String {
+            val a = current ?: return """{"error":"no screen"}"""
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return block()
+            var out = """{"error":"timeout"}"""
+            val latch = java.util.concurrent.CountDownLatch(1)
+            a.runOnUiThread { try { out = block() } finally { latch.countDown() } }
+            latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
+            return out
+        }
+
+        fun runActions(json: String): String = onMain {
+            val req = org.json.JSONObject(json)
+            val confirmed = req.optBoolean("confirmed", false)
+            val steps = req.optJSONArray("steps") ?: org.json.JSONArray()
+            val results = org.json.JSONArray()
+            for (i in 0 until steps.length()) {
+                results.put(current!!.actions!!.run(steps.getJSONObject(i), confirmed))
+            }
+            JSONObject().put("results", results).toString()
+        }
+
+        fun listNotes(): String = onMain {
+            val arr = org.json.JSONArray()
+            ActionStore(current!!).notes().forEach { arr.put(it) }
+            JSONObject().put("notes", arr).toString()
+        }
+
+        fun deleteNote(id: String) = onMain { ActionStore(current!!).remove(id); """{"ok":true}""" }
+        fun actionInfo(): String = onMain {
+            val a = current!!
+            val nm = a.getSystemService(NotificationManager::class.java)
+            val am = a.getSystemService(android.app.AlarmManager::class.java)
+            JSONObject()
+                .put("notify", Build.VERSION.SDK_INT < 33 || a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+                .put("exact", Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms())
+                .put("dnd", nm.isNotificationPolicyAccessGranted)
+                .put("enabled", nm.areNotificationsEnabled())
+                .toString()
+        }
 
         // ---- V6 offline neural voice (VoiceManager.kt)
         fun neuralReady(): Boolean = current?.neural?.ready() ?: false

@@ -93,7 +93,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Kore', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1 },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Kore', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();

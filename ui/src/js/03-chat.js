@@ -115,7 +115,7 @@ const Chat = (() => {
     const r = m.reply;
     const thought = Council.done(r);
     if (thought) wrap.append(thought);
-    else if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    else if (r.type !== 'actions' && r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
     if (callsOn() && r.calls && r.calls.length) {
       const bad = r.calls.filter(c => !c.ok).length;
       wrap.append(h('details', { class: 'steps mcalls-msg' }, h('summary', {}, icon('search2', 's'), 'Model calls: ' + r.calls.length + (bad ? ' · ' + bad + ' fail' : '')),
