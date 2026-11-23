@@ -261,6 +261,9 @@ class BackgroundVoiceService : Service() {
         val id = "bv-${UUID.randomUUID()}"
         requestId = id
         setState("thinking")
+        // History is already filtered by the UI. Conservatively preserve provenance when a
+        // sharing-enabled history could contain personal replies, so later disabling sharing excludes derived turns.
+        val personalContextUsed = c.accessCurrentChat && c.localRead && c.access.optBoolean("personalOnline") && history.isNotEmpty()
         val request = JSONObject()
             .put("chat_id", c.chatId)
             .put("text", text.take(MAX_TEXT_CHARS))
@@ -276,9 +279,9 @@ class BackgroundVoiceService : Service() {
                 if (!active || token != generation.get() || requestId != id) return@post
                 requestId = null
                 if (error != null || result == null) {
-                    completeTurn(text, JSONObject().put("type", "text").put("text", "Abhi jawab nahi aa paya. App kholkar dobara try karo."), false, false, token)
+                    completeTurn(text, JSONObject().put("type", "text").put("text", "Abhi jawab nahi aa paya. App kholkar dobara try karo."), false, personalContextUsed, token)
                 } else {
-                    handleReply(text, result, token)
+                    handleReply(text, result, personalContextUsed, token)
                 }
             }
         }
@@ -287,12 +290,12 @@ class BackgroundVoiceService : Service() {
             if (active && token == generation.get() && requestId == id) {
                 Engine.cancel(id)
                 requestId = null
-                completeTurn(text, JSONObject().put("type", "text").put("text", "Jawab mein bahut der ho rahi hai. App kholkar dobara try karo."), false, false, token)
+                completeTurn(text, JSONObject().put("type", "text").put("text", "Jawab mein bahut der ho rahi hai. App kholkar dobara try karo."), false, personalContextUsed, token)
             }
         }, CHAT_TIMEOUT_MS)
     }
 
-    private fun handleReply(userText: String, raw: String, token: Long) {
+    private fun handleReply(userText: String, raw: String, personalContextUsed: Boolean, token: Long) {
         val parsed = try {
             val t = raw.trim()
             if (t.startsWith("[")) JSONArray(t) else JSONObject(t)
@@ -310,7 +313,7 @@ class BackgroundVoiceService : Service() {
         } else {
             val text = spokenText(parsed)
             val reply = if (parsed is JSONObject) JSONObject(parsed.toString()) else JSONArray(parsed.toString())
-            completeTurn(userText, reply, false, false, token)
+            completeTurn(userText, reply, false, personalContextUsed, token)
         }
     }
 

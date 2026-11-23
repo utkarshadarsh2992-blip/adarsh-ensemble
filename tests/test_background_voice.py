@@ -153,3 +153,11 @@ def test_permission_grants_resume_only_visible_uncancelled_start():
     assert "web.post { if (resumed && !destroyed && pendingBackground != null)" in activity
     stop = activity.split("fun backgroundVoiceStop(): String", 1)[1].split("fun backgroundVoicePeek", 1)[0]
     assert "backgroundGeneration++" in stop and "pendingBackground = null" in stop
+
+
+def test_background_history_derived_turns_keep_personal_context_provenance():
+    service = source("BackgroundVoiceService.kt")
+    assert 'val personalContextUsed = c.accessCurrentChat && c.localRead && c.access.optBoolean("personalOnline") && history.isNotEmpty()' in service
+    assert "handleReply(text, result, personalContextUsed, token)" in service
+    assert "completeTurn(userText, reply, false, personalContextUsed, token)" in service
+    assert '.put("personalContext", personalContext)' in service

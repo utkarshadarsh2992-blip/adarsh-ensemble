@@ -755,3 +755,19 @@ test('one foreground sync imports the complete bounded native inbox in acknowled
   assert.equal(rows.length, 0); assert.equal(ackCount, 2);
   assert.equal(app.S.chats.find(c => c.id === 'batch-chat').msgs.length, 128);
 });
+
+test('background personal-context provenance remains excluded after online sharing is disabled', async t => {
+  let rows = [];
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => '{"active":false}', backgroundVoiceStart: () => '{"ok":true}', backgroundVoiceStop: () => '{"active":false}',
+    backgroundVoicePeek: () => JSON.stringify(rows), backgroundVoiceAck: () => '{"ok":true}'
+  } }); t.after(() => app.close());
+  app.S.settings.aiAccess = { ...app.Productivity.access(), personalOnline: true, localRead: true };
+  rows = [{ id: 'private-derived', chatId: 'private-chat', text: 'Follow up on my earlier plan', mode: 'coding', personalContext: true, reply: { type: 'text', text: 'PRIVATE_DERIVED_CONTEXT' } }];
+  app.BackgroundVoice.sync();
+  const c = app.S.chats.find(c => c.id === 'private-chat');
+  assert.equal(app.Chat.history(c).length, 2);
+  app.S.settings.aiAccess.personalOnline = false;
+  assert.equal(app.Chat.history(c).length, 0);
+  assert.equal(c.msgs.every(m => m.personalContext === true), true);
+});
