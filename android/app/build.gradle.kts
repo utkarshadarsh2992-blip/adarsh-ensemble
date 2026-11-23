@@ -1,4 +1,5 @@
 
+import java.net.URI
 import java.util.Base64
 
 plugins {
@@ -88,7 +89,7 @@ if (!sherpaAar.exists() || sherpaAar.length() < 1_000_000) {
     sherpaAar.parentFile.mkdirs()
     val tmp = File(sherpaAar.path + ".part")
     val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/sherpa-onnx-static-link-onnxruntime-$sherpaVersion.aar"
-    java.net.URI(url).toURL().openStream().use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
+    URI(url).toURL().openStream().use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
     tmp.renameTo(sherpaAar)
 }
 
