@@ -183,6 +183,7 @@ async def run(
     style: str = "auto",  # auto | solve | explain
     record: bool = False,  # keep every prompt/output and return out["council"] (see council.py)
     mode: str = "standard",  # UI chat mode (standard | v | physics | math | business | coding): roles engine only
+    web_research: bool = True,  # no web queries from permitted private app/chat context
 ) -> dict:
     t0 = time.perf_counter()
     trace = health.start_trace(record)
@@ -250,7 +251,7 @@ async def run(
         if engine == "roles":
             # the 11-role flow writes its own drafts (Architect -> Theorist/Empiricist/... -> Judge -> Reviewers)
             answer, extras, panel_drafts, letter_to_name = await roles.run_roles(
-                client, question, task, user_drafts, guard_report, lang, lang_full, deep, run_code, errors, mode=mode,
+                client, question, task, user_drafts, guard_report, lang, lang_full, deep, run_code, errors, mode=mode, web_research=web_research,
             )
             warnings += extras.get("warnings", [])
             return _pack(

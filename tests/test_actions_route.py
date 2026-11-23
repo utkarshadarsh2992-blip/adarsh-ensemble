@@ -46,9 +46,9 @@ def test_command_runs_locally(no_models):
 
 
 def test_multi_step_reply(no_models):
-    r = ask("wifi band karo aur bluetooth band karo")
+    r = ask("note banao ki paani peena aur YouTube kholo")
     r = r[0] if isinstance(r, list) else r
-    assert len(r["steps"]) == 2 and r["needsConfirm"] is True
+    assert len(r["steps"]) == 2 and r["needsConfirm"] is False
 
 
 def test_normal_question_still_goes_to_model(no_models):
@@ -66,7 +66,7 @@ def test_actions_only_in_standard_mode(monkeypatch):
     monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", False)
     r = ask("5 minute ka timer lagao", mode="research")
     r = r[0] if isinstance(r, list) else r
-    assert r["type"] == "text" and "model answer" in r["text"]
+    assert r["type"] == "text" and "Standard select" in r["text"]
 
 
 def test_manual_source_is_not_hijacked(monkeypatch):

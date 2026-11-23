@@ -1,187 +1,122 @@
 'use strict';
-/* 05-actions.js : Standard-mode in-app actions (Jarvis feel). The engine only plans; the phone executes.
-   Safe steps run immediately, sensitive ones wait for a tap. Nothing here talks to a model. */
+/* Local-rule action plans only. Safe completed steps are never replayed during confirmation. */
 const Actions = (() => {
   const N = () => window.AdarshNative;
-  const native = () => !!(N() && N().runActions);
-  const LABEL = {
-    'reminder.add': ['Reminder', 'bell'], 'alarm.add': ['Alarm', 'bell'], 'timer.start': ['Timer', 'target'],
-    'note.add': ['Note', 'file'], 'note.clear': ['Notes', 'trash'], 'app.open': ['App', 'sliders'],
-    'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
-    'voice.open': ['Voice', 'voice'], 'message.draft': ['Message', 'send'], 'call.dial': ['Call', 'chat'],
-    'panel.open': ['Settings', 'sliders'], 'dnd.set': ['DND', 'shield'], 'torch.set': ['Torch', 'bolt']
-  };
-  const RISK = { confirm: 'Poochh ke karunga', destructive: 'Pakka? Ye delete karega' };
-
-  /* ---------- HUD: the little orb that shows while Jarvis is working ---------- */
+  const LABEL = { 'task.add': ['Task', 'tasks'], 'task.edit': ['Task edit', 'edit'], 'task.done': ['Task status', 'check'], 'task.list': ['Tasks', 'tasks'],
+    'reminder.add': ['Reminder', 'bell'], 'reminder.edit': ['Reminder edit', 'edit'], 'reminder.list': ['Reminders', 'bell'],
+    'alarm.add': ['Alarm', 'bell'], 'alarm.edit': ['Alarm edit', 'edit'], 'alarm.list': ['Alarms', 'bell'], 'timer.start': ['Timer', 'target'],
+    'note.add': ['Note', 'file'], 'note.edit': ['Note edit', 'edit'], 'note.list': ['Notes', 'file'],
+    'work.add': ['Work project', 'book'], 'work.edit': ['Work edit', 'edit'], 'work.log': ['Work log', 'book'], 'work.list': ['Work', 'book'],
+    'memory.add': ['Memory', 'brain'], 'memory.edit': ['Memory edit', 'edit'], 'memory.list': ['Memory', 'brain'], 'settings.update': ['Setting', 'sliders'],
+    'app.open': ['App', 'sliders'], 'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
+    'voice.open': ['Voice', 'voice'], 'message.draft': ['Message', 'send'], 'call.dial': ['Call', 'chat'], 'torch.set': ['Torch', 'bolt'] };
+  const contexts = new WeakMap();
+  const ctx = d => contexts.get(d);
   let hudEl = null, hudTimer = 0;
   function hud(text, busy) {
     if (S.settings.jarvis === false) return;
-    if (!hudEl) {
-      hudEl = h('div', { class: 'hud', role: 'status', 'aria-live': 'polite' },
-        h('span', { class: 'hud-orb' }, h('i'), h('i'), h('i')), h('span', { class: 'hud-t' }));
-      document.body.append(hudEl);
-    }
+    if (!hudEl) { hudEl = h('div', { class: 'hud', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'hud-orb' }, h('i'), h('i'), h('i')), h('span', { class: 'hud-t' })); document.body.append(hudEl); }
     hudEl.querySelector('.hud-t').textContent = text || 'Kaam kar raha hoon…';
-    hudEl.classList.toggle('busy', !!busy);
-    hudEl.classList.add('on');
-    clearTimeout(hudTimer);
+    hudEl.classList.toggle('busy', !!busy); hudEl.classList.add('on'); clearTimeout(hudTimer);
     if (!busy) hudTimer = setTimeout(() => hudEl.classList.remove('on'), 2600);
   }
-
-  /* ---------- browser fallback (no native bridge): notes, timer, reminder, search ---------- */
-  const LS = 'adarsh.notes.v1';
-  const notes = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]'); } catch (e) { return []; } };
-  const saveNotes = (a) => { try { localStorage.setItem(LS, JSON.stringify(a)); } catch (e) {} };
-
-  function webStep(step) {
-    const a = step.args || {};
-    switch (step.action) {
-      case 'note.add': {
-        const list = notes(); list.unshift({ id: uid('n'), text: a.text, ts: Date.now() }); saveNotes(list);
-        return { ok: true, message: 'Note save ho gaya' };
-      }
-      case 'note.clear': saveNotes([]); return { ok: true, message: 'Saare notes hata diye' };
-      case 'timer.start': case 'reminder.add': case 'alarm.add': {
-        const at = a.at || (Date.now() + (a.seconds || 60) * 1000);
-        const ms = Math.max(1000, at - Date.now());
-        setTimeout(() => {
-          try { if ('Notification' in window && Notification.permission === 'granted') new Notification(a.text || 'Reminder', { body: 'Adarsh reminder' }); } catch (e) {}
-          toast((a.text || 'Reminder') + ' — time ho gaya');
-        }, ms);
-        return { ok: true, message: 'Set ho gaya (is tab mein)' };
-      }
-      case 'app.open': case 'web.search': {
-        const url = step.action === 'web.search' ? 'https://www.google.com/search?q=' + encodeURIComponent(a.query) : 'https://' + (a.app || 'google') + '.com';
-        try { window.open(url, '_blank', 'noopener'); } catch (e) {}
-        return { ok: true, message: 'Khol diya' };
-      }
-      case 'voice.open': try { Voice.open(); } catch (e) {} return { ok: true, message: 'Voice mode' };
-      case 'phone.status': return { ok: true, message: (navigator.onLine ? 'Online' : 'Offline') + ' · ' + (navigator.deviceMemory || '?') + ' GB RAM' };
-      default: return { ok: false, message: 'Ye kaam sirf app mein chalta hai' };
+  function webStep(s) {
+    const a = s.args || {};
+    if (s.action === 'web.search') { window.open('https://www.google.com/search?q=' + encodeURIComponent(a.query), '_blank', 'noopener'); return { ok: true, message: 'Search khol diya' }; }
+    const sites = { youtube: 'youtube.com', whatsapp: 'web.whatsapp.com', instagram: 'instagram.com', gmail: 'mail.google.com', maps: 'maps.google.com', telegram: 'web.telegram.org', spotify: 'open.spotify.com', drive: 'drive.google.com', facebook: 'facebook.com', twitter: 'x.com', netflix: 'netflix.com' };
+    if (s.action === 'app.open' && sites[a.app]) { window.open('https://' + sites[a.app], '_blank', 'noopener'); return { ok: true, message: 'App website khol di' }; }
+    if (s.action === 'phone.status') return { ok: true, message: navigator.onLine ? 'Browser online hai' : 'Browser offline hai' };
+    if (s.action === 'voice.open') { Voice.open(); return { ok: true, message: 'Voice mode khul gaya' }; }
+    return { ok: false, message: 'Ye operation sirf Android app mein chalta hai' };
+  }
+  async function step(s, confirmed, mode) {
+    if (!LABEL[s.action]) return { ok: false, message: 'Sir, ye action AI ke liye allowed nahi hai.' };
+    const sensitive = ['message.draft', 'call.dial'].includes(s.action);
+    if (sensitive && !confirmed) return { ok: false, pending: true, message: 'Sir, confirmation chahiye.' };
+    if (!Productivity.native() && /^(app|web|phone|voice)\./.test(s.action)) {
+      if (mode !== 'standard' || !Productivity.access().localEdit || (s.action === 'app.open' && s.args.app === 'settings')) return { ok: false, message: 'Ye action disabled hai.' };
+      try { return webStep(s); } catch (e) { return { ok: false, message: 'App/search nahi khul paya.' }; }
     }
+    return Productivity.run(s, confirmed, false, mode);
   }
-
-  function runNative(steps, confirmed) {
-    try {
-      const out = JSON.parse(N().runActions(JSON.stringify({ steps, confirmed: !!confirmed })));
-      return (out && out.results) || [];
-    } catch (e) { return []; }
-  }
-
-  /* ---------- execution ---------- */
-  async function execute(d, confirmed, redraw) {
-    if (d.run && d.run.state === 'running') return;
-    d.run = { state: 'running', results: {} };
+  async function execute(d, confirmed = false, redraw) {
+    if (d.origin !== 'local-rule' || d.mode !== 'standard') { d.text = 'Sir, untrusted action plan execute nahi kiya.'; return; }
+    if (d.run && ['running', 'done', 'cancel'].includes(d.run.state)) return d.run;
     const steps = d.steps || [];
-    const risky = steps.filter(s => s.risk !== 'safe');
-    /* a reminder nobody can see is useless: ask for notification access the first time we schedule one */
-    if (native() && steps.some(s => /^(reminder|alarm|timer)\./.test(s.action))) {
-      const i = info();
-      if (i && !i.notify) { try { N().setNotify(true); } catch (e) {} }
+    if (!steps.length) return;
+    d.run = { state: 'running', results: (d.run && d.run.results) || {} };
+    const pendingSteps = steps.filter(s => !(d.run.results[s.id] && !d.run.results[s.id].pending));
+    if (Productivity.native() && pendingSteps.some(s => /^(task|reminder|alarm|timer)\./.test(s.action) && (s.args.at || s.args.seconds))) {
+      const i = info(); if (i && !i.notify) { try { N().setNotify(true); } catch (e) {} }
     }
     hud('Ji Sir, ' + (steps[0].pending || 'kaam kar raha hoon'), true);
     if (redraw) redraw();
-    const results = native() ? runNative(steps, confirmed) : steps.map(webStep);
-    const byId = {};
-    results.forEach(r => { if (r && r.id) byId[r.id] = r; });
-    steps.forEach((s, i) => {
-      const r = byId[s.id] || results[i] || { ok: false, message: 'Koi jawab nahi mila' };
-      d.run.results[s.id] = r;
-      if (r.detail === 'voice' && s.action === 'voice.open') { try { Voice.open(); } catch (e) {} }
-    });
-    const done = steps.filter(s => (d.run.results[s.id] || {}).ok).length;
-    const failed = steps.length - done;
-    d.run.state = 'done';
-    const msgs = steps.map(s => (d.run.results[s.id] || {}).message).filter(Boolean);
-    d.text = 'Ji Sir, ' + (msgs.length ? msgs.join('. ') : 'kaam nahi ho paya') + (failed ? '' : '.');
-    d.done = done; d.failed = failed;
-    hud(failed ? 'Sir, ' + failed + ' kaam fail hua' : 'Ho gaya Sir', false);
-    try { save(); } catch (e) {}
-    if (redraw) redraw();
-    if (S.settings.speak && TTS.ok() && !(window.Voice && Voice.isOpen)) TTS.speak(msgs.join('. ') || 'Kaam nahi ho paya');
-    if (risky.length && !confirmed) return;   // handled by the confirm sheet
+    for (const s of pendingSteps) {
+      let r;
+      try { r = await step(s, confirmed, d.mode); } catch (e) { r = { ok: false, message: 'Kaam fail: ' + e.message }; }
+      d.run.results[s.id] = { ...r, id: s.id };
+      if (r.ok && s.action === 'voice.open') { try { Voice.open(); } catch (e) {} }
+    }
+    const values = steps.map(s => d.run.results[s.id] || {});
+    d.done = values.filter(r => r.ok).length;
+    d.failed = values.filter(r => !r.ok && !r.pending).length;
+    const pending = values.some(r => r.pending);
+    d.run.state = pending ? 'pending' : 'done';
+    d.text = 'Ji Sir, ' + values.map(r => r.message).filter(Boolean).join('. ');
+    hud(pending ? 'Sir, confirmation ka wait hai' : d.failed ? 'Sir, kuch kaam nahi ho paye' : 'Ho gaya Sir', false);
+    saveNow(); if (redraw) redraw();
+    // Voice.say owns spoken results while its overlay is open. Avoid duplicate/racing speech.
+    if (redraw && S.settings.speak && TTS.ok() && !Voice.isOpen && !pending) TTS.speak(d.text);
     return d.run;
   }
-
-  function confirm(d, ctx) {
-    const steps = d.steps.filter(s => s.risk !== 'safe');
+  function cancel(d, redraw) {
+    const values = Object.values((d.run && d.run.results) || {}).filter(r => r.ok);
+    d.run = { state: 'cancel', results: (d.run && d.run.results) || {} };
+    d.text = 'Ji Sir, confirm wale kaam cancel kar diye.' + (values.length ? ' Pehle ke ' + values.length + ' safe kaam ho chuke hain.' : '');
+    saveNow(); if (redraw) redraw();
+  }
+  function confirm(d, c) {
+    const sensitive = (d.steps || []).filter(s => ['message.draft', 'call.dial'].includes(s.action));
+    if (!sensitive.length) return;
     sheet({ title: 'Confirm karo, Sir', build(b, close) {
-      b.append(h('p', { class: 'muted' }, 'Ye kaam aapke liye sensitive hain:'));
-      steps.forEach(s => b.append(h('div', { class: 'kvr' }, h('b', {}, (LABEL[s.action] || ['Kaam'])[0]), h('span', {}, s.detail || s.pending))));
-      b.append(h('div', { class: 'card-btns' },
-        h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { close(); d.run = { state: 'cancel', results: {} }; d.text = 'Ji Sir, cancel kar diya.'; save(); ctx.redraw(); } } }, 'Nahi'),
-        h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { close(); execute(d, true, ctx.redraw); } } }, 'Haan, karo')));
+      b.append(h('p', { class: 'muted' }, 'Composer/dialer khulega; final Send/Call aap dabayenge.'));
+      sensitive.forEach(s => b.append(h('div', { class: 'kvr' }, h('b', {}, LABEL[s.action][0]), h('span', {}, s.detail || s.pending))));
+      b.append(h('div', { class: 'card-btns' }, h('button', { class: 'btn ghost', on: { click: () => { close(); cancel(d, c.redraw); } } }, 'Nahi'), h('button', { class: 'btn pri', on: { click: () => { close(); execute(d, true, c.redraw); } } }, 'Haan, karo')));
     } });
   }
-
   function stepRow(d, s) {
-    const r = (d.run && d.run.results && d.run.results[s.id]) || null;
-    const state = r ? (r.ok ? 'ok' : 'fail') : (d.run && d.run.state === 'running' ? 'run' : 'wait');
-    const ic = (LABEL[s.action] || ['Kaam', 'sparkle'])[1];
-    return h('div', { class: 'act-step', 'data-state': state },
-      h('span', { class: 'as-ic' }, icon(ic, 's')),
-      h('span', { class: 'as-t' }, h('b', {}, (LABEL[s.action] || ['Kaam'])[0] + (s.detail ? ' · ' + s.detail : '')),
-        h('small', {}, r ? r.message : (s.risk !== 'safe' ? RISK[s.risk] || 'Confirm chahiye' : s.pending))),
+    const r = d.run && d.run.results && d.run.results[s.id];
+    const state = r ? r.pending ? 'wait' : r.ok ? 'ok' : 'fail' : d.run && d.run.state === 'running' ? 'run' : 'wait';
+    return h('div', { class: 'act-step', 'data-state': state }, h('span', { class: 'as-ic' }, icon((LABEL[s.action] || ['Kaam', 'sparkle'])[1], 's')),
+      h('span', { class: 'as-t' }, h('b', {}, (LABEL[s.action] || ['Kaam'])[0] + (s.detail ? ' · ' + s.detail : '')), h('small', {}, r ? r.message : s.pending)),
       h('span', { class: 'as-s' }, state === 'ok' ? icon('check', 's') : state === 'fail' ? icon('x', 's') : state === 'run' ? '…' : ''));
   }
-
-  /* ---------- the card inside a chat message ---------- */
-  function card(d, ctx) {
-    d._ctx = ctx;   // voice mode needs the same redraw to show progress
-    const wrap = h('div', { class: 'card act' });
-    wrap.append(h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')));
-    wrap.append(h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));
-    const need = (d.steps || []).some(s => s.risk !== 'safe');
-    const st = d.run && d.run.state;
-    if (!st && need) {
-      wrap.append(h('div', { class: 'card-btns' },
-        h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { d.run = { state: 'cancel', results: {} }; d.text = 'Ji Sir, cancel kar diya.'; save(); ctx.redraw(); } } }, 'Nahi'),
-        h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => confirm(d, ctx) } }, 'Haan, karo')));
-    } else if (st === 'done' && d.failed) {
-      wrap.append(h('p', { class: 'muted' }, d.failed + ' kaam fail hua. Dobara bolo, main try karunga.'));
-    } else if (st === 'cancel') {
-      wrap.append(h('p', { class: 'muted' }, 'Cancel kar diya.'));
-    }
-    if (!st) setTimeout(() => { if (!d.run) execute(d, !need, ctx.redraw); }, 60);
+  function card(d, c) {
+    contexts.set(d, c);
+    // Older builds stored a circular context on the reply. Remove it before any persistence.
+    delete d._ctx;
+    const wrap = h('div', { class: 'card act' }, h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')),
+      h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));
+    const state = d.run && d.run.state;
+    const need = (d.steps || []).some(s => ['message.draft', 'call.dial'].includes(s.action));
+    if (need && (!state || state === 'pending')) wrap.append(h('div', { class: 'card-btns' }, h('button', { class: 'btn ghost', on: { click: () => cancel(d, c.redraw) } }, 'Nahi'), h('button', { class: 'btn pri', on: { click: () => confirm(d, c) } }, 'Haan, karo')));
+    const results = Object.values((d.run && d.run.results) || {});
+    results.filter(r => Array.isArray(r.records)).forEach(r => wrap.append(h('details', {}, h('summary', {}, 'Records (' + r.records.length + ')'), r.records.slice(0, 20).map(x => h('p', {}, x.title || x.text || x.id)))));
+    if (d.failed) wrap.append(h('p', { class: 'muted' }, 'Sir, failed step ka sahi naam/time bata kar dobara bolo.'));
+    // Execution is awaited by Chat.runBackend, never triggered by merely viewing/reloading a card.
     return wrap;
   }
-
-  /* ---------- notes (Settings > Notes) ---------- */
-  function notesSheet() {
-    const list = native() ? (() => { try { return JSON.parse(N().listNotes()).notes || []; } catch (e) { return []; } })() : notes();
-    sheet({ title: 'Notes', tall: true, build(b, close) {
-      if (!list.length) { b.append(h('p', { class: 'muted' }, 'Koi note nahi. Bolo: "note banao ki kal exam hai".')); return; }
-      list.forEach(n => b.append(h('div', { class: 'kvr' },
-        h('span', {}, n.text || ''),
-        h('button', { class: 'link', on: { click: () => {
-          if (native()) { try { N().deleteNote(n.id); } catch (e) {} }
-          else { saveNotes(notes().filter(x => x.id !== n.id)); }
-          close(); notesSheet(); toast('Note hata diya');
-        } } }, 'Delete'))));
-    } });
-  }
-
-  function info() {
-    if (!native()) return null;
-    try { return JSON.parse(N().actionInfo()); } catch (e) { return null; }
-  }
-
-  /* permission status, so nothing fails silently later */
+  function info() { try { return N() && N().actionInfo ? JSON.parse(N().actionInfo()) : null; } catch (e) { return null; } }
   function infoSheet() {
     const i = info();
-    sheet({ title: 'Reminders and alarms', build(b, close) {
-      if (!i) { b.append(h('p', { class: 'muted' }, 'Ye feature app ke andar chalta hai. Browser mein reminders sirf is tab ke liye set hote hain.')); return; }
-      const row = (ok, t, sub) => h('div', { class: 'kvr' }, h('b', {}, t), h('span', { class: 'muted' }, (ok ? 'On · ' : 'Off · ') + sub));
-      b.append(row(i.notify, 'Notifications', 'reminder ka alert dikhne ke liye zaroori'),
-        row(i.exact, 'Exact alarms', i.exact ? 'theek time par bajega' : 'Android ne exact alarm band kiya hai — thoda late ho sakta hai'),
-        row(i.dnd, 'DND access', 'sirf "DND on/off" command ke liye'));
-      if (!i.notify) b.append(h('button', { class: 'btn pri', on: { click: () => { try { N().setNotify(true); } catch (e) {} close(); toast('Allow karo, phir reminder bajega'); } } }, 'Allow notifications'));
-      b.append(h('p', { class: 'muted' }, 'Wi-Fi/Bluetooth ko app khud band nahi kar sakti (Android rule) — wo sirf settings panel kholti hai.'));
+    sheet({ title: 'Notification permissions', build(b, close) {
+      if (!i) { b.append(h('p', {}, 'Browser alerts sirf tab khula rehne par chalenge. Background reminders ke liye Android app use karo.')); return; }
+      b.append(h('p', {}, 'Notifications: ' + (i.notify ? 'On' : 'Off')), h('p', {}, 'Exact alarms: ' + (i.exact ? 'Allowed' : 'Not allowed — Android alert late kar sakta hai.')));
+      if (!i.notify) b.append(h('button', { class: 'btn pri', on: { click: () => { N().setNotify(true); close(); toast('Android permission mein Allow karo.'); } } }, 'Allow notifications'));
+      b.append(h('p', { class: 'muted' }, 'App screen band ho tab scheduled notifications chal sakte hain. Android Force stop/battery restrictions delivery rok sakti hain.'));
     } });
   }
-
-  return { card, execute, notesSheet, info, infoSheet, hud, webStep, notes };
+  function notesSheet() { App.show('notes'); }
+  return { card, execute, cancel, ctx, notesSheet, info, infoSheet, hud, webStep, notes: () => Productivity.list('note') };
 })();
-
 RENDER.actions = (d, ctx) => Actions.card(d, ctx);

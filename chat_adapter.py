@@ -16,6 +16,8 @@ import config
 import health
 import lessons
 import pipeline
+import app_context
+import app_knowledge
 from llm import LLMError, chat
 
 # Greetings, thanks and other small talk do not need panel + falsifiers + judge.
@@ -162,6 +164,33 @@ def _format_answer(res: dict) -> str:
     return text
 
 
+def local_response(body: dict) -> dict | list[dict] | None:
+    """Safe offline preflight; shared by Android before its API-key check and by the adapter."""
+    perms = app_context.access(body)
+    if body.get("architecture") is True:
+        if not perms["architecture"]:
+            return {"type": "text", "text": "Architecture reference access off hai. Settings > AI access se allow karo."}
+        return {"type": "architecture", "reference": app_knowledge.reference(str(body.get("mode") or "standard"))}
+    if body.get("attachments") or (body.get("meta") or {}).get("deep"):
+        return None
+    if body.get("source", "auto") != "auto":
+        return None  # do not silently change Manual/Hybrid into Auto
+    from actions import handle as action_handle
+    act = action_handle(str(body.get("text") or ""), "standard")
+    if not act:
+        return None
+    mode = str(body.get("mode") or "standard")
+    if mode != "standard":
+        return {"type": "text", "text": "Ye in-app command Standard mode mein chalta hai. Sir, aap khud Standard select karo; maine mode change nahi kiya.", "uiMode": mode, "origin": "local-rule"}
+    if act.get("type") == "actions":
+        steps = act.get("steps") or []
+        reads = any(s.get("action", "").endswith(".list") for s in steps)
+        edits = any(not s.get("action", "").endswith(".list") for s in steps)
+        if (reads and not perms["localRead"]) or (edits and not perms["localEdit"]):
+            return {"type": "text", "text": "Sir, is command ka local read/edit access off hai. Settings > AI access mein aap allow kar sakte ho.", "origin": "local-rule"}
+    return [act]
+
+
 async def handle(body: dict) -> dict | list[dict]:
     if body.get("ping"):
         return {"ok": True}
@@ -171,6 +200,9 @@ async def handle(body: dict) -> dict | list[dict]:
     if isinstance(body.get("lesson"), dict):
         return lessons.handle_op(body["lesson"])  # list / add / edit / delete / clear / good: no model call
 
+    local = local_response(body)
+    if local is not None:
+        return local
     meta = body.get("meta") or {}
     if meta.get("approval"):
         # The ensemble never asks for approvals, so this is only a safe no-op.
@@ -196,24 +228,24 @@ async def handle(body: dict) -> dict | list[dict]:
     if source == "auto":
         answers = []  # answers without manual/hybrid would be rejected by the pipeline
 
-    # Standard mode = Jarvis: in-app commands run on the phone, no model call at all (works offline).
-    if source == "auto" and str(body.get("mode") or "standard") == "standard" and not body.get("attachments") and not meta.get("deep"):
-        from actions import handle as _action
-        act = _action(text, "standard")
-        if act:
-            return [act]
-
-    if source == "auto" and _is_casual(text):
+    ui_mode = str(body.get("mode") or "standard")
+    if source == "auto" and ui_mode == "standard" and _is_casual(text):
         quick = await _casual_reply(text, reply_lang, depth)
         if quick:
             return [quick]
 
-    extra = _context(body.get("history"), text)
-    ui_mode = str(body.get("mode") or "standard")
+    perms = app_context.access(body)
+    extra = _context(body.get("history") if perms["currentChat"] else [], text)
+    private_context = bool(extra)
+    extra += app_context.context(body, text)
+    private_context = private_context or "[Permitted relevant app records;" in extra
+    extra += app_knowledge.context(text, ui_mode, perms["architecture"])
+    extra = extra[:6000]
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard" and not body.get("attachments") and not meta.get("deep"):
         quick = await _quick_reply(text[:MAX_QUESTION_CHARS - len(extra)], extra, reply_lang, depth, bool(meta.get("voice")))
         if quick:
             return [quick]
+        return [{"type": "text", "text": "Sir, Standard ke models abhi jawab nahi de paye. Mode wahi rakha hai; thodi der baad dobara try karo.", "uiMode": "standard"}]
     question = (text[: MAX_QUESTION_CHARS - len(extra)] + extra)[:MAX_QUESTION_CHARS]
 
     res = await pipeline.run(
@@ -229,6 +261,7 @@ async def handle(body: dict) -> dict | list[dict]:
         debug=False,
         record=True,
         mode=str(body.get("mode") or "standard"),
+        web_research=not private_context,
     )
 
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]

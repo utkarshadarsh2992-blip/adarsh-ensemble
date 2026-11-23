@@ -10,7 +10,8 @@ UNITS = {"second": 1, "seconds": 1, "sec": 1, "secs": 1, "second": 1, "सेक
          "minute": 60, "minutes": 60, "min": 60, "mins": 60, "मिनट": 60,
          "hour": 3600, "hours": 3600, "hr": 3600, "hrs": 3600, "ghanta": 3600, "ghante": 3600,
          "घंटा": 3600, "घंटे": 3600}
-DAYS = {"aaj": 0, "today": 0, "kal": 1, "tomorrow": 1, "parso": 2, "parson": 2, "day after tomorrow": 2}
+DAYS = {"aaj": 0, "आज": 0, "today": 0, "kal": 1, "कल": 1, "tomorrow": 1,
+        "parso": 2, "parson": 2, "परसों": 2, "day after tomorrow": 2}
 PART = {"subah": 0, "savere": 0, "morning": 0, "सुबह": 0, "dopahar": 12, "afternoon": 12, "दोपहर": 12,
         "shaam": 12, "sham": 12, "evening": 12, "शाम": 12, "raat": 12, "night": 12, "रात": 12}
 _UNIT = "|".join(sorted(UNITS, key=len, reverse=True))
@@ -93,11 +94,20 @@ def when(text: str, now: int) -> tuple[int, str] | None:
 
 def strip_time(text: str) -> str:
     """Remove the time expression and day/part words, so only the subject is left."""
-    t = text.lower()
-    t = REL.sub(" ", t)
-    t = REL2.sub(" ", t)
-    t = ABS.sub(" ", t)
-    t = re.sub(rf"\b({_DAY}|{_PART}|aaj|kal|parso|today|tomorrow|at|baje|bje|o'?clock|am|pm|hours)\b", " ", t)
+    # Match case-insensitively but retain the user's original casing in the
+    # subject (names and titles should not be silently lowercased).
+    t = text or ""
+    has_relative = REL.search(t.lower()) or REL2.search(t.lower())
+    has_absolute = ABS.search(t)
+    # A bare "kal/aaj" is often part of a task or note title.  Only strip day
+    # and part-of-day words when a complete relative or clock expression was
+    # actually found.
+    if not has_relative and not has_absolute:
+        return re.sub(r"\s{2,}", " ", t).strip()
+    t = re.sub(REL.pattern, " ", t, flags=re.I)
+    t = re.sub(REL2.pattern, " ", t, flags=re.I)
+    t = re.sub(ABS.pattern, " ", t, flags=re.I)
+    t = re.sub(rf"\b({_DAY}|{_PART}|aaj|kal|parso|today|tomorrow|at|baje|bje|o'?clock|am|pm|hours)\b", " ", t, flags=re.I)
     t = re.sub(r"\b(\d{1,2})\b", " ", t)
     return re.sub(r"\s{2,}", " ", t).strip()
 

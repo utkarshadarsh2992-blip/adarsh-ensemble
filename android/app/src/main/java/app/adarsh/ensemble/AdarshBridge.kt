@@ -58,7 +58,13 @@ class AdarshBridge(
     @JavascriptInterface
     fun listNotes(): String = MainActivity.listNotes()
     @JavascriptInterface
-    fun deleteNote(id: String) = MainActivity.deleteNote(id)
+    fun deleteNote(id: String): String = MainActivity.deleteNote(id)
+    @JavascriptInterface
+    fun recordsList(): String = MainActivity.recordsList()
+    @JavascriptInterface
+    fun recordsImport(json: String): String = MainActivity.recordsImport(json)
+    @JavascriptInterface
+    fun recordsDelete(id: String): String = MainActivity.recordsDelete(id)
     @JavascriptInterface
     fun actionInfo(): String = MainActivity.actionInfo()
 

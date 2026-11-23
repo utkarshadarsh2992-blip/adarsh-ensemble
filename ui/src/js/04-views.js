@@ -7,17 +7,17 @@ const ABILITIES = [
   { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Finds patterns across notes, chats and memories and links related ideas.', try: 'What patterns do you see in my last week of notes?' },
   { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Long jobs broken into stages that keep running while you are away.', try: 'Start a mission: compare the best budget laptops for coding' },
   { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Remembers things you tell it and uses them later.', try: 'Remember that I prefer short answers in Hinglish' },
-  { id: 'tasks', ic: 'tasks', name: 'Tasks & reminders', desc: 'Turns “remind me…” into tasks with due times.', try: 'Remind me to call the bank tomorrow 11am' },
+  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Standard typed/voice commands save to separate Tasks, Reminders, Alarms, Notes and Work lists.', try: 'task add karo kal 11 baje bank jana' },
   { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Morning briefing, due-task nudges and alerts pushed to you.', try: 'Brief me on today' },
-  { id: 'selfeng', ic: 'bolt', name: 'Self-engineering', desc: 'Proposes changes to its own code in a staging copy. Always asks your permission before deploy.', try: 'Audit your own code and propose one improvement', approval: true }
+  { id: 'selfeng', ic: 'code', name: 'Architecture (read-only)', desc: 'Explains its actual modules, mode chains and voice/action flow. Cannot change code or deploy.', try: 'Tumhara architecture kaise kaam karta hai?' }
 ];
 const isOn = (id) => S.abilities[id] !== false;
 const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
-  const TITLES = { today: 'Today', tasks: 'Tasks', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
+  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -110,21 +110,8 @@ const App = (() => {
   };
 
   /* ================= Tasks ================= */
-  BUILD.tasks = (st, redraw) => {
-    const inp = h('input', { type: 'text', placeholder: 'Add a task', 'aria-label': 'Task title' }); const due = h('input', { type: 'datetime-local', 'aria-label': 'Due (optional)' });
-    const add = () => { const t = inp.value.trim(); if (!t) return; S.tasks.push({ id: uid('t'), title: t, due: due.value ? new Date(due.value).getTime() : null, done: false, ts: Date.now() }); save(); Bus.emit('missions:changed'); redraw(); };
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
-    st.append(h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Add')),
-      h('div', { class: 'addbar', style: 'padding:0;align-items:center' }, h('span', { class: 'muted', style: 'flex:none' }, 'Due'), due)));
-    const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)), done = S.tasks.filter(t => t.done);
-    const row = (t) => { const f = fmtDue(t.due); return h('div', { class: 'task' + (t.done ? ' done' : '') },
-      h('button', { class: 'cb' + (t.done ? ' on' : ''), role: 'checkbox', 'aria-checked': String(t.done), 'aria-label': 'Done: ' + t.title, on: { click: () => { t.done = !t.done; vibe(); save(); Bus.emit('missions:changed'); redraw(); } } }, t.done ? icon('check') : null),
-      h('div', { class: 'tt' }, h('b', {}, t.title), f.t ? h('span', { class: 'due ' + (t.done ? '' : f.c) }, f.t) : null),
-      h('button', { class: 'del', 'aria-label': 'Delete ' + t.title, on: { click: () => { S.tasks = S.tasks.filter(x => x !== t); save(); Bus.emit('missions:changed'); redraw(); } } }, icon('trash', 's'))); };
-    if (!S.tasks.length) st.append(h('div', { class: 'empty' }, icon('tasks'), h('div', {}, 'No tasks yet.'), h('div', { class: 'muted' }, 'Add one here or just tell Adarsh in chat.')));
-    if (open.length) st.append(h('div', { class: 'grp' }, open.map(row)));
-    if (done.length) st.append(h('details', {}, h('summary', { class: 'muted', style: 'padding:8px 4px' }, 'Completed (' + done.length + ')'), h('div', { class: 'grp', style: 'margin-top:8px' }, done.map(row))));
-  };
+  ['tasks', 'work', 'reminders', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
+  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'reminders', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
 
   /* ================= Missions ================= */
   BUILD.missions = (st, redraw) => {
@@ -139,7 +126,7 @@ const App = (() => {
     const add = () => { const t = inp.value.trim(); if (!t) return; S.memories.unshift({ id: uid('mem'), text: t, pin: false, ts: Date.now() }); save(); redraw(); };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
     st.append(h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Save')));
-    st.append(h('p', { class: 'muted' }, 'Adarsh uses these in every chat. Say “remember that…” in chat to add one.'));
+    st.append(h('p', { class: 'muted' }, 'Memory local hai. Online replies mein relevant entries tabhi jayengi jab AI access mein sharing on ho.'));
     if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Nothing remembered yet.')));
     const sorted = [...S.memories].sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     sorted.forEach((m, i) => st.append(h('div', { class: 'mem' }, h('span', { class: 'id' }, '#' + (S.memories.length - S.memories.indexOf(m))), h('p', {}, m.text),
@@ -187,15 +174,17 @@ const App = (() => {
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
       swItem('sparkle', 'Jarvis (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.jarvis !== false, v => { S.settings.jarvis = v; })));
     st.append(label('Jarvis'), h('div', { class: 'grp' },
-      navItem('file', 'Notes', 'Notes jo aap bol ke save karte ho', () => Actions.notesSheet()),
-      navItem('bell', 'Reminders and alarms', 'Set time par notification aayega (app band ho to bhi)', () => Actions.infoSheet ? Actions.infoSheet() : toast('App mein reminders kaam karte hain'))));
+      navItem('tasks', 'Tasks and Work', 'Drawer mein separate lists; Work sirf bade projects ke liye', () => show('tasks')),
+      navItem('shield', 'AI access', 'Local read/edit, online context aur old chats ke alag controls', aiAccessSheet),
+      navItem('code', 'Architecture (read-only)', 'Actual modules aur selected mode ka model plan; no code changes', architectureSheet),
+      navItem('bell', 'Notification permissions', 'Scheduled task/reminder/alarm alerts', () => Actions.infoSheet())));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
       navItem('server', 'Connection', Backend.isNative() ? 'On-device engine · tap for status' : Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
     st.append(label('Data'), h('div', { class: 'grp' },
-      navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
+      navItem('download', 'Export data', 'Chats, memory and all productivity records as JSON', exportSheet),
       navItem('upload', 'Import data', 'Restore from an export', () => $('#f-import').click()),
       navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Clear all chats?', text: 'This removes every chat on this device. Memory and tasks stay.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
     st.append(h('div', { class: 'center muted' }, 'ADARSH UI v4 · frontend only'));
@@ -204,6 +193,33 @@ const App = (() => {
     sheet({ title: 'Your name', build(b, close) {
       const i = h('input', { type: 'text', value: S.settings.name || '', 'aria-label': 'Name' });
       b.append(i, h('button', { class: 'btn pri', on: { click: () => { S.settings.name = i.value.trim() || 'Adarsh'; save(); close(); buildDrawer(); drawerList(); build('settings'); } } }, 'Save'));
+    } });
+  }
+  function aiAccessSheet() {
+    sheet({ title: 'AI access', tall: true, build(b) {
+      b.append(h('p', { class: 'muted' }, 'Local commands phone par chalte hain. Online sharing on karne se sirf relevant, limited records selected mode ke model providers ko ja sakte hain. Keys, PIN aur connection credentials include nahi hote. Mic recognizer aur online TTS ki privacy alag hai.'));
+      const rows = [
+        ['localRead', 'Local records read', 'Tasks, Work, Notes, Reminders aur Memory dekhna'],
+        ['localEdit', 'Local add / edit', 'Standard commands se save, edit aur task completion; no delete/security'],
+        ['personalOnline', 'Share relevant context online', 'Default Off. Sirf sawaal se relevant entries, poora database nahi'],
+        ['oldChats', 'Old chats context', 'Alag opt-in; online sharing bhi On hona chahiye'],
+        ['currentChat', 'Current conversation context', 'Follow-up answers ke liye isi chat ke limited earlier messages'],
+        ['architecture', 'Read-only architecture', 'App modules/model chains ka safe reference; source editing nahi']
+      ];
+      b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
+      b.append(h('p', {}, 'AI delete/clear, PIN/security, DND aur sensitive settings nahi badal sakta. Ye toggles AI khud On nahi kar sakta. Jo mode aap select karte ho wahi answer deta hai.'));
+    } });
+  }
+  function architectureSheet() {
+    sheet({ title: 'Architecture · read-only', tall: true, build(b) {
+      const output = h('div', {}, h('p', {}, 'Reference padh raha hoon…')); b.append(output);
+      Backend.send({ architecture: true, mode: Modes.current().id, access: Productivity.access() }, { onProgress: () => {} }).then(r => {
+        output.replaceChildren(); const d = Array.isArray(r) ? r[0] : r;
+        if (!d || !d.reference) { output.append(h('p', {}, (d && d.text) || 'Is backend mein reference available nahi hai.')); return; }
+        output.append(h('p', {}, 'Code read-only reference. Koi write, deploy ya arbitrary file access nahi.'), h('p', { class: 'muted' }, 'Selected mode: ' + Modes.current().name));
+        (d.reference.modules || []).forEach(m => output.append(h('div', { class: 'item' }, h('span', { class: 't' }, h('b', {}, m.path), h('small', {}, m.purpose)))));
+        output.append(h('details', {}, h('summary', {}, 'Model plans / voice / boundaries'), h('pre', { style: 'white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px' }, JSON.stringify(d.reference, null, 2))));
+      }).catch(e => output.replaceChildren(h('p', {}, 'Reference nahi khula: ' + e.message)));
     } });
   }
   /* V6: offline neural voice pack (Hindi + English male, ~42 MB once). Only shown inside the Android app. */
@@ -363,7 +379,8 @@ const App = (() => {
   }
   function exportSheet() {
     sheet({ title: 'Export data', tall: true, build(b) {
-      const data = JSON.stringify({ chats: S.chats, memories: S.memories, tasks: S.tasks, missions: S.missions, settings: S.settings, abilities: S.abilities }, null, 1);
+      Productivity.sync();
+      const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
       const N = window.AdarshNative;
       window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'Could not save the file'); };
@@ -378,7 +395,17 @@ const App = (() => {
     const t = e.target;
     if (t.id === 'f-import' && t.files[0]) {
       t.files[0].text().then(txt => {
-        const d = JSON.parse(txt); confirmSheet({ title: 'Replace data?', text: 'Imported chats, memory and tasks replace what is on this device.', label: 'Import', onYes: () => { ['chats', 'memories', 'tasks', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; }); S.cur = S.chats[0] ? S.chats[0].id : null; save(); Chat.renderThread(); drawerList(); toast('Imported'); } });
+        const d = JSON.parse(txt);
+        if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('Invalid export');
+        const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
+        const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key] : []).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
+        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
+          try {
+            const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
+            ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; });
+            S.cur = S.chats[0] ? S.chats[0].id : null; saveNow(); Chat.renderThread(); drawerList(); toast('Imported');
+          } catch (e) { toast('Import fail: ' + e.message); }
+        } });
       }).catch(() => toast('That file is not valid JSON')); t.value = '';
     }
     if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }

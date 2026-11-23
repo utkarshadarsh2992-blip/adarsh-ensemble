@@ -38,9 +38,8 @@ DRAFT_TRIM = 1500  # chars per draft shown to the skeptic / pattern finder (Groq
 
 
 def resolve_mode(ui_mode: str | None, task: str) -> str:
-    """The UI mode wins; 'standard' (or nothing) lets the task type pick a sharper mode hint."""
-    m = UI_MODES.get((ui_mode or "").strip().lower(), "standard")
-    return m if m != "standard" else TASK_MODE.get(task, "standard")
+    """The selected UI mode always wins, including Standard. Task classification never switches it."""
+    return UI_MODES.get((ui_mode or "standard").strip().lower(), "standard")
 
 
 def _m(system: str, user: str) -> list[dict]:
@@ -196,7 +195,7 @@ def strip_bad_cites(answer: str, sources: list[dict]) -> str:
 # ------------------------------------------------------------------ entry point
 
 async def run_roles(client, question, task, user_drafts, guard_report, lang, lang_full, deep, run_code, errors, *,
-                    mode="standard"):
+                    mode="standard", web_research=True):
     """Returns (answer, extras, panel_drafts, letter_to_name)."""
     mode = resolve_mode(mode, task)
     fmt = "coding" if mode == "coding" else "standard"
@@ -249,7 +248,9 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     # [R] Research
     sources: list[dict] = []
     queries = []
-    if config.RESEARCH_ENABLED and pol.research != "off":
+    if not web_research:
+        warnings.append("Private app/chat context used: web searches disabled for this answer.")
+    if web_research and config.RESEARCH_ENABLED and pol.research != "off":
         queries = research.queries_from_plan(plan, question)
         if not queries and pol.research == "must":  # Architect said SEARCH: none, but this mode always checks the web
             queries = research.queries_from_plan(None, question)

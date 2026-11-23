@@ -92,7 +92,7 @@ const Bus = (() => {
 /* ---------- state ---------- */
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
-  chats: [], cur: null, memories: [], tasks: [], missions: [],
+  chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
   settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
@@ -110,7 +110,7 @@ let _st = 0;
 function save() { clearTimeout(_st); _st = setTimeout(saveNow, 250); }
 function saveNow() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' ? undefined : v)));
+    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' || k === '_ctx' ? undefined : v)));
   } catch (e) { console.warn('save failed', e); }
 }
 window.addEventListener('pagehide', saveNow);

@@ -154,7 +154,7 @@ function renderReply(d, ctx) {
 /* what the voice mode reads out loud for each reply type */
 function speechOf(d) {
   switch (d.type) {
-    case 'text': return stripMd(d.text);
+    case 'text': case 'blocked': case 'clarification': return stripMd(d.text);
     case 'research': return stripMd(d.summary || d.question);
     case 'debate': return stripMd(d.verdict);
     case 'ask': return (d.questions && d.questions[0] && d.questions[0].question) || 'I have a question.';

@@ -71,11 +71,7 @@ const DemoBackend = (() => {
       const mem = t.replace(/^.*?\b(remember( that)?|yaad rakh(na)?)\b\s*/i, '').trim() || t;
       return [{ type: 'memory', text: mem }, { type: 'text', text: 'Got it. I’ll use that from now on.' }];
     }
-    if (/self|audit your|your own code|improve yourself|deploy/i.test(t)) {
-      await steps(['Inspecting own source (read-only)', 'Preparing a staged proposal'], o);
-      return [{ type: 'text', text: 'I found one safe improvement: tighten the retry logic in the LLM router. I’d stage it in a copy and run the tests first.' },
-        { type: 'approve', id: uid('ap'), title: 'Stage a change to adarsh/llm_router.py', detail: 'Creates a staged copy, runs compile + tests. Nothing goes live until you approve a deploy.', action: 'self_engineering.propose("tighten retry logic")', scope: 'Staging copy only', risk: 'medium' }];
-    }
+    if (/self|audit your|your own code|improve yourself|deploy|architecture/i.test(t)) return { type: 'text', text: 'Architecture read-only hai. Demo mein actual reference nahi hai; Android/backend connect karo. Code editing/deploy disabled hai.' };
     if (/delete|send (an )?email|post |purchase|buy /i.test(t)) {
       await steps(['Checking what this touches'], o);
       return { type: 'approve', id: uid('ap'), title: 'Do this on your behalf?', detail: 'This action changes something outside the chat: “' + t.slice(0, 90) + '”.', action: 'external_action()', scope: 'One time only', risk: 'high' };
@@ -122,7 +118,7 @@ const HttpBackend = {
   async send(req, o) {
     const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
+    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };

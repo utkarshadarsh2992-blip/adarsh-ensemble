@@ -72,19 +72,19 @@ def test_other_modes_still_use_the_council(monkeypatch, quick):
     assert seen["deep"] is False
 
 
-def test_quick_falls_back_to_council_when_models_fail(monkeypatch, quick):
+def test_quick_failure_keeps_standard_without_council(monkeypatch, quick):
     from llm import LLMError
 
     async def fail(*a, **k):
         raise LLMError("all down")
 
     async def fake_run(q, **kw):
-        return {"answer": "from council", "task_type": "general", "style": "solve"}
+        raise AssertionError("Standard must not promote to the council on failure")
 
     monkeypatch.setattr(chat_adapter, "chat", fail)
     monkeypatch.setattr(pipeline, "run", fake_run)
     out = run(chat_adapter.handle({"text": "France ki rajdhani kya hai?", "mode": "standard"}))
-    assert out[0]["text"].startswith("from council")
+    assert "Mode wahi" in out[0]["text"] and out[0]["uiMode"] == "standard"
 
 
 # ------------------------------------------------------------------ voice.py

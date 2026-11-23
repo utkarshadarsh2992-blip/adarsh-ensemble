@@ -1,10 +1,13 @@
-"""Action registry: what may run, which arguments are legal, and how risky each one is."""
+"""Strict local action contracts, validation, and central safety policy."""
 from __future__ import annotations
+
+import datetime as _dt
+import math
 import time
+from typing import Any
 
-SAFE, CONFIRM, DESTRUCTIVE = "safe", "confirm", "destructive"
+SAFE, CONFIRM, DENY, DESTRUCTIVE = "safe", "confirm", "deny", "destructive"
 
-# app key -> words a person may say
 APPS = {
     "whatsapp": ("whatsapp", "whats app", "wa"),
     "youtube": ("youtube", "you tube"),
@@ -31,19 +34,90 @@ APPS = {
     "gpay": ("gpay", "google pay"),
     "playstore": ("play store", "playstore"),
 }
-PANELS = {"wifi": ("wifi", "wi-fi"), "bluetooth": ("bluetooth",), "brightness": ("brightness", "roshni"),
-          "dnd": ("dnd", "do not disturb", "silent mode", "silent")}
-
+PANELS = {
+    "wifi": ("wifi", "wi-fi"),
+    "bluetooth": ("bluetooth",),
+    "brightness": ("brightness", "roshni"),
+    "dnd": ("dnd", "do not disturb", "silent mode", "silent"),
+}
 MAX_STEPS = 3
 MAX_TEXT = 600
+MAX_TITLE = 120
 
 
 class Bad(Exception):
-    """Invalid action or argument: the step is dropped, never executed."""
+    """Invalid action or argument; it is never executed."""
 
 
-def _future(at, now, max_days=400):
-    if not isinstance(at, (int, float)):
+class Denied(Bad):
+    """An action explicitly prohibited by the local policy."""
+
+
+# These are centrally denied even when a caller supplies confirmation.
+DENIED_ACTIONS = frozenset({"note.clear", "task.delete", "reminder.delete", "alarm.delete", "work.delete",
+                            "memory.clear", "pin.set", "security.change", "dnd.set", "panel.open"})
+
+# ``human`` is parser-only display metadata retained for legacy time details.
+_ALLOWED = {
+    "task.add": {"title", "at", "human"},
+    "task.edit": {"query", "id", "title", "at"},
+    "task.done": {"query", "id", "done"},
+    "task.list": set(),
+    "note.add": {"text"},
+    "note.edit": {"query", "id", "text"},
+    "note.list": set(),
+    "note.clear": set(),
+    "reminder.add": {"at", "text", "human"},
+    "reminder.edit": {"query", "id", "at", "text"},
+    "reminder.list": set(),
+    "reminder.delete": {"query", "id"},
+    "alarm.add": {"at", "text", "human"},
+    "alarm.edit": {"query", "id", "at", "text"},
+    "alarm.list": set(),
+    "alarm.delete": {"query", "id"},
+    "work.add": {"title", "category", "goal"},
+    "work.edit": {"query", "id", "title", "category", "goal", "progress", "outcome"},
+    "work.log": {"query", "id", "text", "date", "minutes", "progress", "outcome"},
+    "work.list": set(),
+    "work.delete": {"query", "id"},
+    "memory.add": {"text"},
+    "memory.edit": {"query", "id", "text"},
+    "memory.list": set(),
+    "memory.clear": set(),
+    "settings.update": {"key", "value"},
+    "timer.start": {"seconds", "text"},
+    "app.open": {"app"},
+    "web.search": {"query"},
+    "phone.status": set(),
+    "calendar.add": {"at", "title", "minutes", "human"},
+    "voice.open": set(),
+    "message.draft": {"to", "text", "channel"},
+    "call.dial": {"to"},
+    "torch.set": {"on"},
+    "dnd.set": {"on"},
+    "panel.open": {"panel"},
+    "pin.set": set(),
+    "security.change": set(),
+}
+
+_SAFE_NEW = {"task.add", "task.edit", "task.done", "task.list", "note.add", "note.edit", "note.list",
+             "reminder.add", "reminder.edit", "reminder.list", "alarm.add", "alarm.edit", "alarm.list",
+             "work.add", "work.edit", "work.log", "work.list", "memory.add", "memory.edit", "memory.list",
+             "settings.update"}
+RISK = {action: SAFE for action in _SAFE_NEW}
+RISK.update({
+    "reminder.delete": DENY, "alarm.delete": DENY, "task.delete": DENY, "work.delete": DENY,
+    "note.clear": DENY, "memory.clear": DENY, "pin.set": DENY, "security.change": DENY,
+    "dnd.set": DENY, "panel.open": DENY,
+    "reminder.add": SAFE, "alarm.add": SAFE, "timer.start": SAFE, "note.add": SAFE,
+    "app.open": SAFE, "web.search": SAFE, "phone.status": SAFE, "calendar.add": SAFE,
+    "voice.open": SAFE, "torch.set": SAFE, "message.draft": CONFIRM, "call.dial": CONFIRM,
+})
+_ALLOWED_SETTINGS = {"name", "theme", "font", "rate", "lang", "voiceName", "voiceEngine", "voiceReplies", "speak", "haptics"}
+
+
+def _future(at: Any, now: int, max_days: int = 400) -> int:
+    if isinstance(at, bool) or not isinstance(at, (int, float)):
         raise Bad("time missing")
     if at < now - 60_000:
         raise Bad("time is in the past")
@@ -52,79 +126,206 @@ def _future(at, now, max_days=400):
     return int(at)
 
 
+def _optional_future(a: dict, now: int) -> None:
+    if "at" in a and a["at"] is not None:
+        a["at"] = _future(a["at"], now)
+    elif "at" in a:
+        a.pop("at")
+
+
+def _str(a: dict, key: str, limit: int, *, required: bool = False) -> str:
+    value = a.get(key, "")
+    if value is None:
+        value = ""
+    if not isinstance(value, str):
+        raise Bad(f"{key} must be text")
+    value = value.strip()[:limit]
+    if required and not value:
+        raise Bad(f"{key} is empty")
+    return value
+
+
+def _ref(a: dict) -> None:
+    has_query = bool(a.get("query"))
+    has_id = a.get("id") not in (None, "")
+    if has_query == has_id:
+        raise Bad("query or id is required")
+    if has_query:
+        a["query"] = _str(a, "query", MAX_TITLE, required=True)
+    else:
+        if isinstance(a["id"], bool) or not isinstance(a["id"], (str, int)):
+            raise Bad("id must be text or number")
+        a["id"] = str(a["id"]).strip()
+        if not a["id"]:
+            raise Bad("id is empty")
+
+
+def _bounded_int(value: Any, key: str, low: int, high: int) -> int:
+    if isinstance(value, bool):
+        raise Bad(f"{key} must be a number")
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        raise Bad(f"{key} must be a number")
+    if not low <= result <= high:
+        raise Bad(f"{key} must be {low}..{high}")
+    return result
+
+
+def _validate_date(value: Any) -> str:
+    if not isinstance(value, str):
+        raise Bad("date must be ISO YYYY-MM-DD")
+    try:
+        _dt.date.fromisoformat(value)
+    except ValueError:
+        raise Bad("date must be ISO YYYY-MM-DD")
+    return value
+
+
 def check(action: str, args: dict, now: int | None = None) -> dict:
-    """Validated copy of args. Raises Bad when the step must not run."""
+    """Return a validated copy, rejecting unknown keys and all denied operations."""
     now = int(time.time() * 1000) if now is None else now
-    a = dict(args or {})
-    if action in ("reminder.add", "alarm.add"):
-        a["at"] = _future(a.get("at"), now)
-        a["text"] = str(a.get("text") or "")[:MAX_TEXT].strip() or ("Alarm" if action == "alarm.add" else "Reminder")
-        if action == "alarm.add":
-            a["text"] = a["text"][:120]
-    elif action == "timer.start":
-        try:
-            s = int(a.get("seconds"))
-        except (TypeError, ValueError):
-            raise Bad("timer length missing")
-        if not 1 <= s <= 86_400:
-            raise Bad("timer must be 1 second to 24 hours")
-        a["seconds"] = s
-        a["text"] = str(a.get("text") or "Timer")[:120]
-    elif action == "note.add":
-        a["text"] = str(a.get("text") or "")[:MAX_TEXT].strip()
-        if len(a["text"]) < 2:
-            raise Bad("note is empty")
-    elif action == "note.clear":
+    if not isinstance(args, dict):
+        raise Bad("arguments must be an object")
+    if action in DENIED_ACTIONS:
+        raise Denied("this action is blocked by safety policy")
+    if action not in _ALLOWED:
+        raise Bad(f"unknown action {action}")
+    unknown = set(args) - _ALLOWED[action]
+    if unknown:
+        raise Bad("unknown argument(s): " + ", ".join(sorted(unknown)))
+    a = dict(args)
+
+    if action == "task.add":
+        a["title"] = _str(a, "title", MAX_TITLE, required=True)
+        _optional_future(a, now)
+    elif action == "task.edit":
+        _ref(a)
+        if "title" in a: a["title"] = _str(a, "title", MAX_TITLE, required=True)
+        _optional_future(a, now)
+        if "title" not in a and "at" not in a: raise Bad("title or time change is required")
+    elif action == "task.done":
+        _ref(a)
+        if not isinstance(a.get("done"), bool): raise Bad("done must be true or false")
+    elif action == "task.list":
         pass
+    elif action == "note.add":
+        a["text"] = _str(a, "text", MAX_TEXT, required=True)
+        if len(a["text"]) < 2: raise Bad("note is empty")
+    elif action == "note.edit":
+        _ref(a); a["text"] = _str(a, "text", MAX_TEXT, required=True)
+    elif action == "note.list":
+        pass
+    elif action in ("reminder.add", "alarm.add"):
+        a["at"] = _future(a.get("at"), now)
+        limit = MAX_TITLE if action == "alarm.add" else MAX_TEXT
+        default = "Alarm" if action == "alarm.add" else "Reminder"
+        a["text"] = _str(a, "text", limit) or default
+    elif action in ("reminder.edit", "alarm.edit"):
+        _ref(a); _optional_future(a, now)
+        if "text" in a: a["text"] = _str(a, "text", MAX_TITLE if action == "alarm.edit" else MAX_TEXT, required=True)
+        if "at" not in a and "text" not in a: raise Bad("time or text change is required")
+    elif action in ("reminder.list", "alarm.list"):
+        pass
+    elif action in ("reminder.delete", "alarm.delete"):
+        _ref(a)
+    elif action == "work.add":
+        a["title"] = _str(a, "title", MAX_TITLE, required=True)
+        for key in ("category", "goal"):
+            if key in a: a[key] = _str(a, key, MAX_TEXT)
+    elif action == "work.edit":
+        _ref(a)
+        present = False
+        for key in ("title", "category", "goal", "outcome"):
+            if key in a: a[key] = _str(a, key, MAX_TEXT if key != "title" else MAX_TITLE, required=(key == "title")); present = True
+        if "progress" in a: a["progress"] = _bounded_int(a["progress"], "progress", 0, 100); present = True
+        if not present: raise Bad("work field change is required")
+    elif action == "work.log":
+        _ref(a); a["text"] = _str(a, "text", MAX_TEXT, required=True)
+        if "date" in a: a["date"] = _validate_date(a["date"])
+        if "minutes" in a: a["minutes"] = _bounded_int(a["minutes"], "minutes", 0, 1440)
+        if "progress" in a: a["progress"] = _bounded_int(a["progress"], "progress", 0, 100)
+        if "outcome" in a: a["outcome"] = _str(a, "outcome", MAX_TEXT)
+    elif action == "work.list":
+        pass
+    elif action == "work.delete":
+        _ref(a)
+    elif action == "memory.add":
+        a["text"] = _str(a, "text", MAX_TEXT, required=True)
+    elif action == "memory.edit":
+        _ref(a); a["text"] = _str(a, "text", MAX_TEXT, required=True)
+    elif action in ("memory.list", "memory.clear"):
+        pass
+    elif action == "settings.update":
+        a["key"] = _str(a, "key", 30, required=True)
+        if a["key"] not in _ALLOWED_SETTINGS: raise Denied("that setting is not editable by voice")
+        if "value" not in a or isinstance(a["value"], (dict, list)):
+            raise Bad("setting value is required")
+        value = a["value"]
+        if isinstance(value, str): value = value.strip()[:MAX_TEXT]
+        key = a["key"]
+        low = value.lower() if isinstance(value, str) else value
+        if key in {"speak", "voiceReplies", "haptics"}:
+            if isinstance(value, bool): pass
+            elif isinstance(low, str) and low in {"on", "true", "yes", "haan", "chalu"}: value = True
+            elif isinstance(low, str) and low in {"off", "false", "no", "nahi", "band"}: value = False
+            else: raise Bad("setting needs On/Off")
+        elif key == "rate":
+            if isinstance(value, bool): raise Bad("voice speed needs a number")
+            try: value = float(value)
+            except (TypeError, ValueError): raise Bad("voice speed needs a number")
+            if not math.isfinite(value) or not 0.7 <= value <= 1.4: raise Bad("voice speed must be 0.7 to 1.4")
+        elif key in {"theme", "font", "lang", "voiceEngine"}:
+            aliases = {"voiceEngine": {"system": "device", "phone": "device", "automatic": "auto"},
+                       "theme": {"auto": "system"}, "font": {"sans-serif": "sans", "sans serif": "sans"},
+                       "lang": {"hindi": "hi-IN", "hinglish": "hi-IN", "english": "en-IN", "hi-in": "hi-IN", "en-in": "en-IN", "en-us": "en-US"}}
+            value = aliases.get(key, {}).get(low, low)
+            enums = {"voiceEngine": {"auto", "natural", "device"}, "theme": {"system", "light", "dark"},
+                     "font": {"serif", "sans"}, "lang": {"hi-IN", "en-IN", "en-US"}}
+            if value not in enums[key]: raise Bad("unsupported setting value")
+        elif key == "voiceName":
+            voices = {v.lower(): v for v in ("Kore", "Orus", "Charon", "Sulafat", "Achird", "Iapetus", "Aoede", "Puck", "Gacrux", "Sadaltager")}
+            if low not in voices: raise Bad("unknown natural voice")
+            value = voices[low]
+        elif key == "name":
+            if not isinstance(value, str) or not value: raise Bad("name needs text")
+            value = value[:60]
+        a["value"] = value
+    elif action == "timer.start":
+        a["seconds"] = _bounded_int(a.get("seconds"), "timer", 1, 86_400)
+        a["text"] = _str(a, "text", MAX_TITLE) or "Timer"
     elif action == "app.open":
-        app = str(a.get("app") or "").lower()
-        if app not in APPS:
-            raise Bad("unknown app")
-        a["app"] = app
+        a["app"] = _str(a, "app", 40).lower()
+        if a["app"] not in APPS: raise Bad("unknown app")
+        if a["app"] == "settings": raise Denied("opening Settings is blocked by safety policy")
     elif action == "web.search":
-        q = str(a.get("query") or "").strip()[:200]
-        if len(q) < 2:
-            raise Bad("search is empty")
-        a["query"] = q
-    elif action == "phone.status":
+        a["query"] = _str(a, "query", 200, required=True)
+        if len(a["query"]) < 2: raise Bad("search is empty")
+    elif action in ("phone.status", "voice.open"):
         pass
     elif action == "calendar.add":
-        a["at"] = _future(a.get("at"), now)
-        a["title"] = str(a.get("title") or "Event")[:120]
-        try:
-            a["minutes"] = min(1440, max(5, int(a.get("minutes") or 60)))
-        except (TypeError, ValueError):
-            a["minutes"] = 60
-    elif action == "voice.open":
-        pass
+        a["at"] = _future(a.get("at"), now); a["title"] = _str(a, "title", MAX_TITLE) or "Event"
+        a["minutes"] = _bounded_int(a.get("minutes", 60), "minutes", 0, 1440)
     elif action == "message.draft":
-        a["text"] = str(a.get("text") or "")[:MAX_TEXT]
-        a["to"] = str(a.get("to") or "")[:40]
-        if not a["text"] and not a["to"]:
-            raise Bad("message is empty")
+        a["text"] = _str(a, "text", MAX_TEXT); a["to"] = _str(a, "to", 40)
+        a["channel"] = _str(a, "channel", 20) or "sms"
+        if not a["text"] and not a["to"]: raise Bad("message is empty")
     elif action == "call.dial":
-        a["to"] = str(a.get("to") or "").strip()[:20]
-        if not a["to"]:
-            raise Bad("number missing")
-    elif action == "panel.open":
-        p = str(a.get("panel") or "").lower()
-        if p not in PANELS:
-            raise Bad("unknown panel")
-        a["panel"] = p
-    elif action in ("dnd.set", "torch.set"):
+        a["to"] = _str(a, "to", 40, required=True)
+    elif action == "torch.set":
         a["on"] = bool(a.get("on"))
-    else:
-        raise Bad(f"unknown action {action}")
+    elif action == "dnd.set":
+        raise Denied("DND changes are blocked by safety policy")
+    elif action == "panel.open":
+        raise Denied("settings panels are blocked by safety policy")
     return a
 
 
-RISK = {
-    "reminder.add": SAFE, "alarm.add": SAFE, "timer.start": SAFE, "note.add": SAFE, "app.open": SAFE,
-    "web.search": SAFE, "phone.status": SAFE, "calendar.add": SAFE, "voice.open": SAFE,
-    "message.draft": CONFIRM, "call.dial": CONFIRM, "panel.open": CONFIRM, "dnd.set": CONFIRM, "torch.set": SAFE,
-    "note.clear": DESTRUCTIVE,
-}
-
-
-def risk(action: str) -> str:
+def risk(action: str, args: dict | None = None) -> str:
+    if action == "app.open" and args and args.get("app") == "settings":
+        return DENY
     return RISK.get(action, DESTRUCTIVE)
+
+
+def is_denied(action: str, args: dict | None = None) -> bool:
+    return action in DENIED_ACTIONS or (action == "app.open" and args and args.get("app") == "settings")

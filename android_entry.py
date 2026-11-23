@@ -158,6 +158,11 @@ def handle(request_json: str, progress=None) -> str:
         except Exception as e:
             return json.dumps({"type": "error", "error": _scrub(f"{type(e).__name__}: {e}")[:300]})
 
+    # Offline in-app commands and read-only self-knowledge must work even with zero model keys.
+    import chat_adapter
+    local = chat_adapter.local_response(body)
+    if local is not None:
+        return json.dumps(local)
     if not body.get("ping") and not any(v.api_key for v in config.PROVIDERS.values()):
         return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini, OpenRouter, Cloudflare ya NVIDIA).")
 

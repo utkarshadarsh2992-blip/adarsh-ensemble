@@ -30,7 +30,7 @@ UI kisi aur jagah host ki ho to Connection URL = `https://<server>/api/chat`.
 ## Limits
 - Deep verified answer me minute lag sakte hain, aur free quota kharch hota hai. Roz ki chat ke liye `CHAT_MODE=fast`.
 - Ensemble sirf text reply deta hai. UI ke `research / debate / ask / approve / mission` cards abhi backend se nahi aate; attachments ignore hote hain.
-- Voice, memory, tasks UI me hi (localStorage) rehte hain.
+- Android productivity records app-private atomic JSON mein persist hote hain. Browser uses localStorage; browser alerts require the tab to stay open. Chats and memory remain local UI data.
 
 
 ## 11-role engine (default: `CHAT_ENGINE=roles`)
@@ -49,7 +49,7 @@ Files: `role_prompts.py` (COMMON + har role ka prompt + mode hint, `adarsh-role-
 | 8 | Reviewers: Methodology + Evidence | ek (task ke hisaab se) | dono |
 | 9 | Refiner: sirf high/medium galtiyan; section kho de to rewrite fenk diya jaata hai | zaroorat par | zaroorat par |
 
-Mode: UI ka mode (Standard/V/Physics/Math/Business/Coding) mode hint chunta hai; Standard me task type se (math, science->physics, coding, business, research->verified). Final jawab ke neeche cited sources ke links aate hain, council page par "11-role council" section me plan, queries, sources, Skeptic, debate, reviews aur refiner badlav dikhte hain. Galat `[S#]` cite hata diye jaate hain.
+Mode: UI ka selected mode (Standard/V/Physics/Math/Business/Coding) hi mode hint/model plan chunta hai. Task classification Standard ko Physics/Coding/etc. mein promote nahi karta. Typed aur live voice dono selected mode/source preserve karte hain. Final jawab ke neeche cited sources ke links aate hain; council page par plan, queries, sources, Skeptic, debate, reviews aur refiner badlav dikhte hain. Galat `[S#]` cite hata diye jaate hain.
 
 Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din limit dhyan me rakho). Switches (0 = band): `RESEARCH`, `REVIEW`, `DEBATE`, `RESEARCH_TIMEOUT_S`, `ROLE_MAX_TOKENS`. Purana engine chahiye to `CHAT_ENGINE=verified`.
 
@@ -169,9 +169,7 @@ Model IDs jo docs me confirm nahi hue (NVIDIA ke teen, OpenRouter ka inkling, Cl
 
 Standard mode no longer runs the council. It makes **one** call (`config.QUICK`: gpt-oss-120b on Groq, then
 gemini-3.1-flash-lite, nemotron-lightning, gpt-oss-20b, gemini-3.8-flash) with a short, direct, confident prompt.
-Reply style > Depth still applies (simple / normal / detailed). If every model in that chain fails, it falls back to the
-full pipeline. For checked answers pick Verified, Physics, Math, Business or Coding. `STANDARD_QUICK=0` brings the old
-behaviour back.
+Reply style > Depth still applies (simple / normal / detailed). If every model in that chain fails, Standard returns a clear failure message without promoting the mode or silently starting a larger council. For checked answers select Verified, Physics, Math, Business or Coding yourself. `STANDARD_QUICK=0` explicitly enables Standard's own council plan; it still does not auto-select another mode.
 
 Settings > Reply style > **Council** (Fast / Deep) now really switches the council size for those modes (`reply.think`);
 before, only the `CHAT_MODE` env var did.
@@ -186,7 +184,7 @@ The Android WebView has no `speechSynthesis`, so the app never spoke. Now:
 | `Speaker.kt` | Plays the WAV (MediaPlayer, audio focus, speed) and also runs Android **TextToSpeech** with the best installed voice (hi-IN for Devanagari, en-IN for Hinglish), slightly lower pitch for a calmer, confident tone |
 | `05-voice.js` | Cleans the text for speaking (no markdown, links, [S1], code, confidence line). Voice mode speaks the "Short answer" part. First sentence and the rest are fetched in parallel so the voice starts fast. Natural voice fails or is slow (>15 s) -> phone voice at once, so it never goes silent |
 
-Settings > Voice & language: engine (Auto / Natural / Phone), 10 natural voices (Kore = firm, confident is the default),
+Settings > Voice & language: engine (Auto / Natural / Phone), 10 natural voices (UI default Orus = firm, confident male),
 language, speed, Test voice. Voice mode sends `meta.voice`, so Standard answers come back short and speakable.
 
 ## Settings audit (what was broken, what changed)
@@ -213,11 +211,23 @@ Existing voice is unchanged: Gemini TTS, then Groq Orpheus, then the phone's own
 
 Standard mode can now *do* things inside the app, not only answer. The engine plans, the phone executes.
 
-- **Local rule parser** (`actions/`): Hindi, Hinglish and English commands, no model call, no network. Reminders, alarms, timers, notes, opening apps, web search, phone status, calendar, voice mode. Multi-step ("reminder lagao aur note bhi bana do") runs up to 3 steps with per-step results, including partial failures.
-- **Execution** (`ActionRunner.kt`, `ActionStore.kt`): reminders/alarms/timers via `AlarmManager` + notification, re-armed after a reboot; notes in app-private JSON; apps, search, calendar, message draft and dialer via intents. `note.clear` and anything sensitive needs a tap first.
-- **Risk levels**: `safe` runs immediately; `confirm` (message, call, settings, DND) and `destructive` never run without the user's tap — enforced on the Kotlin side too, not only in the UI.
+- **Local rule parser** (`actions/`): supported Hindi/Hinglish/English commands use deterministic rules, no model/network dependency. Tasks, reminders, alarms, timers, notes, Work projects/logs, memory, safe display/voice settings, app opening, web search, phone status, calendar and voice mode. Up to 3 sequential steps with per-step results; unsupported/ambiguous command forms ask for detail instead of inventing a mutation.
+- **Execution** (`ActionRunner.kt`, `ActionStore.kt`, `04-productivity.js`): task/reminder/alarm/timer via `AlarmManager` + notification, re-armed after reboot; all productivity records in app-private atomic JSON. Stable IDs for edits/completion; fired records remain visible. Queued stale broadcasts are rejected after completion/rescheduling. UI browser mirror migrates without overwriting native IDs. Code changes are never an action capability.
+- **Risk policy**: safe allowlisted adds/edits/read/completion run immediately. Messages/calls require explicit confirmation, then open a draft/dialer where you press final Send/Call. AI delete/clear, PIN/security, DND, sensitive settings and Settings panels are disabled even if confirmed. Your manual controls remain separate. Privacy/source/mode toggles cannot be enabled by AI.
 - **Jarvis feel**: "Ji Sir" acknowledgements, a small HUD orb while work runs, a per-step card, and a spoken result. Only in Standard mode; toggle in Settings > Jarvis.
-- **Privacy**: commands never leave the device (no model sees them), no analytics, no new server, keys stay encrypted. Wi-Fi/Bluetooth cannot be toggled by an app on Android 10+; those commands open the system panel instead of pretending.
-- **Voice mode does the same work**: tap the orb and say "kal 5 baje paani peene ka reminder lagao" or "task set karo 10 minute baad". The card is created, the phone executes, and Jarvis speaks the *result* (not the plan) before listening again. Sensitive steps are confirmed by voice: it asks, you say "haan" or "nahi". Notification access is requested automatically the first time a reminder is scheduled.
+- **Privacy**: local parsing/execution needs no cloud model. Basic commands work with zero model API keys on Android. Local action command/result turns are excluded from automatic online chat history. Online TTS may send spoken text to its provider, system mic recognition may be online, and explicit search queries reach search providers: this is not a guarantee of offline-only speech. No new analytics/server added; stored API keys remain outside model context. Wi-Fi/Bluetooth/DND/Settings-panel changes are denied, not silently opened.
+- **Voice mode does the same work**: tap the orb and say "task add kr do kal 7 bje padhai". Chat awaits actual execution before publishing/speaking results. Confirmation accepts a clear exact Haan/Nahi, not "haan nahi"; unclear/timeout stays pending for the chat card. Closing/interruption does not confirm anything or reopen the mic. Tap-to-talk is default; hands-free is an explicit in-session switch, no wake-word listener. Android may require notification/exact-alarm permissions; Force stop/battery restrictions can prevent delivery.
 - **Phone voice is selectable**: Settings > Voice & language > Phone voice lists the system TTS voices with their gender; tapping one speaks a sample. The picker falls back to a male voice when the engine's default is female. Default natural voice is `Orus` (male) so the Jarvis persona stays consistent across natural, offline and phone voices.
-- **Wording**: "task", "kaam", "to-do", "reminder" and "mujhe notification bhej dena" all reach the same reminder path when a time is present; without a time they become a note (a to-do).
+- **Separate lists**: Tasks, Work (directly below Tasks), Reminders, Alarms & timers, Notes. "Task set/add/banao" always creates an actual Task, not a Reminder/Note. A due time additionally schedules a notification. All lists support manual forms and supported Standard typed/voice commands. Work is explicitly created large projects with category, goal, date, whole minutes, progress, outcome and activity entries; task completion never adds Work.
+
+## AI access and read-only architecture
+
+Settings > AI access has independent local read/edit, personal online sharing, old-chat, current-chat and architecture controls. Personal sharing and old chats default **Off**. Online context is whitelisted, bounded and selected by topic; recent Work entries and old-chat snippets have separate caps. Keys, PIN, connection credentials, environment and raw source contents are not included. Secret-pattern redaction is best effort; do not deliberately store sensitive credentials in ordinary notes. Current-chat context is independently disableable. When private app/chat context is used by the council, external web searches are disabled for that response; role/model chains remain unchanged.
+
+`app_knowledge.py` provides curated facts, fixed module paths, public symbols/fingerprints, actual configured selected-mode model plans and voice/action boundaries. It is not unrestricted source access: no arbitrary path, secret/env reads, code editing, shell execution or deploy capability. Missing facts/runtime observations should be acknowledged. Settings > Architecture shows the reference even without model keys; conversational explanations use the selected model mode.
+
+Export v2 includes chats, memory, missions and all productivity records. Restore merges productivity by ID/version and never deletes records absent from the backup. Chats/memory/missions replace their corresponding imported lists after your manual confirmation. Permissions, keys, PIN and connection settings are not enabled/restored automatically.
+
+Examples: `padhai wala task 8 baje kar do`; `padhai task complete kar do`; `work project banao Research category study goal paper likhna`; `Research project mein aaj 2 ghante ka work record karo literature padha`; `Research project ki progress 40 percent kar do`; `tasks dikhao`.
+
+Validation: `python3 -m pytest -q tests`; `python3 ui/build.py`; `pnpm --dir ui install --frozen-lockfile && pnpm --dir ui test`; Android APK compile via GitHub Actions. Automated tests fake model providers and the phone bridge. Real-phone notification delivery, microphone recognition and audio require device testing; a successful APK build does not prove those runtime behaviors.

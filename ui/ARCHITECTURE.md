@@ -11,7 +11,7 @@ One person, one assistant, many ways to talk to it, and the assistant can reach 
 | Talk | Chat + Voice mode (orb: idle, listening, thinking, speaking) | `03-chat.js`, `05-voice.js` |
 | Ask-back | AI asks **you** with a structured card, never a loose sentence | `02-render.js` (`ask`, `approve`) |
 | Know | Memory (things it remembers), Today (briefing) | `04-views.js` |
-| Do | Tasks and reminders, Missions (long staged jobs) | `04-views.js`, `mission` reply |
+| Do | Tasks, Work, Reminders, Alarms & timers, Notes; Missions UI | `04-productivity.js`, `04-productivity-views.js`, `04-views.js` |
 | Reach | Proactive push: `ADARSH_UI.push(...)`, banners, notifications | `08-boot.js` |
 | Control | Abilities on/off, Connection, PIN lock | `04-views.js`, `06-lock.js` |
 
@@ -54,9 +54,10 @@ The request also carries `source` (`auto|manual|hybrid`), `answers` (`[{ source,
 | `links` | `title, chains[{nodes[],why}]` | `connector` |
 | `mission` | `id, title, status, stages[{label,status}]` | missions + `STAGE_TEMPLATES` |
 | `ask` | `id, questions[{header,question,multi?,allowOther?,options[{label,description?}]}]` | new |
-| `approve` | `id, title, detail, action, scope, risk: low|medium|high` | new (self-engineering, risky tools) |
-| `memory` | `text` | new (UI also stores it) |
-| `task` | `title, due (ms epoch)` | new (UI also stores it) |
+| `approve` | `id, title, detail, action, scope, risk: low|medium|high` | legacy display/follow-up only; no self-edit/delete capability |
+| `memory` / `task` | legacy text / title proposals | display-only; cannot mutate local data |
+| `actions` | `origin: local-rule, mode: standard, steps[{id,action,args,risk}], run` | offline Python parser, explicit allowlisted executor |
+| `blocked` / `clarification` | `text` | non-executable, voice-readable local response |
 
 Verdict strings (research): `SUPPORTED_BY_MULTIPLE_SOURCES, SUPPORTED_BY_ONE_SOURCE, PARTIALLY_SUPPORTED, CONTESTED, UNVERIFIED_NO_JUDGE, CONTRADICTED_BY_SOURCE, UNSUPPORTED_NO_VALID_EVIDENCE, UNSUPPORTED_UNRELATED`.
 
@@ -65,7 +66,7 @@ Verdict strings (research): `SUPPORTED_BY_MULTIPLE_SOURCES, SUPPORTED_BY_ONE_SOU
 Rule: if the AI needs a decision or missing info, it returns an `ask` or `approve` reply instead of a sentence.
 
 * `ask`: one question per page, single or multi choice, always an "Something else" field and Skip. On submit the UI shows your answers as a message and calls `send()` again with `meta.answer`.
-* `approve`: for anything that changes the world (deploy self-modification, send, delete, spend). Shows risk, exact action, scope. Allow or Deny goes back as `meta.approval`.
+* Legacy `approve` is a display/follow-up card only. Code self-modification/deploy/delete/security commands are not capabilities. Local messages/calls use Actions' explicit confirmation before a composer/dialer opens.
 * In voice mode the AI speaks the question and the overlay closes so you answer on the card.
 * Suggested rule for the backend: never execute a `risk: high` action without a recorded `allow`.
 
@@ -83,8 +84,7 @@ For real push you will want a WebSocket or SSE connection in your backend adapte
 The composer has a Claude-style mode menu: Standard, V, Physics, Math, Business, Coding. The list lives in `src/js/03-modes.js`
 (`MODES`: id, name, icon, description, placeholder, starter prompts). Rename or edit there; nothing else changes.
 
-* The selected id is sent as `mode` on every request (`req.mode`, also in the HTTP body of `07-backend.js`). The UI does **not** rewrite the question,
-  so what a mode does is decided on your side. The Python backend ignores the key until you read it (`body.get("mode")` in `chat_adapter.handle`).
+* The selected id/source are captured before asynchronous attachment reads and sent on typed/voice requests. Python honours the selected mode; Standard is not promoted from classification. Other modes do not execute local commands; the user must select Standard.
 * Each AI reply is tagged `uiMode` so the thread shows which mode answered. Retry uses the mode selected at that moment.
 * Maths: `$…$`, `$$…$$`, `\(…\)`, `\[…\]` are drawn by `01-math.js` (fractions, roots, scripts, Greek, accents). It is a light renderer, not full TeX.
 * Markdown now also draws tables, blockquotes, rules, and code blocks with a language label and Copy button.
@@ -92,7 +92,7 @@ The composer has a Claude-style mode menu: Standard, V, Physics, Math, Business,
 
 ## 6. State
 
-`localStorage['adarsh.ui.v3']`: chats, memories, tasks, missions, settings, abilities, lock (salted PBKDF2 hash), conn. Attachment data URLs and thumbnails are never saved. Treat this as a cache: move memories/tasks/missions to your server when the architecture exists.
+`localStorage['adarsh.ui.v3']`: chats, memory, productivity mirror, missions, settings/access flags, abilities, lock hash and connection. Android `ActionStore` is canonical for task/reminder/alarm/timer/note/work, with process lock, atomic replacement and retained fired records. Browser-only data uses localStorage. Migration imports only new native IDs; failures preserve the old mirror. Export uses canonical whitelist, not cache aliases (`due`, `ts`). Native import merges by ID/version, never absence-delete.
 
 ## 7. Files
 
@@ -112,7 +112,15 @@ build.py              inline to dist/
 
 ## 8. Not built (needs your backend)
 
-Real search, real memory recall, real reminders firing while the app is closed (needs push), file understanding, multi-device sync, streaming token output (add `onProgress`/SSE in your adapter), login (single-user token instead).
+File understanding, multi-device sync, streaming token output and account login remain unimplemented here. Browser-only reminders do not fire reliably after closing the tab. Android uses AlarmManager, not a backend push service; notification/exact-alarm permission, battery restrictions and Force stop affect delivery.
+
+## Privacy seam (Tasks + Work)
+
+`req.access` contains booleans `localRead`, `localEdit`, `personalOnline`, `oldChats`, `currentChat`, `architecture`. Only the latter explicit settings controls decide access; models cannot turn them on. `personalOnline` and `oldChats` default off. `app_context` is an optional bounded whitelist of relevant records and snippets, never entire state, keys, PIN, env or connection credentials. Local command/result turns do not enter automatic model history; explicit record sharing is separate. Council web queries are disabled whenever private app/chat context is supplied.
+
+`Chat.runBackend` awaits `Actions.execute` before delivering results; rendering/reloading a card never executes. Confirmation skips already-resolved safe steps. Native enforcement independently denies delete/clear/security/settings panels and derives message/call confirmation from the action, not `risk`. Safe UI setting edits are JS-only allowlisted display/voice options. `app_knowledge.py` is curated read-only facts/symbols/model-plan reference, not arbitrary source access.
+
+Tests: `pnpm install --frozen-lockfile && pnpm test` from `ui/` (pinned dev-only jsdom), Python offline tests from repo root, then GitHub Android compile. Phone runtime behavior is not simulated by a build.
 
 ## Reply field: `council` (optional)
 Backend may add `council` to the first text reply (see `council.py` for the shape). The UI then shows a "Thought for Ns" block instead of "Worked through N steps"; tapping it opens the full page (`js/03-council.js`). Live progress lines (`onProgress`) are stored as `thinkLines`. Only the newest 10 replies keep their `council`; it is left out of exports.

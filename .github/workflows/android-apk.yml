@@ -48,6 +48,19 @@ jobs:
       - name: Frontend syntax check
         run: for f in ui/src/js/*.js; do node --check "$f"; done
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11.25.0"
+
+      - name: WebView UI regression tests (fake providers, no phone required)
+        run: |
+          pnpm --dir ui install --frozen-lockfile
+          pnpm --dir ui test
+
       - name: Build frontend (single page into ui/dist)
         run: python ui/build.py
 

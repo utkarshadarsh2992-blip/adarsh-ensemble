@@ -104,6 +104,7 @@ def run(q="Escape velocity of Earth derive karo", **kw):
     kw.setdefault("deep", True)
     kw.setdefault("run_code", False)
     kw.setdefault("use_guard", False)
+    kw.setdefault("mode", "physics")  # council fixtures select Physics; Standard is never auto-promoted now
     return asyncio.run(pipeline.run(q, engine="roles", record=True, **kw))
 
 
@@ -118,7 +119,7 @@ def test_deep_flow_runs_every_role_in_order(script):
         assert r in c, r
     assert c.index("architect") < c.index("theorist") < c.index("skeptic") < c.index("falsifier") < c.index("judge") < c.index("refiner")
     assert c.count("falsifier") == 3
-    assert res["engine"] == "roles" and res["mode"] == "physics"  # science task -> physics hint
+    assert res["engine"] == "roles" and res["mode"] == "physics"  # explicitly selected Physics hint
     assert "holds without atmosphere" in res["answer"]              # refiner applied the high-confidence evidence issue
     assert res["audit"]["applied"] and res["confidence"] == "high"
 
@@ -290,7 +291,7 @@ def test_bad_citations_removed_and_sourced_freshness_allowed():
 
 def test_resolve_mode():
     assert roles.resolve_mode("v", "general") == "verified"
-    assert roles.resolve_mode("standard", "math") == "math"
+    assert roles.resolve_mode("standard", "math") == "standard"
     assert roles.resolve_mode(None, "general") == "standard"
     assert roles.resolve_mode("coding", "math") == "coding"
 

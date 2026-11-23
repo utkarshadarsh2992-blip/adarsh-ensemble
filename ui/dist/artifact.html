@@ -627,11 +627,53 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .pop-item small.pi-how{font-size:11.5px;color:var(--fg2);opacity:.8}
 .combo-t{width:100%;border-collapse:collapse;font-size:13px}.combo-t td{padding:3px 6px;border-top:1px solid var(--line,rgba(127,127,127,.18))}.combo-t td:first-child{color:var(--muted);white-space:nowrap}
 
+/* ---------- Standard-mode actions (Jarvis) ---------- */
+.act{padding:14px 14px 10px}
+.act-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14.5px}
+.act-h b{font-weight:600;line-height:1.35}
+.act-badge{font-size:9.5px;letter-spacing:.14em;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--acc,#3b6ef5);color:#fff;flex:none}
+.act-steps{display:flex;flex-direction:column;gap:2px}
+.act-step{display:flex;align-items:center;gap:10px;padding:8px 4px;border-radius:10px}
+.act-step+.act-step{border-top:1px solid var(--line,rgba(0,0,0,.07))}
+.as-ic{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:9px;background:var(--card2,rgba(0,0,0,.05))}
+.as-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.as-t b{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-t small{font-size:12px;color:var(--muted);line-height:1.35}
+.as-s{flex:none;font-size:13px;color:var(--muted);min-width:14px;text-align:center}
+.act-step[data-state="ok"] .as-s{color:var(--good,#18a05a)}
+.act-step[data-state="fail"] .as-s{color:var(--bad,#d33)}
+.act-step[data-state="run"] .as-s{color:var(--acc,#3b6ef5)}
+.act-step[data-state="ok"] .as-ic{background:color-mix(in srgb,var(--good,#18a05a) 14%,transparent)}
+.act-step[data-state="fail"] .as-ic{background:color-mix(in srgb,var(--bad,#d33) 14%,transparent)}
+
+/* working HUD: a small orb at the top while a task runs */
+.hud{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top,0px));transform:translate(-50%,-16px);z-index:60;
+  display:flex;align-items:center;gap:10px;padding:8px 14px 8px 10px;border-radius:999px;
+  background:rgba(18,20,26,.92);color:#fff;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.28);
+  opacity:0;pointer-events:none;transition:opacity .22s ease,transform .22s ease;max-width:min(92vw,420px)}
+.hud.on{opacity:1;transform:translate(-50%,0)}
+.hud-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud-orb{position:relative;width:20px;height:20px;flex:none;display:grid;place-items:center}
+.hud-orb i{position:absolute;inset:0;border-radius:50%;border:1.5px solid rgba(120,170,255,.85);opacity:0}
+.hud.busy .hud-orb i{animation:hudpulse 1.5s ease-out infinite}
+.hud.busy .hud-orb i:nth-child(2){animation-delay:.5s}
+.hud.busy .hud-orb i:nth-child(3){animation-delay:1s}
+.hud-orb:after{content:'';width:7px;height:7px;border-radius:50%;background:#7fb0ff;box-shadow:0 0 10px #7fb0ff}
+@keyframes hudpulse{0%{opacity:.85;transform:scale(.45)}100%{opacity:0;transform:scale(1.5)}}
+@media (prefers-reduced-motion: reduce){.hud.busy .hud-orb i{animation:none}.hud{transition:none}}
+
+/* ProductivityViews only: every selector is prefixed with pv- to keep this sheet isolated. */
+.pv-intro{display:flex;flex-direction:column;gap:3px;padding:4px 2px 0}.pv-intro b{font:500 22px/1.2 var(--serif)}.pv-intro span{color:var(--muted);font-size:14px}.pv-section{display:flex;flex-direction:column;gap:12px}.pv-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:4px 2px 0}.pv-section-head b{font:500 18px var(--serif)}.pv-section-head small{display:block;color:var(--muted);font-size:13px;margin-top:2px}.pv-form{display:flex;flex-direction:column;gap:11px}.pv-form-card{background:var(--card);border-radius:var(--r-l);padding:16px}.pv-field{display:flex;flex-direction:column;gap:5px;min-width:0}.pv-label{font:500 10.5px/1.2 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}.pv-hint{color:var(--muted);font-size:12px;line-height:1.35}.pv-input,.pv-textarea{width:100%;border:1px solid var(--line);outline:0;background:var(--paper);border-radius:12px;padding:11px 13px;min-height:44px}.pv-input:focus,.pv-textarea:focus{border-color:var(--sel);box-shadow:0 0 0 2px color-mix(in srgb,var(--sel) 18%,transparent)}.pv-textarea{min-height:88px;resize:vertical;line-height:1.45}.pv-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}.pv-actions .btn{flex:1;min-width:132px}.pv-platform-note{margin:0;padding:11px 13px;border-radius:14px;background:color-mix(in srgb,var(--warn) 11%,transparent);color:var(--fg2);font-size:13px;line-height:1.45}.pv-search-row{display:flex;gap:8px;align-items:center;margin-top:2px}.pv-search{flex:1;background:var(--card);border:0;min-height:46px}.pv-list-wrap{display:flex;flex-direction:column;gap:8px}.pv-record{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:16px;padding:11px 10px 11px 14px;min-width:0}.pv-record.is-complete{opacity:.72}.pv-record-main{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}.pv-record-title{display:flex;align-items:center;gap:8px;min-width:0}.pv-record-title svg{color:var(--accent)}.pv-record-title b{font-weight:500;overflow-wrap:anywhere}.pv-record-main small{color:var(--muted);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}.pv-record-meta{display:flex;align-items:center;gap:8px;flex:none}.pv-record-actions{display:flex;align-items:center;gap:1px;flex:none}.pv-icon-btn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}.pv-icon-btn:active{background:var(--card2);color:var(--fg)}.pv-icon-btn.is-danger:active{color:var(--bad)}.pv-check{width:28px;height:28px;border:2px solid var(--muted);border-radius:50%;display:grid;place-items:center;color:#fff;flex:none}.pv-check[aria-checked="true"]{background:var(--good);border-color:var(--good)}.pv-check svg{width:15px;height:15px;stroke-width:3}.pv-status{font:500 10.5px/1.1 var(--mono);letter-spacing:.02em;color:var(--muted);white-space:nowrap}.pv-status.is-fired{color:var(--warn)}.pv-status.is-done{color:var(--good)}.pv-empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--muted);padding:34px 18px;background:var(--card);border-radius:20px}.pv-empty svg{color:var(--accent);margin-bottom:3px}.pv-empty b{font-weight:500;color:var(--fg)}.pv-empty span{font-size:13.5px;line-height:1.4;max-width:34ch}.pv-empty small{font-size:12px;line-height:1.4;max-width:35ch}.pv-timers{border-top:1px solid var(--line);padding-top:16px}.pv-note{background:var(--card);border-radius:18px;padding:15px 16px 10px}.pv-note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}.pv-note-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted)}.pv-note-foot small{font-size:11.5px}.pv-chip{font:500 10.5px var(--mono);color:var(--muted);background:var(--card2);padding:4px 7px;border-radius:999px;white-space:nowrap}.pv-project{background:var(--card);border-radius:20px;padding:16px}.pv-project-head{display:flex;align-items:flex-start;gap:10px}.pv-project-title{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}.pv-project-title b{font:500 19px/1.25 var(--serif);overflow-wrap:anywhere}.pv-project-goal{margin:12px 0 0;line-height:1.45;color:var(--fg2);white-space:pre-wrap;overflow-wrap:anywhere}.pv-progress-line{display:flex;align-items:center;gap:9px;margin-top:13px}.pv-progress-bar{height:6px;flex:1;background:var(--card2);border-radius:6px;overflow:hidden}.pv-progress-bar i{display:block;height:100%;background:var(--accent);border-radius:inherit}.pv-progress-line>span{font:500 11px var(--mono);color:var(--muted);width:35px;text-align:right}.pv-project-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;color:var(--muted);font-size:12.5px}.pv-project-stats b{color:var(--fg);font-weight:500}.pv-outcome{display:flex;flex-direction:column;gap:3px;margin-top:13px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--good) 9%,transparent);font-size:13px;line-height:1.4}.pv-outcome b{font:500 10.5px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--good)}.pv-outcome span{white-space:pre-wrap;overflow-wrap:anywhere}.pv-entry-details{margin-top:13px;border-top:1px solid var(--line)}.pv-entry-details>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 0 4px;color:var(--fg2);font-size:13.5px}.pv-entry-details>summary span{font:500 11px var(--mono);color:var(--muted)}.pv-entries{display:flex;flex-direction:column;gap:7px;margin-top:7px}.pv-entry{padding:10px 11px;background:var(--card2);border-radius:12px}.pv-entry-head{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font:500 11px var(--mono)}.pv-entry-head span{white-space:nowrap}.pv-entry p{margin:7px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;line-height:1.4}.pv-entry small{display:block;color:var(--muted);font-size:12px;line-height:1.35;margin-top:5px;white-space:pre-wrap;overflow-wrap:anywhere}.pv-muted{color:var(--muted);font-size:13px;line-height:1.4}.pv-log-btn{width:100%;margin-top:13px}.pv-log-btn svg{width:17px;height:17px}@media (max-width:360px){.pv-record-meta{gap:3px}.pv-status{display:none}.pv-form-card{padding:14px}.pv-project{padding:14px}}
+
 </style>
 <div class="phone" id="phone">
   <section class="view on" id="v-chat"></section>
   <section class="view" id="v-today"></section>
   <section class="view" id="v-tasks"></section>
+  <section class="view" id="v-work"></section>
+  <section class="view" id="v-reminders"></section>
+  <section class="view" id="v-alarms"></section>
+  <section class="view" id="v-notes"></section>
   <section class="view" id="v-missions"></section>
   <section class="view" id="v-library"></section>
   <section class="view" id="v-abilities"></section>
@@ -849,8 +891,8 @@ const Bus = (() => {
 /* ---------- state ---------- */
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
-  chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Kore', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1 },
+  chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -867,7 +909,7 @@ let _st = 0;
 function save() { clearTimeout(_st); _st = setTimeout(saveNow, 250); }
 function saveNow() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' ? undefined : v)));
+    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' || k === '_ctx' ? undefined : v)));
   } catch (e) { console.warn('save failed', e); }
 }
 window.addEventListener('pagehide', saveNow);
@@ -1296,13 +1338,14 @@ function renderReply(d, ctx) {
 /* what the voice mode reads out loud for each reply type */
 function speechOf(d) {
   switch (d.type) {
-    case 'text': return stripMd(d.text);
+    case 'text': case 'blocked': case 'clarification': return stripMd(d.text);
     case 'research': return stripMd(d.summary || d.question);
     case 'debate': return stripMd(d.verdict);
     case 'ask': return (d.questions && d.questions[0] && d.questions[0].question) || 'I have a question.';
     case 'approve': return 'Permission needed. ' + (d.title || '') + '. Should I go ahead?';
     case 'memory': return 'Saved to memory.';
     case 'task': return 'Task added: ' + (d.title || '');
+    case 'actions': return stripMd(d.text || 'Kaam kar raha hoon.');
     case 'mission': return 'Mission ' + (d.title || '') + ' is ' + (d.status || 'running') + '.';
     default: return '';
   }
@@ -1908,7 +1951,7 @@ const Chat = (() => {
       col.className = 'col';
       c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
     }
-    if (busy) col.append(thinkEl);
+    if (busy && thinkEl) col.append(thinkEl);
     scroll();
   }
   const scroll = () => requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
@@ -1931,7 +1974,7 @@ const Chat = (() => {
     const r = m.reply;
     const thought = Council.done(r);
     if (thought) wrap.append(thought);
-    else if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    else if (r.type !== 'actions' && r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
     if (callsOn() && r.calls && r.calls.length) {
       const bad = r.calls.filter(c => !c.ok).length;
       wrap.append(h('details', { class: 'steps mcalls-msg' }, h('summary', {}, icon('search2', 's'), 'Model calls: ' + r.calls.length + (bad ? ' · ' + bad + ' fail' : '')),
@@ -1948,7 +1991,7 @@ const Chat = (() => {
     a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { toast(await copyText(m.reply.text || speechOf(m.reply)) ? 'Copied' : 'Copy not available here'); } } }, icon('copy', 's')));
     if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => { if (TTS.speaking()) { TTS.stop(); return; } toast('Bol raha hoon… dobara tap = stop'); TTS.speak(m.reply.type === 'text' ? m.reply.text : txt()); } } }, icon('speaker', 's')));
     ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
-    if (isLast) a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
+    if (isLast && m.reply.type !== 'actions') a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
     const used = m.reply && m.reply.uiMode && m.reply.uiMode !== 'standard' ? Modes.get(m.reply.uiMode) : null;
     if (used) a.append(h('span', { class: 'meta', title: 'Answered in ' + used.name + ' mode' }, icon(used.ic, 's'), used.name));
     return a;
@@ -2030,7 +2073,7 @@ const Chat = (() => {
   };
   const MAX_ANSWERS = 8, MAX_ANSWER_CHARS = 12000;
   let pasted = [];                       // [{source, text}] for the next question only. Never saved.
-  let lastExtra = { source: 'auto', answers: [] };
+  const requestMeta = new WeakMap(); // per-user-message one-session retry data; pasted answers never persisted
   const srcMode = () => S.settings.source || 'auto';
   const validAnswers = () => pasted.map(a => ({ source: (a.source || '').trim().slice(0, 60), text: (a.text || '').trim().slice(0, MAX_ANSWER_CHARS) })).filter(a => a.text);
   function sourceSheet() {
@@ -2108,37 +2151,42 @@ const Chat = (() => {
 
   /* ---------- send pipeline ---------- */
   function stop() { if (ctl) ctl.abort(); }
-  function histText() {
-    return (cur() ? cur().msgs : []).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
+  function histText(c = cur()) {
+    const allowPersonal = Productivity.access().personalOnline && Productivity.access().localRead;
+    return (c ? c.msgs : []).filter(m => !m.localOnly && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
   }
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
     if (!meta && App.view !== 'chat') App.show('chat');
-    const typed = textOverride == null;
-    const answers = typed && srcMode() !== 'auto' ? validAnswers() : [];
-    if (typed && srcMode() !== 'auto' && !answers.length) { toast('Paste at least one answer first'); sourceSheet(); return; }
+    const source = srcMode(), modeId = Modes.current().id;
+    const answers = source !== 'auto' ? validAnswers() : [];
+    if (source !== 'auto' && !answers.length) { toast('Manual/Hybrid source selected hai. Answer paste karo; source Auto nahi kiya.'); sourceSheet(); return; }
     const c = cur() || newChat();  // continue the open chat: every message used to start a new one, so follow-ups never saw earlier context
-    const um = { id: uid('m'), role: 'user', text, ts: Date.now(), atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
+    const um = { id: uid('m'), role: 'user', text, ts: Date.now(), requestSource: source, atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
+    requestMeta.set(um, { source, answers });
+    busy = true; // a second submission cannot race asynchronous FileReader work
     pushUser(c, um);
-    if (textOverride == null) { ta.value = ''; pending = []; pasted = []; drawAtts(); onInput(); }
+    pasted = []; // one-shot for every submission, including live voice / typed override
+    if (textOverride == null) { ta.value = ''; pending = []; }
+    drawAtts(); onInput();
     const attachments = await Promise.all(files.map(readAtt));
-    await runBackend(c, { text, attachments, meta, source: typed ? srcMode() : 'auto', answers });
+    await runBackend(c, { text, attachments, meta, source, answers, modeId });
   }
   function pushUser(c, um) {
     if (!c.msgs.length && um.text) c.title = um.text.slice(0, 42);
     c.msgs.push(um); c.ts = Date.now(); save(); Bus.emit('chats:changed'); renderThread();
   }
-  async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [] }) {
-    lastExtra = { source, answers };
-    const modeId = Modes.current().id;   // retry uses whatever mode is selected now
+  async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [], modeId = Modes.current().id }) {
     busy = true; ctl = new AbortController(); const t0 = Date.now();
     const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
     callRows = []; drawCalls();
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' } },
+      const perms = Productivity.access();
+      const personal = Productivity.modelContext(text, c.id);
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.charCodeAt(0) === 1) {  // structured model-call event (see config.emit_call)
             try { onCallEvent(JSON.parse(s.slice(s.indexOf('{')))); } catch (e) { /* ignore */ }
@@ -2152,7 +2200,14 @@ const Chat = (() => {
         callRows = arr[0].calls.map(c => ({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails || [] }));
         drawCalls();
       }
-      arr.forEach((r, i) => { if (i === 0) { r.uiMode = modeId; r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
+      for (const [i, r] of arr.entries()) {
+        r.uiMode = modeId;
+        if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
+        if (r.origin === 'local-rule' || ['blocked', 'clarification'].includes(r.type)) { const last = [...c.msgs].reverse().find(m => m.role === 'user' && m.text === text); if (last) last.localOnly = true; }
+        if (personal) r.personalContext = true;
+        if (r.type === 'actions' && r.origin === 'local-rule' && modeId === 'standard') await Actions.execute(r, false);
+        deliver(c, r);
+      }
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
@@ -2163,11 +2218,11 @@ const Chat = (() => {
   }
   const normReply = (r) => (typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
   function deliver(c, r) {
-    if (r.type === 'memory') { const m = { id: uid('mem'), text: r.text, pin: false, ts: Date.now() }; S.memories.unshift(m); r.memId = m.id; }
-    if (r.type === 'task') { const t = { id: uid('t'), title: r.title, due: r.due || null, done: false, ts: Date.now() }; S.tasks.push(t); r.taskId = t.id; }
+    // Only the explicit local action layer may mutate productivity data. Model/demo reply shapes are display-only.
+    if (r.type === 'memory' || r.type === 'task') r = { type: 'text', text: r.type === 'task' ? 'Task proposal: ' + (r.title || '') + '. Add karne ke liye Standard command bolo.' : 'Memory proposal: ' + (r.text || '') };
     if (r.type === 'mission') upsertMission(r);
     if (r.council) { r.councilId = uid('cn'); Council.put(r.councilId, r.council); delete r.council; }  // big: stored apart from the chat state
-    const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r };
+    const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r, personalContext: !!r.personalContext };
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });
     if (document.hidden && S.settings.notif && window.Notification && Notification.permission === 'granted') { try { new Notification('Adarsh', { body: speechOf(r).slice(0, 120) }); } catch (e) {} }
@@ -2179,9 +2234,15 @@ const Chat = (() => {
   }
   function retry() {
     const c = cur(); if (!c || busy) return;
+    const lastU = [...c.msgs].reverse().find(m => m.role === 'user');
+    if (!lastU) return;
+    const previous = c.msgs[c.msgs.length - 1];
+    if (previous && previous.reply && previous.reply.type === 'actions') return toast('Safe kaam repeat nahi kiye. Failed step ka naya command bolo.');
+    const extra = requestMeta.get(lastU) || { source: lastU.requestSource || srcMode(), answers: [] };
+    if (extra.source !== 'auto' && !extra.answers.length) { toast('Original pasted answers is session mein nahi hain. Dobara paste karke send karo; Auto nahi kiya.'); sourceSheet(); return; }
     while (c.msgs.length && c.msgs[c.msgs.length - 1].role === 'ai') c.msgs.pop();
-    const lastU = c.msgs[c.msgs.length - 1]; if (!lastU || lastU.role !== 'user') return renderThread();
-    renderThread(); runBackend(c, { text: lastU.text || '', ...lastExtra });
+    // Retry is a new request in the currently selected mode, with this message's original source/answers.
+    renderThread(); runBackend(c, { text: lastU.text || '', ...extra, modeId: Modes.current().id });
   }
 
   /* structured-reply follow-ups */
@@ -2213,6 +2274,664 @@ const Chat = (() => {
 })();
 
 'use strict';
+/* Explicit local capability layer. Never grants arbitrary JS/filesystem access to a model. */
+const Productivity = (() => {
+  const COLLECTIONS = { task: 'tasks', reminder: 'reminders', alarm: 'alarms', timer: 'timers', note: 'notes', work: 'work' };
+  const ACCESS = { localRead: true, localEdit: true, personalOnline: false, oldChats: false, currentChat: true, architecture: true };
+  const BLOCKED = new Set(['note.clear', 'dnd.set', 'panel.open']);
+  const SETTINGS = new Set(['name', 'theme', 'font', 'rate', 'lang', 'voiceName', 'voiceEngine', 'voiceReplies', 'speak', 'haptics']);
+  const timers = new Map();
+  const N = () => window.AdarshNative;
+  const native = () => !!(N() && N().recordsList && N().runActions);
+  const access = () => ({ ...ACCESS, ...(S.settings.aiAccess || {}) });
+  const result = (ok, message, extra = {}) => ({ ok, message, ...extra });
+  const text = (v, max = 600) => typeof v === 'string' ? v.trim().slice(0, max) : '';
+  const fields = ['id', 'kind', 'title', 'text', 'at', 'created', 'updated', 'done', 'firedAt', 'category', 'goal', 'progress', 'minutes', 'outcome', 'entries'];
+  function safeRecord(r) {
+    if (!r || !COLLECTIONS[r.kind]) return null;
+    const out = {};
+    fields.forEach(k => { if (r[k] != null && (typeof r[k] !== 'object' || k === 'entries')) out[k] = r[k]; });
+    if (Array.isArray(out.entries)) out.entries = out.entries.map(e => ({ id: e.id, date: e.date, minutes: e.minutes, text: e.text, progress: e.progress, outcome: e.outcome }));
+    if (!out.at) delete out.at;
+    if (!out.firedAt) delete out.firedAt;
+    if (['task', 'work'].includes(out.kind)) { out.title = out.title || out.text; delete out.text; }
+    else { out.text = out.text || out.title; delete out.title; }
+    return out;
+  }
+  function absorb(records) {
+    Object.keys(COLLECTIONS).forEach(k => { S[COLLECTIONS[k]] = []; });
+    records.forEach(r => { const x = safeRecord(r); if (x) { if (x.kind === 'task') x.due = x.at || null; S[COLLECTIONS[x.kind]].push(x); } });
+  }
+  function changed() { saveNow(); Bus.emit('records:changed'); }
+  function sync() {
+    if (!native()) return true;
+    try {
+      const j = JSON.parse(N().recordsList());
+      if (j.ok === false || j.error || !Array.isArray(j.records)) return false;
+      absorb(j.records); save(); return true;
+    } catch (e) { return false; }
+  }
+  function init() {
+    Object.values(COLLECTIONS).forEach(k => { if (!Array.isArray(S[k])) S[k] = []; });
+    S.settings.aiAccess = access();
+    const legacy = [];
+    Object.entries(COLLECTIONS).forEach(([kind, key]) => S[key].forEach(r => {
+      const x = safeRecord({ ...r, id: r.id || uid(kind), kind, at: r.at || r.due, created: r.created || r.ts || 1, updated: r.updated || r.created || r.ts || 1 });
+      if (x) legacy.push(x);
+    }));
+    try { (JSON.parse(localStorage.getItem('adarsh.notes.v1') || '[]')).forEach(r => {
+      if (!legacy.some(x => x.kind === 'note' && x.text === r.text)) legacy.push(safeRecord({ ...r, id: r.id || uid('note'), kind: 'note', created: r.created || r.ts || 1, updated: r.updated || r.created || r.ts || 1 }));
+    }); } catch (e) {}
+    if (native()) {
+      if (!S.settings.recordsMigrated && N().recordsImport) {
+        try {
+          const current = JSON.parse(N().recordsList());
+          if (current.ok === false || current.error || !Array.isArray(current.records)) throw new Error('Native records unavailable');
+          const ids = new Set(current.records.map(r => r.id));
+          // During migration native IDs always win, even if an old mirror has a misleading newer timestamp.
+          const rows = legacy.filter(r => r && !ids.has(r.id));
+          const j = JSON.parse(N().recordsImport(JSON.stringify({ records: rows })));
+          if (!j.ok) throw new Error(j.error || 'Migration failed');
+          S.settings.recordsMigrated = true;
+        } catch (e) { toast('Records migration fail hui; purana local data preserve hai. ' + e.message); save(); return; }
+      }
+      if (!sync()) toast('Local records abhi nahi khule. App dobara kholo; purana data delete nahi hua.');
+    } else {
+      absorb(legacy);
+      Object.values(COLLECTIONS).flatMap(k => S[k]).filter(r => r.at > Date.now() && !r.done && !r.firedAt).forEach(armWeb);
+    }
+    save();
+  }
+  function list(kind) {
+    if (kind === 'memory') return S.memories;
+    return S[COLLECTIONS[kind]] || [];
+  }
+  function target(kind, a) {
+    const all = list(kind);
+    const exact = a.id ? all.filter(r => r.id === a.id) : [];
+    if (a.id) return exact.length === 1 ? exact[0] : null;
+    const q = text(a.query, 120).toLowerCase();
+    if (!q) return null;
+    const hits = all.filter(r => (r.title || r.text || '').toLowerCase() === q);
+    const near = hits.length ? hits : all.filter(r => (r.title || r.text || '').toLowerCase().includes(q));
+    return near.length === 1 ? near[0] : null;
+  }
+  function cancelWeb(id) { if (timers.has(id)) { clearTimeout(timers.get(id)); timers.delete(id); } }
+  function armWeb(r) {
+    cancelWeb(r.id);
+    if (!r.at || r.done || r.firedAt || r.at <= Date.now()) return;
+    // Browser timers are not a background scheduling service. Long waits are rechecked within the tab.
+    const fire = () => {
+      if (r.done || !list(r.kind).some(x => x.id === r.id)) return;
+      if (r.at > Date.now()) { timers.set(r.id, setTimeout(fire, Math.min(r.at - Date.now(), 2147480000))); return; }
+      r.firedAt = Date.now(); changed();
+      const title = r.kind === 'timer' ? 'Timer khatam' : r.kind === 'task' ? 'Task due' : 'Reminder';
+      try { if (window.Notification && Notification.permission === 'granted') new Notification(title, { body: r.title || r.text }); } catch (e) {}
+      toast((r.title || r.text) + ' — time ho gaya');
+    };
+    timers.set(r.id, setTimeout(fire, Math.min(Math.max(1, r.at - Date.now()), 2147480000)));
+  }
+  function setting(a) {
+    if (!SETTINGS.has(a.key)) return result(false, 'Sir, ye setting AI change nahi kar sakta.');
+    const allowed = { theme: ['system', 'light', 'dark'], font: ['serif', 'sans'], lang: ['hi-IN', 'en-IN', 'en-US'], voiceEngine: ['auto', 'natural', 'device'] };
+    let v = a.value;
+    if (allowed[a.key] && !allowed[a.key].includes(v)) return result(false, 'Setting ki value valid nahi hai.');
+    if (a.key === 'rate' && (typeof v !== 'number' || !Number.isFinite(v) || v < 0.7 || v > 1.4)) return result(false, 'Voice speed 0.7 se 1.4 tak honi chahiye.');
+    if (a.key === 'voiceName' && !VOICES.some(x => x[0] === v)) return result(false, 'Ye natural voice available nahi hai.');
+    if (['speak', 'voiceReplies', 'haptics'].includes(a.key) && typeof v !== 'boolean') return result(false, 'On/off value chahiye.');
+    if (a.key === 'name') { v = text(v, 60); if (!v) return result(false, 'Naam chahiye.'); }
+    S.settings[a.key] = v;
+    if (a.key === 'theme' || a.key === 'font') App.applyTheme();
+    changed();
+    return result(true, 'Setting update: ' + a.key + ' = ' + String(v));
+  }
+  async function run(step, confirmed = false, manual = false, mode = 'standard') {
+    const action = String(step.action || ''), a = step.args || {};
+    if (!manual && mode !== 'standard') return result(false, 'Standard select karo; mode change nahi kiya.');
+    if (BLOCKED.has(action) || /(?:delete|clear|security|pin|exec|deploy)/i.test(action) || (action === 'app.open' && a.app === 'settings')) return result(false, 'Sir, ye operation AI ke liye disabled hai.');
+    const read = action.endsWith('.list');
+    if (!manual && !(read ? access().localRead : access().localEdit)) return result(false, 'Local AI access off hai.');
+    if (['message.draft', 'call.dial'].includes(action) && !confirmed) return result(false, 'Confirmation chahiye', { pending: true });
+    const kind = action.split('.')[0];
+    if (read && (COLLECTIONS[kind] || kind === 'memory')) {
+      if (!sync()) return result(false, 'Local records read nahi hue; purana mirror preserve hai. App dobara kholo.');
+      const rows = list(kind);
+      return result(true, rows.length ? rows.slice(0, 8).map(r => (r.title || r.text) + (r.at ? ' · ' + fmtDue(r.at).t : '') + (r.kind === 'work' ? ' · ' + (r.progress || 0) + '% · ' + (r.minutes || 0) + ' min' : '')).join('. ') : 'Koi ' + kind + ' record nahi hai.', { records: rows });
+    }
+    if (action === 'settings.update') return setting(a);
+    if (action.startsWith('memory.')) {
+      if (action === 'memory.add') { const t = text(a.text); if (!t) return result(false, 'Memory text chahiye.'); const r = { id: uid('mem'), text: t, ts: Date.now(), pin: false }; S.memories.unshift(r); changed(); return result(true, 'Memory save ho gayi', { record: r }); }
+      if (action === 'memory.edit') { const r = target('memory', a); if (!r) return result(false, 'Ek unique memory ka naam ya ID batao.'); const t = text(a.text); if (!t) return result(false, 'Naya text chahiye.'); r.text = t; changed(); return result(true, 'Memory update ho gayi', { record: r }); }
+      return result(false, 'Memory operation allowed nahi hai.');
+    }
+    if (native()) {
+      try {
+        const j = JSON.parse(N().runActions(JSON.stringify({ mode: 'standard', confirmed: !!confirmed, steps: [{ ...step, id: step.id || uid('s') }] })));
+        const r = (j.results || [])[0];
+        if (!r) return result(false, j.error || 'Phone ne result nahi diya.');
+        sync(); if (r.ok) changed(); return r;
+      } catch (e) { return result(false, 'Phone operation fail: ' + e.message); }
+    }
+    if (!COLLECTIONS[kind]) return result(false, 'Ye action sirf Android app mein chalta hai.');
+    return browserRecord(action, a);
+  }
+  function browserRecord(action, a) {
+    const kind = action.split('.')[0], op = action.split('.')[1];
+    if (!['add', 'start', 'edit', 'done', 'log'].includes(op)) return result(false, 'Unsupported record operation.');
+    if ((a.at != null && (typeof a.at !== 'number' || !Number.isFinite(a.at) || a.at <= Date.now())) || (a.progress != null && (typeof a.progress !== 'number' || a.progress < 0 || a.progress > 100)) || (a.minutes != null && (typeof a.minutes !== 'number' || a.minutes < 0 || a.minutes > 1440))) return result(false, 'Time/progress/minutes valid nahi hain.');
+    let r;
+    if (op === 'add' || op === 'start') {
+      const title = text(a.title || a.text, kind === 'note' ? 600 : 120);
+      if (!title) return result(false, 'Naam ya text chahiye.');
+      if (['alarm', 'reminder'].includes(kind) && !a.at) return result(false, 'Time chahiye.');
+      if (kind === 'timer' && (typeof a.seconds !== 'number' || a.seconds < 1 || a.seconds > 86400)) return result(false, 'Timer 1 second se 24 ghante tak ho sakta hai.');
+      r = { id: uid(kind[0]), kind, title, text: title, created: Date.now(), updated: Date.now(), at: a.at || 0 };
+      if (kind === 'task') r.done = false;
+      if (kind === 'work') Object.assign(r, { category: text(a.category, 120), goal: text(a.goal), progress: 0, minutes: 0, outcome: '', entries: [] });
+      if (kind === 'timer') r.at = Date.now() + a.seconds * 1000;
+      list(kind).push(r);
+    } else {
+      r = target(kind, a); if (!r) return result(false, 'Ek unique record ka naam ya ID batao; kuch change nahi kiya.');
+      if (op === 'done') { if (typeof a.done !== 'boolean') return result(false, 'Done true/false chahiye.'); r.done = a.done; if (a.done) cancelWeb(r.id); }
+      else if (op === 'log') {
+        const t = text(a.text); if (!t) return result(false, 'Work detail chahiye.');
+        const e = { id: uid('entry'), text: t, date: a.date || new Date().toLocaleDateString('en-CA'), minutes: a.minutes || 0, outcome: text(a.outcome) };
+        if (a.progress != null) { e.progress = a.progress; r.progress = a.progress; }
+        (r.entries || (r.entries = [])).push(e); r.minutes = (r.minutes || 0) + e.minutes;
+        if (e.outcome) r.outcome = e.outcome;
+      } else {
+        ['title', 'text', 'category', 'goal', 'outcome'].forEach(k => { if (a[k] != null) r[k] = text(a[k], k === 'title' ? 120 : 600); });
+        if (a.title != null) r.text = r.title;
+        if (a.text != null && kind !== 'work') r.title = r.text;
+        if (a.at != null) { r.at = a.at; delete r.firedAt; }
+        if (a.progress != null) r.progress = a.progress;
+      }
+      r.updated = Date.now();
+    }
+    if (kind === 'task') r.due = r.at || null;
+    if (r.at) armWeb(r);
+    changed();
+    const warning = r.at && !r.done ? 'Browser mein alert sirf tab khula rehne par aayega.' : '';
+    return result(true, kind + (op === 'add' || op === 'start' ? ' save ho gaya' : ' update ho gaya') + (r.at ? ' · ' + fmtDue(r.at).t : '') + (warning ? '. ' + warning : ''), { record: r, detail: r.id, warning });
+  }
+  async function manual(action, args) {
+    if (native() && /^(task|reminder|alarm|timer)\./.test(action) && (args.at || args.seconds)) {
+      try { const i = JSON.parse(N().actionInfo()); if (!i.notify) N().setNotify(true); } catch (e) {}
+    }
+    return run({ id: uid('manual'), action, args, risk: 'safe' }, false, true);
+  }
+  async function removeManual(id) {
+    if (native() && N().recordsDelete) {
+      try { const j = JSON.parse(N().recordsDelete(id)); sync(); changed(); return j; } catch (e) { return result(false, 'Delete nahi hua.'); }
+    }
+    Object.values(COLLECTIONS).forEach(k => { S[k] = S[k].filter(r => r.id !== id); }); cancelWeb(id); changed(); return result(true, 'Record delete ho gaya');
+  }
+  function exportRecords() { return Object.values(COLLECTIONS).flatMap(k => S[k]).map(safeRecord).filter(Boolean); }
+  function importRecords(records) {
+    const rows = (records || []).map(safeRecord).filter(Boolean).map(r => ({ ...r, id: r.id || uid(r.kind), created: r.created || 1, updated: r.updated || r.created || 1 }));
+    if (native() && N().recordsImport) { const r = JSON.parse(N().recordsImport(JSON.stringify({ records: rows }))); if (r.ok) { sync(); changed(); } return r; }
+    rows.forEach(r => { if (r.kind === 'task') r.due = r.at || null; const a = list(r.kind), i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = r; else a.push(r); armWeb(r); }); changed(); return result(true, 'Records restore ho gaye');
+  }
+  const onlineFields = ['id', 'kind', 'title', 'text', 'at', 'done', 'category', 'goal', 'progress', 'minutes', 'outcome'];
+  function modelContext(query, chatId) {
+    const a = access();
+    if (!a.localRead || !a.personalOnline) return undefined;
+    const low = query.toLowerCase();
+    const relevant = /\b(my|mera|mere|meri|apne|apna|today|aaj|progress|brief|summary|summari[sz]e|plan|analy[sz]e|records?|tasks?|work|notes?|reminders?|memor(?:y|ies)|projects?|kaam|padhai)\b|old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query);
+    if (!relevant) return undefined;
+    if (!sync()) return undefined;
+    const kinds = [];
+    if (/task|plan|today|aaj|brief/i.test(low)) kinds.push('task');
+    if (/work|project|progress|kaam/i.test(low)) kinds.push('work');
+    if (/notes?/i.test(low)) kinds.push('note');
+    if (/reminder/i.test(low)) kinds.push('reminder');
+    if (/alarm/i.test(low)) kinds.push('alarm');
+    if (/memor|remember|meri preference/i.test(low)) kinds.push('memory');
+    const tokens = low.match(/[\p{L}\p{N}]{3,}/gu) || [];
+    const rows = [...new Set(kinds)].flatMap(k => list(k).map(r => ({ ...r, kind: k })));
+    rows.sort((x, y) => {
+      const score = r => tokens.reduce((n, w) => n + ((r.title || r.text || '').toLowerCase().includes(w) ? 1 : 0), 0);
+      return score(y) - score(x) || (y.updated || y.created || y.ts || 0) - (x.updated || x.created || x.ts || 0);
+    });
+    const redact = v => v.replace(/\b(?:api[_ -]?key|password|secret|token|pin)\s*[:=]\s*\S+|\b(?:sk-|AIza)[\w-]{12,}/gi, '[redacted]');
+    const selected = []; let size = 0;
+    for (const r of rows.slice(0, 12)) {
+      const out = {};
+      onlineFields.forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
+      if (r.kind === 'work') out.entries = (r.entries || []).slice(-3).map(e => ({ date: e.date, minutes: e.minutes, text: redact(String(e.text || '')).slice(0, 160), progress: e.progress, outcome: redact(String(e.outcome || '')).slice(0, 160) }));
+      const len = JSON.stringify(out).length; if (size + len > 2300) break; selected.push(out); size += len;
+    }
+    const old = [];
+    if (a.oldChats && /old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query)) {
+      const chats = S.chats.filter(c => c.id !== chatId);
+      const matches = chats.flatMap(c => c.msgs || []).filter(m => !m.localOnly && !(m.reply && (m.reply.origin === 'local-rule' || ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)))).filter(m => tokens.some(w => (m.text || (m.reply ? speechOf(m.reply) : '')).toLowerCase().includes(w))).slice(-3);
+      matches.forEach(m => old.push({ role: m.role === 'user' ? 'user' : 'assistant', text: redact(m.text || (m.reply ? speechOf(m.reply) : '')).slice(0, 180) }));
+    }
+    return selected.length || old.length ? { records: selected, oldChats: old } : undefined;
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { sync(); Bus.emit('records:changed'); } });
+  return { init, sync, list, run, manual, removeManual, access, modelContext, exportRecords, importRecords, safeRecord, native };
+})();
+
+'use strict';
+/* 04-productivity-views.js : manual productivity pages for the parent shell. */
+
+const productivityApi = () => {
+  if (typeof Productivity !== 'undefined') return Productivity;
+  if (typeof window !== 'undefined' && window.Productivity) return window.Productivity;
+  return null;
+};
+
+const nativeBridge = () => (typeof window !== 'undefined' ? window.AdarshNative : null);
+const hasNativeRecords = () => {
+  const n = nativeBridge();
+  return !!(n && typeof n.recordsList === 'function');
+};
+
+function productivityList(kind) {
+  const p = productivityApi();
+  if (p && typeof p.list === 'function') {
+    try {
+      const value = p.list(kind);
+      return Array.isArray(value) ? value : [];
+    } catch (e) { return []; }
+  }
+  const n = nativeBridge();
+  if (n && typeof n.recordsList === 'function') {
+    try {
+      const value = JSON.parse(n.recordsList(kind));
+      return Array.isArray(value) ? value : (value && Array.isArray(value.records) ? value.records : []);
+    } catch (e) { return []; }
+  }
+  return [];
+}
+
+async function productivityManual(action, args) {
+  const p = productivityApi();
+  if (!p || typeof p.manual !== 'function') return { ok: false, message: 'Productivity is not available yet.' };
+  try { return await p.manual(action, args); }
+  catch (e) { return { ok: false, message: e && e.message ? e.message : 'Could not save that.' }; }
+}
+
+async function productivitySync() {
+  const p = productivityApi();
+  if (!p || typeof p.sync !== 'function') return { ok: true };
+  try { return await p.sync(); }
+  catch (e) { return { ok: false, message: e && e.message ? e.message : 'Could not refresh records.' }; }
+}
+
+function nativeOrBrowserNotice() {
+  if (hasNativeRecords()) {
+    return 'Android notifications can arrive even when this screen is closed. Force-stopping the app pauses them.';
+  }
+  return 'Browser fallback runs only while this tab is open. Keep this tab open for scheduled alerts.';
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+function localDateTimeValue(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+function localDateValue(value) {
+  const d = value ? new Date(value) : new Date();
+  if (Number.isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function localDateTimeMs(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+function displayDateTime(value) {
+  if (value == null || value === '') return 'No time set';
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? 'Invalid time' : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+function displayDate(value) {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? String(value || '') : d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+}
+function recordText(record) { return String((record && (['task', 'work'].includes(record.kind) ? record.title || record.text : record.text || record.title)) || ''); }
+function recordTime(record) { return record && (record.at || record.created || record.updated); }
+function sortNewest(a, b) { return (Number(recordTime(b)) || 0) - (Number(recordTime(a)) || 0); }
+function positiveNumber(value, max) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 && n <= max ? n : null;
+}
+function progressNumber(value, optional) {
+  if (optional && (value === '' || value == null)) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
+function field(label, control, hint) {
+  return h('label', { class: 'pv-field' }, h('span', { class: 'pv-label' }, label), control, hint ? h('small', { class: 'pv-hint' }, hint) : null);
+}
+function textInput(label, value, placeholder, type) {
+  return field(label, h('input', { class: 'pv-input', type: type || 'text', value: value || '', placeholder: placeholder || '', autocomplete: 'off' }));
+}
+function actionButtons(saveLabel, onSave, onCancel) {
+  return h('div', { class: 'pv-actions' }, h('button', { class: 'btn pri', type: 'button', on: { click: onSave } }, saveLabel), onCancel ? h('button', { class: 'btn ghost', type: 'button', on: { click: onCancel } }, 'Cancel') : null);
+}
+function emptyState(ic, title, text, example) {
+  return h('div', { class: 'pv-empty' }, icon(ic), h('b', {}, title), h('span', {}, text), example ? h('small', {}, 'Example: ' + example) : null);
+}
+function searchControl(placeholder, onInput) {
+  const input = h('input', { class: 'search pv-search', type: 'search', placeholder, 'aria-label': placeholder });
+  input.addEventListener('input', () => onInput(input.value.trim().toLowerCase()));
+  return input;
+}
+function recordMatches(record, query) {
+  return !query || recordText(record).toLowerCase().includes(query) || String(record.category || '').toLowerCase().includes(query) || String(record.goal || '').toLowerCase().includes(query);
+}
+function warningToast(result) {
+  if (result && result.warning) toast(String(result.warning), { ms: 6500 });
+}
+async function finishMutation(action, args, redraw, fallbackMessage) {
+  const result = await productivityManual(action, args);
+  if (!result || !result.ok) { toast((result && result.message) || 'Could not save that.'); return false; }
+  await productivitySync();
+  redraw();
+  toast(result.message || fallbackMessage);
+  warningToast(result);
+  return true;
+}
+async function finishDelete(id, redraw) {
+  const p = productivityApi();
+  let result;
+  try { result = p && typeof p.removeManual === 'function' ? await p.removeManual(id) : { ok: false, message: 'Delete is not available yet.' }; }
+  catch (e) { result = { ok: false, message: e && e.message ? e.message : 'Could not delete that.' }; }
+  if (!result || !result.ok) { toast((result && result.message) || 'Could not delete that.'); return; }
+  await productivitySync();
+  redraw();
+  toast(result.message || 'Deleted');
+  warningToast(result);
+}
+function askDelete(record, redraw) {
+  confirmSheet({
+    title: 'Delete this record?',
+    text: 'This deletes the record and cancels its scheduled alert. Only your manual confirmation can do this; the AI cannot delete records.',
+    label: 'Delete',
+    danger: true,
+    onYes: () => { finishDelete(record.id, redraw); }
+  });
+}
+function editSheet(title, build) { sheet({ title, tall: true, build }); }
+function editSchedule(kind, record, redraw) {
+  const title = h('input', { class: 'pv-input', type: 'text', value: recordText(record), 'aria-label': 'Title' });
+  const at = h('input', { class: 'pv-input', type: 'datetime-local', value: localDateTimeValue(record.at), 'aria-label': 'Date and time' });
+  editSheet(kind === 'task' ? 'Edit task' : 'Edit ' + kind, (body, close) => {
+    body.append(field('Title', title), field('When', at), actionButtons('Save changes', async () => {
+      const text = title.value.trim();
+      if (!text) return toast('Add a title first.');
+      const time = localDateTimeMs(at.value);
+      if (at.value && time == null) return toast('Choose a valid local date and time.');
+      const action = kind === 'task' ? 'task.edit' : kind + '.edit';
+      const args = kind === 'task' ? { id: record.id, title: text } : { id: record.id, text };
+      if (time && localDateTimeValue(record.at) !== at.value) args.at = time;
+      if (!time && record.at) return toast('Alert time clear nahi kiya. Naya time select karo, ya record manually delete karo.');
+      const ok = await finishMutation(action, args, redraw, 'Updated');
+      if (ok) close();
+    }, close));
+  });
+}
+function scheduleRow(kind, record, redraw) {
+  const fired = !!record.firedAt;
+  const completed = !!record.done;
+  const status = fired ? 'Fired · ' + displayDateTime(record.firedAt) : completed ? 'Completed' : 'Scheduled';
+  const edit = h('button', { class: 'pv-icon-btn', type: 'button', 'aria-label': 'Edit', on: {
+    click: () => editSheet(kind === 'task' ? 'Edit task' : 'Edit ' + kind, (body, close) => scheduleEditBody(kind, record, redraw, body, close))
+  } }, icon('edit', 's'));
+  const remove = h('button', { class: 'pv-icon-btn is-danger', type: 'button', 'aria-label': 'Delete', on: {
+    click: () => askDelete(record, redraw)
+  } }, icon('trash', 's'));
+  return h('article', { class: 'pv-record' },
+    h('div', { class: 'pv-record-main' },
+      h('div', { class: 'pv-record-title' }, icon(kind === 'alarm' ? 'bell' : kind === 'task' ? 'tasks' : 'bell', 's'), h('b', {}, recordText(record))),
+      h('small', {}, displayDateTime(record.at))),
+    h('div', { class: 'pv-record-meta' },
+      h('span', { class: 'pv-status ' + (fired ? 'is-fired' : completed ? 'is-done' : '') }, status),
+      h('div', { class: 'pv-record-actions' }, edit, remove)));
+}
+function scheduleEditBody(kind, record, redraw, body, close) {
+  const text = h('input', { class: 'pv-input', type: 'text', value: recordText(record), 'aria-label': 'Title' });
+  const at = h('input', { class: 'pv-input', type: 'datetime-local', value: localDateTimeValue(record.at), 'aria-label': 'Date and time' });
+  body.append(field('Title', text), field('When', at), actionButtons('Save changes', async () => {
+    const value = text.value.trim();
+    if (!value) return toast('Add a title first.');
+    const time = localDateTimeMs(at.value);
+    if (at.value && time == null) return toast('Choose a valid local date and time.');
+    const action = kind === 'task' ? 'task.edit' : kind + '.edit';
+    const args = kind === 'task' ? { id: record.id, title: value } : { id: record.id, text: value };
+    if (time && localDateTimeValue(record.at) !== at.value) args.at = time;
+    if (!time && record.at) return toast('Alert time clear nahi kiya. Naya time select karo, ya record manually delete karo.');
+    const ok = await finishMutation(action, args, redraw, 'Updated');
+    if (ok) close();
+  }, close));
+}
+
+function tasksView(st, redraw) {
+  const title = h('input', { class: 'pv-input', type: 'text', placeholder: 'What needs doing?', 'aria-label': 'New task title' });
+  const at = h('input', { class: 'pv-input', type: 'datetime-local', 'aria-label': 'Due date and time' });
+  const add = async () => {
+    const value = title.value.trim();
+    if (!value) return toast('Add a task title first.');
+    const time = localDateTimeMs(at.value);
+    if (at.value && time == null) return toast('Choose a valid local date and time.');
+    const ok = await finishMutation('task.add', { title: value, at: time }, redraw, 'Task added');
+    if (ok) { title.value = ''; at.value = ''; }
+  };
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, 'Keep the next actions clear and manual.')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Due (optional)', at), actionButtons('Add task', add)));
+  const list = h('div', { class: 'pv-list-wrap' });
+  const render = (query) => {
+    list.textContent = '';
+    const all = productivityList('task').slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || sortNewest(a, b));
+    const rows = all.filter(r => recordMatches(r, query));
+    if (!all.length) return list.append(emptyState('tasks', 'No tasks yet', 'Add a task here instead of relying on memory.', 'Submit expense report · tomorrow 10:00'));
+    if (!rows.length) return list.append(emptyState('search', 'No matching tasks', 'Try a different search term.'));
+    rows.forEach(record => {
+      const done = !!record.done;
+      const check = h('button', { class: 'pv-check', type: 'button', role: 'checkbox', 'aria-checked': String(done), 'aria-label': done ? 'Mark task open' : 'Mark task complete', on: {
+        click: () => finishMutation('task.done', { id: record.id, done: !done }, redraw, done ? 'Task reopened' : 'Task completed')
+      } }, done ? icon('check', 's') : null);
+      const edit = h('button', { class: 'pv-icon-btn', type: 'button', 'aria-label': 'Edit task', on: {
+        click: () => editSchedule('task', record, redraw)
+      } }, icon('edit', 's'));
+      const remove = h('button', { class: 'pv-icon-btn is-danger', type: 'button', 'aria-label': 'Delete task', on: {
+        click: () => askDelete(record, redraw)
+      } }, icon('trash', 's'));
+      list.append(h('article', { class: 'pv-record' + (done ? ' is-complete' : '') }, check,
+        h('div', { class: 'pv-record-main' },
+          h('div', { class: 'pv-record-title' }, h('b', {}, recordText(record))),
+          h('small', {}, record.at ? displayDateTime(record.at) : 'No due time')),
+        h('div', { class: 'pv-record-actions' }, edit, remove)));
+    });
+  };
+  st.append(h('div', { class: 'pv-search-row' }, searchControl('Search tasks', render)), list);
+  render('');
+}
+
+function scheduleView(kind, st, redraw) {
+  const label = kind === 'reminder' ? 'Reminder' : 'Alarm';
+  const text = h('input', { class: 'pv-input', type: 'text', placeholder: kind === 'reminder' ? 'Take a break' : 'Team stand-up', 'aria-label': 'New ' + label.toLowerCase() });
+  const at = h('input', { class: 'pv-input', type: 'datetime-local', 'aria-label': label + ' date and time' });
+  const add = async () => {
+    const value = text.value.trim();
+    if (!value) return toast('Add some text first.');
+    const time = localDateTimeMs(at.value);
+    if (time == null) return toast('Choose a valid local date and time.');
+    const ok = await finishMutation(kind + '.add', { text: value, at: time }, redraw, label + ' scheduled');
+    if (ok) { text.value = ''; at.value = ''; }
+  };
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, label + 's'), h('span', {}, 'Set schedules yourself; nothing changes mode or runs automatically.')), h('p', { class: 'pv-platform-note' }, nativeOrBrowserNotice()), h('div', { class: 'pv-form pv-form-card' }, field(label, text), field('When', at), actionButtons('Schedule ' + label.toLowerCase(), add)));
+  const list = h('div', { class: 'pv-list-wrap' });
+  const render = (query) => {
+    list.textContent = '';
+    const all = productivityList(kind).slice().sort(sortNewest);
+    const rows = all.filter(r => recordMatches(r, query));
+    if (!all.length) return list.append(emptyState('bell', 'No ' + label.toLowerCase() + 's yet', 'Add one with a local date and time.', kind === 'reminder' ? 'Water the plants · Friday 18:00' : 'Call home · Saturday 09:00'));
+    if (!rows.length) return list.append(emptyState('search', 'No matching ' + label.toLowerCase() + 's', 'Try a different search term.'));
+    rows.forEach(r => list.append(scheduleRow(kind, r, redraw)));
+  };
+  st.append(h('div', { class: 'pv-search-row' }, searchControl('Search ' + label.toLowerCase() + 's', render)), list);
+  render('');
+}
+
+function timerRow(record, redraw) {
+  return h('article', { class: 'pv-record' }, h('div', { class: 'pv-record-main' }, h('div', { class: 'pv-record-title' }, icon('target', 's'), h('b', {}, recordText(record) || 'Timer')), h('small', {}, record.at ? displayDateTime(record.at) : 'Timer started')), h('div', { class: 'pv-record-meta' }, h('span', { class: 'pv-status ' + (record.firedAt ? 'is-fired' : '') }, record.firedAt ? 'Fired' : 'Running / scheduled'), h('button', { class: 'pv-icon-btn is-danger', type: 'button', 'aria-label': 'Delete timer record', on: { click: () => askDelete(record, redraw) } }, icon('trash', 's'))));
+}
+function alarmsView(st, redraw) {
+  scheduleView('alarm', st, redraw);
+  const timerRoot = h('section', { class: 'pv-section pv-timers' });
+  const seconds = h('input', { class: 'pv-input', type: 'number', min: '1', max: '1440', step: '1', placeholder: 'Minutes', 'aria-label': 'Timer minutes' });
+  const timerText = h('input', { class: 'pv-input', type: 'text', placeholder: 'Focus session', 'aria-label': 'Timer label' });
+  const start = async () => {
+    const mins = positiveNumber(seconds.value, 1440);
+    if (mins == null) return toast('Timer minutes must be positive and at most 1440.');
+    const value = timerText.value.trim() || 'Timer';
+    const ok = await finishMutation('timer.start', { seconds: Math.round(mins * 60), text: value }, redraw, 'Timer started');
+    if (ok) { seconds.value = ''; timerText.value = ''; }
+  };
+  timerRoot.append(h('div', { class: 'pv-section-head' }, h('div', {}, h('b', {}, 'Timers'), h('small', {}, 'A timer is a manual alarm, not a work-project entry.'))), h('div', { class: 'pv-form pv-form-card' }, field('Minutes', seconds, 'Positive whole or decimal minutes, up to 1440.'), field('Label', timerText), actionButtons('Start timer', start)));
+  const timerList = h('div', { class: 'pv-list-wrap' });
+  const renderTimers = () => {
+    timerList.textContent = '';
+    const timers = productivityList('timer').slice().sort(sortNewest);
+    if (!timers.length) timerList.append(emptyState('target', 'No timers yet', 'Start a timer for a focused block.', '25 minutes · Deep work'));
+    else timers.forEach(r => timerList.append(timerRow(r, redraw)));
+  };
+  timerRoot.append(timerList);
+  st.append(timerRoot);
+  renderTimers();
+}
+
+function noteEdit(record, redraw) {
+  editSheet('Edit note', (body, close) => {
+    const text = h('textarea', { class: 'pv-textarea', placeholder: 'Write a note', 'aria-label': 'Note text' });
+    text.value = recordText(record);
+    body.append(field('Note', text), actionButtons('Save note', async () => {
+      const value = text.value.trim();
+      if (!value) return toast('Write something first.');
+      const ok = await finishMutation('note.edit', { id: record.id, text: value }, redraw, 'Note updated');
+      if (ok) close();
+    }, close));
+  });
+}
+function notesView(st, redraw) {
+  const text = h('textarea', { class: 'pv-textarea', placeholder: 'Capture a thought, instruction, or idea…', 'aria-label': 'New note' });
+  const add = async () => {
+    const value = text.value.trim();
+    if (!value) return toast('Write something first.');
+    const ok = await finishMutation('note.add', { text: value }, redraw, 'Note saved');
+    if (ok) text.value = '';
+  };
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Notes'), h('span', {}, 'Keep durable thoughts separate from tasks and projects.')), h('div', { class: 'pv-form pv-form-card' }, field('New note', text), actionButtons('Save note', add)));
+  const list = h('div', { class: 'pv-list-wrap' });
+  const render = (query) => {
+    list.textContent = '';
+    const all = productivityList('note').slice().sort(sortNewest);
+    const rows = all.filter(r => recordMatches(r, query));
+    if (!all.length) return list.append(emptyState('file', 'No notes yet', 'Save a thought here so it is easy to find later.', 'Prepare questions for Monday’s meeting'));
+    if (!rows.length) return list.append(emptyState('search', 'No matching notes', 'Try a different search term.'));
+    rows.forEach(r => {
+      const edit = h('button', { class: 'pv-icon-btn', type: 'button', 'aria-label': 'Edit note', on: {
+        click: () => noteEdit(r, redraw)
+      } }, icon('edit', 's'));
+      const remove = h('button', { class: 'pv-icon-btn is-danger', type: 'button', 'aria-label': 'Delete note', on: {
+        click: () => askDelete(r, redraw)
+      } }, icon('trash', 's'));
+      list.append(h('article', { class: 'pv-note' }, h('p', {}, recordText(r)),
+        h('div', { class: 'pv-note-foot' },
+          h('small', {}, displayDateTime(r.updated || r.created)),
+          h('div', { class: 'pv-record-actions' }, edit, remove))));
+    });
+  };
+  st.append(h('div', { class: 'pv-search-row' }, searchControl('Search notes', render)), list);
+  render('');
+}
+
+function workEdit(record, redraw) {
+  editSheet('Edit project', (body, close) => {
+    const title = h('input', { class: 'pv-input', type: 'text', value: record.title || '', 'aria-label': 'Project title' });
+    const category = h('input', { class: 'pv-input', type: 'text', value: record.category || '', 'aria-label': 'Category' });
+    const goal = h('textarea', { class: 'pv-textarea', 'aria-label': 'Goal' }); goal.value = record.goal || '';
+    const progress = h('input', { class: 'pv-input', type: 'number', min: '0', max: '100', step: '1', value: String(record.progress == null ? 0 : record.progress), 'aria-label': 'Progress percent' });
+    const outcome = h('textarea', { class: 'pv-textarea', placeholder: 'What did this produce?', 'aria-label': 'Outcome' }); outcome.value = record.outcome || '';
+    body.append(field('Title', title), field('Category', category), field('Goal', goal), field('Progress %', progress, '0 to 100.'), field('Outcome', outcome), actionButtons('Save changes', async () => {
+      const name = title.value.trim();
+      const pct = progressNumber(progress.value, false);
+      if (!name) return toast('Add a project title first.');
+      if (pct == null) return toast('Progress must be between 0 and 100.');
+      const ok = await finishMutation('work.edit', { id: record.id, title: name, category: category.value.trim(), goal: goal.value.trim(), progress: pct, outcome: outcome.value.trim() }, redraw, 'Project updated');
+      if (ok) close();
+    }, close));
+  });
+}
+function workLog(record, redraw) {
+  editSheet('Log project activity', (body, close) => {
+    const date = h('input', { class: 'pv-input', type: 'date', value: localDateValue(), 'aria-label': 'Activity date' });
+    const minutes = h('input', { class: 'pv-input', type: 'number', min: '1', max: '1440', step: '1', placeholder: 'Minutes', 'aria-label': 'Minutes worked' });
+    const text = h('textarea', { class: 'pv-textarea', placeholder: 'What happened?', 'aria-label': 'Activity text' });
+    const progress = h('input', { class: 'pv-input', type: 'number', min: '0', max: '100', step: '1', placeholder: 'Optional', 'aria-label': 'Progress percent' });
+    const outcome = h('textarea', { class: 'pv-textarea', placeholder: 'Result or next outcome', 'aria-label': 'Activity result' });
+    body.append(field('Date', date), field('Minutes', minutes, 'Positive, up to 1440.'), field('Activity', text), field('Progress % (optional)', progress, 'Leave blank to keep the current progress.'), field('Result', outcome), actionButtons('Log activity', async () => {
+      const mins = positiveNumber(minutes.value, 1440);
+      const pct = progressNumber(progress.value, true);
+      if (mins == null || !Number.isInteger(mins)) return toast('Minutes must be whole, positive and at most 1440.');
+      if (pct === null) return toast('Progress must be between 0 and 100.');
+      if (!date.value) return toast('Choose an activity date.');
+      if (!text.value.trim()) return toast('Describe the activity first.');
+      const args = { id: record.id, text: text.value.trim(), date: date.value, minutes: mins, outcome: outcome.value.trim() };
+      if (pct !== undefined) args.progress = pct;
+      const ok = await finishMutation('work.log', args, redraw, 'Activity logged');
+      if (ok) close();
+    }, close));
+  });
+}
+function projectCard(record, redraw) {
+  const entries = Array.isArray(record.entries) ? record.entries.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))) : [];
+  const total = Number(record.minutes) || entries.reduce((sum, entry) => sum + (Number(entry.minutes) || 0), 0);
+  const pct = Math.max(0, Math.min(100, Number(record.progress) || 0));
+  const entryList = entries.length ? h('div', { class: 'pv-entries' }, entries.map(entry => h('div', { class: 'pv-entry' }, h('div', { class: 'pv-entry-head' }, h('b', {}, entry.date || 'Undated'), h('span', {}, (Number(entry.minutes) || 0) + ' min')), h('p', {}, entry.text || ''), entry.progress == null && !entry.outcome ? null : h('small', {}, (entry.progress == null ? '' : 'Progress ' + entry.progress + '%') + (entry.progress == null || !entry.outcome ? '' : ' · ') + (entry.outcome || ''))))) : h('p', { class: 'pv-muted' }, 'No activity logged yet. Use “Log activity” for deliberate project work.');
+  return h('article', { class: 'pv-project' }, h('div', { class: 'pv-project-head' }, h('div', { class: 'pv-project-title' }, h('b', {}, record.title || 'Untitled project'), record.category ? h('span', { class: 'pv-chip' }, record.category) : null), h('div', { class: 'pv-record-actions' }, h('button', { class: 'pv-icon-btn', type: 'button', 'aria-label': 'Edit project', on: { click: () => workEdit(record, redraw) } }, icon('edit', 's')), h('button', { class: 'pv-icon-btn is-danger', type: 'button', 'aria-label': 'Delete project', on: { click: () => askDelete(record, redraw) } }, icon('trash', 's')))), record.goal ? h('p', { class: 'pv-project-goal' }, record.goal) : null, h('div', { class: 'pv-progress-line' }, h('div', { class: 'pv-progress-bar' }, h('i', { style: 'width:' + pct + '%' })), h('span', {}, pct + '%')), h('div', { class: 'pv-project-stats' }, h('span', {}, 'Total minutes ', h('b', {}, String(total))), h('span', {}, 'Entries ', h('b', {}, String(entries.length)))), record.outcome ? h('div', { class: 'pv-outcome' }, h('b', {}, 'Outcome'), h('span', {}, record.outcome)) : null, h('details', { class: 'pv-entry-details' }, h('summary', {}, 'Activity log', h('span', {}, entries.length ? String(entries.length) : 'empty')), entryList), h('button', { class: 'btn ghost pv-log-btn', type: 'button', on: { click: () => workLog(record, redraw) } }, icon('plus', 's'), 'Log activity'));
+}
+function workView(st, redraw) {
+  const title = h('input', { class: 'pv-input', type: 'text', placeholder: 'Launch the community workshop', 'aria-label': 'Project title' });
+  const category = h('input', { class: 'pv-input', type: 'text', placeholder: 'Work, study, personal', 'aria-label': 'Project category' });
+  const goal = h('textarea', { class: 'pv-textarea', placeholder: 'What does done look like?', 'aria-label': 'Project goal' });
+  const add = async () => {
+    const name = title.value.trim();
+    if (!name) return toast('Add a project title first.');
+    if (!goal.value.trim()) return toast('Describe the project goal first.');
+    const ok = await finishMutation('work.add', { title: name, category: category.value.trim(), goal: goal.value.trim() }, redraw, 'Project added');
+    if (ok) { title.value = ''; category.value = ''; goal.value = ''; }
+  };
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Work projects'), h('span', {}, 'For large, explicit projects only. Completing a task never creates a project entry automatically.')), h('div', { class: 'pv-form pv-form-card' }, field('Project title', title), field('Category', category), field('Goal', goal), actionButtons('Add project', add)));
+  const list = h('div', { class: 'pv-list-wrap' });
+  const render = (query) => {
+    list.textContent = '';
+    const all = productivityList('work').slice().sort(sortNewest);
+    const rows = all.filter(r => recordMatches(r, query));
+    if (!all.length) return list.append(emptyState('flag', 'No work projects yet', 'Create one only when the work is a large, explicit outcome.', 'Ship the Q4 onboarding refresh'));
+    if (!rows.length) return list.append(emptyState('search', 'No matching projects', 'Try a title, category, or goal.'));
+    rows.forEach(r => list.append(projectCard(r, redraw)));
+  };
+  st.append(h('div', { class: 'pv-search-row' }, searchControl('Search projects', render)), list);
+  render('');
+}
+
+const ProductivityViews = {
+  tasks: tasksView,
+  reminders: (st, redraw) => scheduleView('reminder', st, redraw),
+  alarms: alarmsView,
+  notes: notesView,
+  work: workView
+};
+
+if (typeof window !== 'undefined') window.ProductivityViews = ProductivityViews;
+
+'use strict';
 /* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Missions, Memory, Abilities, Settings */
 
 const ABILITIES = [
@@ -2221,17 +2940,17 @@ const ABILITIES = [
   { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Finds patterns across notes, chats and memories and links related ideas.', try: 'What patterns do you see in my last week of notes?' },
   { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Long jobs broken into stages that keep running while you are away.', try: 'Start a mission: compare the best budget laptops for coding' },
   { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Remembers things you tell it and uses them later.', try: 'Remember that I prefer short answers in Hinglish' },
-  { id: 'tasks', ic: 'tasks', name: 'Tasks & reminders', desc: 'Turns “remind me…” into tasks with due times.', try: 'Remind me to call the bank tomorrow 11am' },
+  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Standard typed/voice commands save to separate Tasks, Reminders, Alarms, Notes and Work lists.', try: 'task add karo kal 11 baje bank jana' },
   { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Morning briefing, due-task nudges and alerts pushed to you.', try: 'Brief me on today' },
-  { id: 'selfeng', ic: 'bolt', name: 'Self-engineering', desc: 'Proposes changes to its own code in a staging copy. Always asks your permission before deploy.', try: 'Audit your own code and propose one improvement', approval: true }
+  { id: 'selfeng', ic: 'code', name: 'Architecture (read-only)', desc: 'Explains its actual modules, mode chains and voice/action flow. Cannot change code or deploy.', try: 'Tumhara architecture kaise kaam karta hai?' }
 ];
 const isOn = (id) => S.abilities[id] !== false;
 const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
-  const TITLES = { today: 'Today', tasks: 'Tasks', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
+  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -2324,21 +3043,8 @@ const App = (() => {
   };
 
   /* ================= Tasks ================= */
-  BUILD.tasks = (st, redraw) => {
-    const inp = h('input', { type: 'text', placeholder: 'Add a task', 'aria-label': 'Task title' }); const due = h('input', { type: 'datetime-local', 'aria-label': 'Due (optional)' });
-    const add = () => { const t = inp.value.trim(); if (!t) return; S.tasks.push({ id: uid('t'), title: t, due: due.value ? new Date(due.value).getTime() : null, done: false, ts: Date.now() }); save(); Bus.emit('missions:changed'); redraw(); };
-    inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
-    st.append(h('div', { style: 'display:flex;flex-direction:column;gap:8px' }, h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Add')),
-      h('div', { class: 'addbar', style: 'padding:0;align-items:center' }, h('span', { class: 'muted', style: 'flex:none' }, 'Due'), due)));
-    const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)), done = S.tasks.filter(t => t.done);
-    const row = (t) => { const f = fmtDue(t.due); return h('div', { class: 'task' + (t.done ? ' done' : '') },
-      h('button', { class: 'cb' + (t.done ? ' on' : ''), role: 'checkbox', 'aria-checked': String(t.done), 'aria-label': 'Done: ' + t.title, on: { click: () => { t.done = !t.done; vibe(); save(); Bus.emit('missions:changed'); redraw(); } } }, t.done ? icon('check') : null),
-      h('div', { class: 'tt' }, h('b', {}, t.title), f.t ? h('span', { class: 'due ' + (t.done ? '' : f.c) }, f.t) : null),
-      h('button', { class: 'del', 'aria-label': 'Delete ' + t.title, on: { click: () => { S.tasks = S.tasks.filter(x => x !== t); save(); Bus.emit('missions:changed'); redraw(); } } }, icon('trash', 's'))); };
-    if (!S.tasks.length) st.append(h('div', { class: 'empty' }, icon('tasks'), h('div', {}, 'No tasks yet.'), h('div', { class: 'muted' }, 'Add one here or just tell Adarsh in chat.')));
-    if (open.length) st.append(h('div', { class: 'grp' }, open.map(row)));
-    if (done.length) st.append(h('details', {}, h('summary', { class: 'muted', style: 'padding:8px 4px' }, 'Completed (' + done.length + ')'), h('div', { class: 'grp', style: 'margin-top:8px' }, done.map(row))));
-  };
+  ['tasks', 'work', 'reminders', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
+  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'reminders', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
 
   /* ================= Missions ================= */
   BUILD.missions = (st, redraw) => {
@@ -2353,7 +3059,7 @@ const App = (() => {
     const add = () => { const t = inp.value.trim(); if (!t) return; S.memories.unshift({ id: uid('mem'), text: t, pin: false, ts: Date.now() }); save(); redraw(); };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
     st.append(h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Save')));
-    st.append(h('p', { class: 'muted' }, 'Adarsh uses these in every chat. Say “remember that…” in chat to add one.'));
+    st.append(h('p', { class: 'muted' }, 'Memory local hai. Online replies mein relevant entries tabhi jayengi jab AI access mein sharing on ho.'));
     if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Nothing remembered yet.')));
     const sorted = [...S.memories].sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     sorted.forEach((m, i) => st.append(h('div', { class: 'mem' }, h('span', { class: 'id' }, '#' + (S.memories.length - S.memories.indexOf(m))), h('p', {}, m.text),
@@ -2388,7 +3094,7 @@ const App = (() => {
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Kore') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -2398,14 +3104,20 @@ const App = (() => {
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
-      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
+      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
+      swItem('sparkle', 'Jarvis (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.jarvis !== false, v => { S.settings.jarvis = v; })));
+    st.append(label('Jarvis'), h('div', { class: 'grp' },
+      navItem('tasks', 'Tasks and Work', 'Drawer mein separate lists; Work sirf bade projects ke liye', () => show('tasks')),
+      navItem('shield', 'AI access', 'Local read/edit, online context aur old chats ke alag controls', aiAccessSheet),
+      navItem('code', 'Architecture (read-only)', 'Actual modules aur selected mode ka model plan; no code changes', architectureSheet),
+      navItem('bell', 'Notification permissions', 'Scheduled task/reminder/alarm alerts', () => Actions.infoSheet())));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
       navItem('server', 'Connection', Backend.isNative() ? 'On-device engine · tap for status' : Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
     st.append(label('Data'), h('div', { class: 'grp' },
-      navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
+      navItem('download', 'Export data', 'Chats, memory and all productivity records as JSON', exportSheet),
       navItem('upload', 'Import data', 'Restore from an export', () => $('#f-import').click()),
       navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Clear all chats?', text: 'This removes every chat on this device. Memory and tasks stay.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
     st.append(h('div', { class: 'center muted' }, 'ADARSH UI v4 · frontend only'));
@@ -2416,6 +3128,51 @@ const App = (() => {
       b.append(i, h('button', { class: 'btn pri', on: { click: () => { S.settings.name = i.value.trim() || 'Adarsh'; save(); close(); buildDrawer(); drawerList(); build('settings'); } } }, 'Save'));
     } });
   }
+  function aiAccessSheet() {
+    sheet({ title: 'AI access', tall: true, build(b) {
+      b.append(h('p', { class: 'muted' }, 'Local commands phone par chalte hain. Online sharing on karne se sirf relevant, limited records selected mode ke model providers ko ja sakte hain. Keys, PIN aur connection credentials include nahi hote. Mic recognizer aur online TTS ki privacy alag hai.'));
+      const rows = [
+        ['localRead', 'Local records read', 'Tasks, Work, Notes, Reminders aur Memory dekhna'],
+        ['localEdit', 'Local add / edit', 'Standard commands se save, edit aur task completion; no delete/security'],
+        ['personalOnline', 'Share relevant context online', 'Default Off. Sirf sawaal se relevant entries, poora database nahi'],
+        ['oldChats', 'Old chats context', 'Alag opt-in; online sharing bhi On hona chahiye'],
+        ['currentChat', 'Current conversation context', 'Follow-up answers ke liye isi chat ke limited earlier messages'],
+        ['architecture', 'Read-only architecture', 'App modules/model chains ka safe reference; source editing nahi']
+      ];
+      b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
+      b.append(h('p', {}, 'AI delete/clear, PIN/security, DND aur sensitive settings nahi badal sakta. Ye toggles AI khud On nahi kar sakta. Jo mode aap select karte ho wahi answer deta hai.'));
+    } });
+  }
+  function architectureSheet() {
+    sheet({ title: 'Architecture · read-only', tall: true, build(b) {
+      const output = h('div', {}, h('p', {}, 'Reference padh raha hoon…')); b.append(output);
+      Backend.send({ architecture: true, mode: Modes.current().id, access: Productivity.access() }, { onProgress: () => {} }).then(r => {
+        output.replaceChildren(); const d = Array.isArray(r) ? r[0] : r;
+        if (!d || !d.reference) { output.append(h('p', {}, (d && d.text) || 'Is backend mein reference available nahi hai.')); return; }
+        output.append(h('p', {}, 'Code read-only reference. Koi write, deploy ya arbitrary file access nahi.'), h('p', { class: 'muted' }, 'Selected mode: ' + Modes.current().name));
+        (d.reference.modules || []).forEach(m => output.append(h('div', { class: 'item' }, h('span', { class: 't' }, h('b', {}, m.path), h('small', {}, m.purpose)))));
+        output.append(h('details', {}, h('summary', {}, 'Model plans / voice / boundaries'), h('pre', { style: 'white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px' }, JSON.stringify(d.reference, null, 2))));
+      }).catch(e => output.replaceChildren(h('p', {}, 'Reference nahi khula: ' + e.message)));
+    } });
+  }
+  /* V6: offline neural voice pack (Hindi + English male, ~42 MB once). Only shown inside the Android app. */
+  function offlineBlock() {
+    const N = window.AdarshNative;
+    if (!N || !N.neuralStatus) return h('span');
+    const msg = h('p', { class: 'muted' }); const btn = h('button', { class: 'btn', on: { click: () => { try { N.neuralInstall(); } catch (e) {} paint(); poll(); } } }, 'Download offline voice');
+    const st = () => { try { return JSON.parse(N.neuralStatus()); } catch (e) { return {}; } };
+    function paint() {
+      const s = st();
+      if (s.installing) { msg.textContent = 'Offline voice download ho rahi hai… ' + (s.progress || 0) + '%'; btn.disabled = true; return; }
+      btn.disabled = false;
+      if (s.hi && s.en) { msg.textContent = 'Offline neural voice taiyar (Hindi + English). Internet ya Gemini quota na ho tab ye bolti hai.'; btn.hidden = true; }
+      else msg.textContent = (s.error ? 'Download fail: ' + s.error + '. ' : '') + 'Offline voice (Piper, ~42 MB, ek baar) download karo: bina internet ke bhi natural awaaz.';
+    }
+    function poll() { paint(); if (st().installing) setTimeout(poll, 800); }
+    window.__adarshNeural = () => paint();
+    paint();
+    return h('div', {}, h('label', { class: 'l' }, 'Offline neural voice (fallback)'), msg, btn);
+  }
   function voiceSheet() {
     sheet({ title: 'Voice & language', tall: true, build(b) {
       const segOf = (opts, get, set) => {
@@ -2425,8 +3182,31 @@ const App = (() => {
       };
       const rate = h('input', { type: 'range', min: '0.7', max: '1.4', step: '0.05', value: String(S.settings.rate), 'aria-label': 'Speaking speed', on: { change: () => { S.settings.rate = +rate.value; save(); } } });
       const pick = h('select', { 'aria-label': 'Natural voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit', on: { change: () => { S.settings.voiceName = pick.value; save(); TTS.speak('Namaste, main Adarsh hoon. Ye meri nayi awaaz hai.'); } } },
-        TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Kore') === v) o.selected = true; return o; }));
+        TTS.VOICES.map(([v, d]) => { const o = h('option', { value: v }, v + ' · ' + d); if ((S.settings.voiceName || 'Orus') === v) o.selected = true; return o; }));
       const status = h('p', { class: 'muted' });
+      /* phone TTS voices come from the system engine: names are cryptic, so the gender is shown and each tap is spoken */
+      const devPick = (() => {
+        const A = window.AdarshNative;
+        if (!(A && A.ttsVoices)) return null;
+        let list = [];
+        try { list = JSON.parse(A.ttsVoices()) || []; } catch (e) { list = []; }
+        if (!list.length) return null;
+        const sel = h('select', { 'aria-label': 'Phone voice', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
+          on: { change: () => {
+            S.settings.deviceVoice = sel.value === '__auto' ? '' : sel.value; save();
+            try { A.ttsSetVoice(S.settings.deviceVoice || ''); } catch (e) {}
+            try { A.ttsSpeak('pv' + Date.now(), 'Namaste Sir, ye phone ki awaaz hai.', S.settings.lang, +S.settings.rate || 1); } catch (e) {}
+          } } },
+          h('option', { value: '__auto' }, 'Auto · best available (male preferred)'));
+        list.forEach(v => {
+          const o = h('option', { value: v.name }, v.name + (v.gender ? ' · ' + v.gender : '') + ' · ' + v.locale + (v.network ? ' · net' : ''));
+          if ((S.settings.deviceVoice || '') === v.name) o.selected = true;
+          sel.append(o);
+        });
+        if (!S.settings.deviceVoice) sel.value = '__auto';
+        return h('div', {}, h('label', { class: 'l' }, 'Phone voice'), sel,
+          h('p', { class: 'muted' }, 'Phone mode aur fallback ki awaaz. Female lag rahi ho to yahan se male choose karo — tap par sample bolega.'));
+      })();
       const note = () => {
         const n = Backend.canTts() && !Backend.isDemo();
         status.textContent = (n ? 'Natural voice: Gemini TTS (Gemini API key chahiye; free quota limited). ' : 'Natural voice is backend me nahi hai. ')
@@ -2438,9 +3218,11 @@ const App = (() => {
         segOf([['auto', 'Auto'], ['natural', 'Natural'], ['device', 'Phone']], () => S.settings.voiceEngine || 'auto', v => { S.settings.voiceEngine = v; }),
         h('p', { class: 'muted' }, 'Auto: natural (Gemini) awaaz, aur fail ho to phone ki voice. Phone: sirf device TTS, offline bhi chalta hai.'),
         h('label', { class: 'l' }, 'Natural voice'), pick,
+        devPick || null,
         h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
         segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
         h('label', { class: 'l' }, 'Speaking speed'), rate,
+        offlineBlock(),
         TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
           : h('p', {}, 'Is browser me speech output nahi hai.'),
         status);
@@ -2530,7 +3312,8 @@ const App = (() => {
   }
   function exportSheet() {
     sheet({ title: 'Export data', tall: true, build(b) {
-      const data = JSON.stringify({ chats: S.chats, memories: S.memories, tasks: S.tasks, missions: S.missions, settings: S.settings, abilities: S.abilities }, null, 1);
+      Productivity.sync();
+      const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
       const N = window.AdarshNative;
       window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'Could not save the file'); };
@@ -2545,7 +3328,17 @@ const App = (() => {
     const t = e.target;
     if (t.id === 'f-import' && t.files[0]) {
       t.files[0].text().then(txt => {
-        const d = JSON.parse(txt); confirmSheet({ title: 'Replace data?', text: 'Imported chats, memory and tasks replace what is on this device.', label: 'Import', onYes: () => { ['chats', 'memories', 'tasks', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; }); S.cur = S.chats[0] ? S.chats[0].id : null; save(); Chat.renderThread(); drawerList(); toast('Imported'); } });
+        const d = JSON.parse(txt);
+        if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('Invalid export');
+        const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
+        const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key] : []).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
+        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
+          try {
+            const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
+            ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; });
+            S.cur = S.chats[0] ? S.chats[0].id : null; saveNow(); Chat.renderThread(); drawerList(); toast('Imported');
+          } catch (e) { toast('Import fail: ' + e.message); }
+        } });
       }).catch(() => toast('That file is not valid JSON')); t.value = '';
     }
     if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
@@ -2589,16 +3382,40 @@ const TTS = (() => {
   const webDev = () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
   const natural = () => S.settings.voiceEngine !== 'device' && typeof Backend !== 'undefined' && Backend.canTts() && !Backend.isDemo();
   let cur = null, seq = 0, audio = null, naturalDown = 0;
+  let devVoice = null; // last phone voice pushed to Kotlin
   const info = { last: '', why: '' };
   /* Kotlin -> page: ('start'|'done'|'error'|'stopped', id) */
   window.__adarshTts = (type, id) => { if (!cur || !cur.waiting || cur.waiting.id !== id) return; const w = cur.waiting; if (type === 'start') return; cur.waiting = null; w.done(type === 'done'); };
   const rate = () => +S.settings.rate || 1;
+  /* V6 offline neural voice (Piper on the phone): tried after the natural voice failed, before the phone's own voice */
+  const neuralOk = () => { try { return !!(N && N.neuralSpeak && N.neuralReady && N.neuralReady()); } catch (e) { return false; } };
+  function neural(job, text) {
+    return new Promise((done) => {
+      const id = 'tts' + (++seq);
+      job.waiting = { id, done };
+      try { N.neuralSpeak(id, text, S.settings.lang || 'en-IN', rate()); } catch (e) { job.waiting = null; done(false); }
+    });
+  }
+  /* neural first when installed, then the phone voice. Resolves true when something spoke. */
+  async function fallback(job, text) {
+    if (neuralOk()) {
+      info.last = 'offline';
+      const ok = await neural(job, text);
+      if (job !== cur || ok) return ok;
+    }
+    info.last = 'device';
+    return device(job, text);
+  }
   /* play one piece on the device voice; resolves true when it finished speaking */
   function device(job, text) {
     return new Promise((done) => {
       if (nativeDev()) {
         const id = 'tts' + (++seq);
         job.waiting = { id, done };
+        if (N.ttsSetVoice && S.settings.deviceVoice !== devVoice) {   // the voice picked in Settings (blank = automatic)
+          devVoice = S.settings.deviceVoice || '';
+          try { N.ttsSetVoice(devVoice); } catch (e) {}
+        }
         try { N.ttsSpeak(id, text, S.settings.lang || 'en-IN', rate()); } catch (e) { job.waiting = null; done(false); }
         return;
       }
@@ -2630,7 +3447,7 @@ const TTS = (() => {
       } catch (e) { done(false); }
     });
   }
-  const fetchClip = (text, ms) => Backend.tts({ text, voice: S.settings.voiceName || 'Kore', lang: S.settings.lang }, ms)
+  const fetchClip = (text, ms) => Backend.tts({ text, voice: S.settings.voiceName || 'Orus', lang: S.settings.lang }, ms)
     .then(r => (r && r.type === 'audio' ? r : Promise.reject(new Error((r && r.error) || 'no audio'))));
   /* first sentence alone (so the voice starts fast), then the rest in one piece */
   function pieces(text) {
@@ -2649,22 +3466,21 @@ const TTS = (() => {
         if (!clip) {
           if (S.settings.voiceEngine === 'natural' && !nativeDev() && !webDev()) return;
           naturalDown = Date.now() + 5 * 60e3;   // natural voice is down (no Gemini key / quota): device voice for 5 min
-          info.last = 'device';
-          await device(job, parts.slice(i).join(' '));
+          await fallback(job, parts.slice(i).join(' '));
           return;
         }
         info.last = 'natural'; info.model = clip.model || info.model;
         const ok = await playClip(job, clip);
         if (job !== cur) return;
-        if (!ok) { info.last = 'device'; await device(job, parts.slice(i).join(' ')); return; }
+        if (!ok) { await fallback(job, parts.slice(i).join(' ')); return; }
       }
       return;
     }
-    info.last = 'device';
-    await device(job, text);
+    if (S.settings.voiceEngine === 'device') { info.last = 'device'; await device(job, text); return; }
+    await fallback(job, text);
   }
   return {
-    VOICES, info,
+    VOICES, info, neuralOk,
     ok: () => natural() || nativeDev() || webDev(),
     /* speak(text, onEnd): onEnd runs once when speech finished or failed, never after stop() */
     speak(text, onEnd) {
@@ -2675,6 +3491,8 @@ const TTS = (() => {
       run(job, t).catch(() => {}).finally(() => { if (cur === job) { cur = null; if (onEnd) onEnd(); } });
     },
     speaking: () => !!cur,
+    pause() { try { if (N && N.neuralPause) N.neuralPause(); if (audio) audio.pause(); } catch (e) {} },
+    resume() { try { if (N && N.neuralResume) N.neuralResume(); if (audio) audio.play(); } catch (e) {} },
     stop() {
       const j = cur; cur = null;
       if (j && j.waiting) { const w = j.waiting; j.waiting = null; w.done(false); }
@@ -2723,7 +3541,9 @@ const STT = {
 };
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, inp, handsfree = true, speakOn = S.settings.voiceReplies !== false, openFlag = false, collected = [], micBtn;
+  let el, orb, stateEl, cap, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
+  let session = 0, releasePrompt = null, releaseAsk = null;
+  const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…' };
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s]; if (micBtn) micBtn.textContent = s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
   const caption = (u, a) => { cap.textContent = ''; if (u) cap.append(h('div', { class: 'u' }, u)); if (a) cap.append(h('div', {}, a)); cap.scrollTop = cap.scrollHeight; };
@@ -2742,47 +3562,108 @@ const Voice = (() => {
       h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
   function open() {
-    if (openFlag) return; openFlag = true; build(); el.hidden = false; setState('idle');
+    if (openFlag) return; session++; openFlag = true; build(); el.hidden = false; setState('idle');
     caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
   }
   function close() {
-    if (!openFlag) return; openFlag = false; STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
+    if (!openFlag) return; openFlag = false; session++;
+    if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
+    STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
   function toggle() {
     const s = el.dataset.state;
     if (s === 'listening') return STT.stop();
-    if (s === 'speaking') { TTS.stop(); setState('idle'); return; }
+    if (s === 'speaking') { session++; if (releasePrompt) releasePrompt(); TTS.stop(); setState('idle'); return; }
     if (s === 'thinking') return;
     listen();
   }
   function listen() {
-    let text = '';
+    let text = ''; const token = session;
     const ok = STT.start({
-      onPartial: (t) => { if (openFlag) caption((text + ' ' + t).trim()); },
-      onFinal: (t) => { text = (text + t).trim(); caption(text); },
-      onEnd: () => { if (!openFlag) return; if (text) say(text); else setState('idle'); },
-      onError: (m) => { caption('', m); }
+      onPartial: (t) => { if (active(token)) caption((text + ' ' + t).trim()); },
+      onFinal: (t) => { if (active(token)) { text = (text + t).trim(); caption(text); } },
+      onEnd: () => { if (!active(token)) return; if (text) say(text); else setState('idle'); },
+      onError: (m) => { if (active(token)) caption('', m); }
     });
     if (!ok) { caption('', 'Speech input isn’t available here. Type below.'); return; }
     setState('listening'); vibe();
   }
-  function typed() { const t = inp.value.trim(); if (!t) return; inp.value = ''; STT.stop(); TTS.stop(); say(t); }
+  function typed() { const t = inp.value.trim(); if (!t || Chat.isBusy()) return; inp.value = ''; session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt(); STT.stop(); TTS.stop(); say(t); }
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  /* Standard-mode actions run on the phone after the card mounts: wait for them so we speak the result, not the plan */
+  async function waitDone(list, ms) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (list.every(a => a.run && a.run.state !== 'running')) return true;
+      await sleep(80);
+    }
+    return false;
+  }
+  /* one short yes/no turn, used when a sensitive action needs a spoken confirmation */
+  function prompt(text, token) {
+    return new Promise(resolve => {
+      let done = false; const timer = setTimeout(() => { TTS.stop(); fin(); }, 20000);
+      const fin = () => { if (done) return; done = true; clearTimeout(timer); releasePrompt = null; resolve(); };
+      releasePrompt = fin;
+      if (!active(token)) return fin();
+      TTS.speak(text, fin);
+    });
+  }
+  function askOnce(ms, token) {
+    return new Promise((resolve) => {
+      if (!active(token) || !STT.supported()) return resolve('');
+      let got = '', done = false, timer;
+      const fin = (v) => { if (done) return; done = true; clearTimeout(timer); releaseAsk = null; try { STT.stop(); } catch (e) {} resolve(v); };
+      releaseAsk = fin;
+      const ok = STT.start({
+        onPartial: (t) => { if (active(token)) caption(t); },
+        onFinal: (t) => { if (active(token)) got = (got + ' ' + t).trim(); },
+        onEnd: () => fin(got),
+        onError: () => fin(got)
+      });
+      if (!ok) return fin('');
+      setState('listening');
+      timer = setTimeout(() => fin(got), ms);
+    });
+  }
 
   async function say(text) {
-    setState('thinking'); caption(text); collected = [];
+    if (!openFlag || Chat.isBusy()) return;
+    const token = ++session, collected = [];
+    setState('thinking'); caption(text);
     const un = Bus.on('reply', ({ msg }) => collected.push(msg.reply));
     try { await Chat.submit(text, { voice: true }); } finally { un(); }   // voice: the engine answers short and speakable
-    if (!openFlag) return;
+    if (!active(token)) return;
+    if (!collected.length) { caption(text, 'Message send nahi hua. Chat mein source/connection check karo.'); setState('idle'); return; }
     const structured = collected.find(r => r.type === 'ask' || r.type === 'approve');
+    const acts = collected.filter(r => r && r.type === 'actions');
+    const risky = acts.filter(a => a.run && a.run.state === 'pending' && (a.steps || []).some(s => ['message.draft', 'call.dial'].includes(s.action)));
+    if (risky.length) {   // "Sir, message bhejne se pehle confirm chahiye. Haan bolo to kar dunga."
+      const a = risky[0];
+      const q = 'Sir, ' + ((a.steps.find(s => s.risk !== 'safe') || {}).detail || 'ye kaam') + ' ke liye confirm chahiye. Haan bolo to kar dunga.';
+      caption(text, q);
+      if (speakOn && TTS.ok()) { setState('speaking'); await prompt(q, token); }
+      if (!active(token)) return;
+      const ans = (await askOnce(7000, token)).trim().replace(/[.!?।]+$/g, '').toLowerCase();
+      if (!active(token)) return;
+      const yes = /^(haan|han|ha|yes|yep|ok|okay|theek|theek hai|kar do|kardo|karo|sure|हाँ|हां|ठीक है)( sir)?$/.test(ans);
+      const no = /^(nahi|nahin|no|nope|cancel|mat karo|rehne do|नहीं|नही)( sir)?$/.test(ans);
+      const c = Actions.ctx(a);
+      if (yes) { setState('thinking'); await Actions.execute(a, true, c && c.redraw); }
+      else if (no) Actions.cancel(a, c && c.redraw);
+      else { caption(text, 'Clear Haan/Nahi nahi mila. Kaam pending hai; chat card par confirm ya cancel karo.'); setState('idle'); return; }
+    }
+    if (!active(token)) return;
     const spoken = collected.map(r => (r && r.type === 'text' ? voiceText(r.text) : speechOf(r))).filter(Boolean).join(' ');
     caption(text, spoken || 'Done.');
     if (structured) {
       if (speakOn) TTS.speak(spoken); toast('Adarsh needs your answer in chat');
-      setTimeout(close, speakOn ? 1800 : 400); return;
+      setTimeout(() => { if (active(token)) close(); }, speakOn ? 1800 : 400); return;
     }
-    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!openFlag || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
+    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
     else { setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
   }
   /* Settings > Speak replies: read every new chat answer aloud (voice mode speaks on its own) */
@@ -2793,6 +3674,129 @@ const Voice = (() => {
   });
   return { open, close, get isOpen() { return openFlag; } };
 })();
+
+'use strict';
+/* Local-rule action plans only. Safe completed steps are never replayed during confirmation. */
+const Actions = (() => {
+  const N = () => window.AdarshNative;
+  const LABEL = { 'task.add': ['Task', 'tasks'], 'task.edit': ['Task edit', 'edit'], 'task.done': ['Task status', 'check'], 'task.list': ['Tasks', 'tasks'],
+    'reminder.add': ['Reminder', 'bell'], 'reminder.edit': ['Reminder edit', 'edit'], 'reminder.list': ['Reminders', 'bell'],
+    'alarm.add': ['Alarm', 'bell'], 'alarm.edit': ['Alarm edit', 'edit'], 'alarm.list': ['Alarms', 'bell'], 'timer.start': ['Timer', 'target'],
+    'note.add': ['Note', 'file'], 'note.edit': ['Note edit', 'edit'], 'note.list': ['Notes', 'file'],
+    'work.add': ['Work project', 'book'], 'work.edit': ['Work edit', 'edit'], 'work.log': ['Work log', 'book'], 'work.list': ['Work', 'book'],
+    'memory.add': ['Memory', 'brain'], 'memory.edit': ['Memory edit', 'edit'], 'memory.list': ['Memory', 'brain'], 'settings.update': ['Setting', 'sliders'],
+    'app.open': ['App', 'sliders'], 'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
+    'voice.open': ['Voice', 'voice'], 'message.draft': ['Message', 'send'], 'call.dial': ['Call', 'chat'], 'torch.set': ['Torch', 'bolt'] };
+  const contexts = new WeakMap();
+  const ctx = d => contexts.get(d);
+  let hudEl = null, hudTimer = 0;
+  function hud(text, busy) {
+    if (S.settings.jarvis === false) return;
+    if (!hudEl) { hudEl = h('div', { class: 'hud', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'hud-orb' }, h('i'), h('i'), h('i')), h('span', { class: 'hud-t' })); document.body.append(hudEl); }
+    hudEl.querySelector('.hud-t').textContent = text || 'Kaam kar raha hoon…';
+    hudEl.classList.toggle('busy', !!busy); hudEl.classList.add('on'); clearTimeout(hudTimer);
+    if (!busy) hudTimer = setTimeout(() => hudEl.classList.remove('on'), 2600);
+  }
+  function webStep(s) {
+    const a = s.args || {};
+    if (s.action === 'web.search') { window.open('https://www.google.com/search?q=' + encodeURIComponent(a.query), '_blank', 'noopener'); return { ok: true, message: 'Search khol diya' }; }
+    const sites = { youtube: 'youtube.com', whatsapp: 'web.whatsapp.com', instagram: 'instagram.com', gmail: 'mail.google.com', maps: 'maps.google.com', telegram: 'web.telegram.org', spotify: 'open.spotify.com', drive: 'drive.google.com', facebook: 'facebook.com', twitter: 'x.com', netflix: 'netflix.com' };
+    if (s.action === 'app.open' && sites[a.app]) { window.open('https://' + sites[a.app], '_blank', 'noopener'); return { ok: true, message: 'App website khol di' }; }
+    if (s.action === 'phone.status') return { ok: true, message: navigator.onLine ? 'Browser online hai' : 'Browser offline hai' };
+    if (s.action === 'voice.open') { Voice.open(); return { ok: true, message: 'Voice mode khul gaya' }; }
+    return { ok: false, message: 'Ye operation sirf Android app mein chalta hai' };
+  }
+  async function step(s, confirmed, mode) {
+    if (!LABEL[s.action]) return { ok: false, message: 'Sir, ye action AI ke liye allowed nahi hai.' };
+    const sensitive = ['message.draft', 'call.dial'].includes(s.action);
+    if (sensitive && !confirmed) return { ok: false, pending: true, message: 'Sir, confirmation chahiye.' };
+    if (!Productivity.native() && /^(app|web|phone|voice)\./.test(s.action)) {
+      if (mode !== 'standard' || !Productivity.access().localEdit || (s.action === 'app.open' && s.args.app === 'settings')) return { ok: false, message: 'Ye action disabled hai.' };
+      try { return webStep(s); } catch (e) { return { ok: false, message: 'App/search nahi khul paya.' }; }
+    }
+    return Productivity.run(s, confirmed, false, mode);
+  }
+  async function execute(d, confirmed = false, redraw) {
+    if (d.origin !== 'local-rule' || d.mode !== 'standard') { d.text = 'Sir, untrusted action plan execute nahi kiya.'; return; }
+    if (d.run && ['running', 'done', 'cancel'].includes(d.run.state)) return d.run;
+    const steps = d.steps || [];
+    if (!steps.length) return;
+    d.run = { state: 'running', results: (d.run && d.run.results) || {} };
+    const pendingSteps = steps.filter(s => !(d.run.results[s.id] && !d.run.results[s.id].pending));
+    if (Productivity.native() && pendingSteps.some(s => /^(task|reminder|alarm|timer)\./.test(s.action) && (s.args.at || s.args.seconds))) {
+      const i = info(); if (i && !i.notify) { try { N().setNotify(true); } catch (e) {} }
+    }
+    hud('Ji Sir, ' + (steps[0].pending || 'kaam kar raha hoon'), true);
+    if (redraw) redraw();
+    for (const s of pendingSteps) {
+      let r;
+      try { r = await step(s, confirmed, d.mode); } catch (e) { r = { ok: false, message: 'Kaam fail: ' + e.message }; }
+      d.run.results[s.id] = { ...r, id: s.id };
+      if (r.ok && s.action === 'voice.open') { try { Voice.open(); } catch (e) {} }
+    }
+    const values = steps.map(s => d.run.results[s.id] || {});
+    d.done = values.filter(r => r.ok).length;
+    d.failed = values.filter(r => !r.ok && !r.pending).length;
+    const pending = values.some(r => r.pending);
+    d.run.state = pending ? 'pending' : 'done';
+    d.text = 'Ji Sir, ' + values.map(r => r.message).filter(Boolean).join('. ');
+    hud(pending ? 'Sir, confirmation ka wait hai' : d.failed ? 'Sir, kuch kaam nahi ho paye' : 'Ho gaya Sir', false);
+    saveNow(); if (redraw) redraw();
+    // Voice.say owns spoken results while its overlay is open. Avoid duplicate/racing speech.
+    if (redraw && S.settings.speak && TTS.ok() && !Voice.isOpen && !pending) TTS.speak(d.text);
+    return d.run;
+  }
+  function cancel(d, redraw) {
+    const values = Object.values((d.run && d.run.results) || {}).filter(r => r.ok);
+    d.run = { state: 'cancel', results: (d.run && d.run.results) || {} };
+    d.text = 'Ji Sir, confirm wale kaam cancel kar diye.' + (values.length ? ' Pehle ke ' + values.length + ' safe kaam ho chuke hain.' : '');
+    saveNow(); if (redraw) redraw();
+  }
+  function confirm(d, c) {
+    const sensitive = (d.steps || []).filter(s => ['message.draft', 'call.dial'].includes(s.action));
+    if (!sensitive.length) return;
+    sheet({ title: 'Confirm karo, Sir', build(b, close) {
+      b.append(h('p', { class: 'muted' }, 'Composer/dialer khulega; final Send/Call aap dabayenge.'));
+      sensitive.forEach(s => b.append(h('div', { class: 'kvr' }, h('b', {}, LABEL[s.action][0]), h('span', {}, s.detail || s.pending))));
+      b.append(h('div', { class: 'card-btns' }, h('button', { class: 'btn ghost', on: { click: () => { close(); cancel(d, c.redraw); } } }, 'Nahi'), h('button', { class: 'btn pri', on: { click: () => { close(); execute(d, true, c.redraw); } } }, 'Haan, karo')));
+    } });
+  }
+  function stepRow(d, s) {
+    const r = d.run && d.run.results && d.run.results[s.id];
+    const state = r ? r.pending ? 'wait' : r.ok ? 'ok' : 'fail' : d.run && d.run.state === 'running' ? 'run' : 'wait';
+    return h('div', { class: 'act-step', 'data-state': state }, h('span', { class: 'as-ic' }, icon((LABEL[s.action] || ['Kaam', 'sparkle'])[1], 's')),
+      h('span', { class: 'as-t' }, h('b', {}, (LABEL[s.action] || ['Kaam'])[0] + (s.detail ? ' · ' + s.detail : '')), h('small', {}, r ? r.message : s.pending)),
+      h('span', { class: 'as-s' }, state === 'ok' ? icon('check', 's') : state === 'fail' ? icon('x', 's') : state === 'run' ? '…' : ''));
+  }
+  function card(d, c) {
+    contexts.set(d, c);
+    // Older builds stored a circular context on the reply. Remove it before any persistence.
+    delete d._ctx;
+    const wrap = h('div', { class: 'card act' }, h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')),
+      h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));
+    const state = d.run && d.run.state;
+    const need = (d.steps || []).some(s => ['message.draft', 'call.dial'].includes(s.action));
+    if (need && (!state || state === 'pending')) wrap.append(h('div', { class: 'card-btns' }, h('button', { class: 'btn ghost', on: { click: () => cancel(d, c.redraw) } }, 'Nahi'), h('button', { class: 'btn pri', on: { click: () => confirm(d, c) } }, 'Haan, karo')));
+    const results = Object.values((d.run && d.run.results) || {});
+    results.filter(r => Array.isArray(r.records)).forEach(r => wrap.append(h('details', {}, h('summary', {}, 'Records (' + r.records.length + ')'), r.records.slice(0, 20).map(x => h('p', {}, x.title || x.text || x.id)))));
+    if (d.failed) wrap.append(h('p', { class: 'muted' }, 'Sir, failed step ka sahi naam/time bata kar dobara bolo.'));
+    // Execution is awaited by Chat.runBackend, never triggered by merely viewing/reloading a card.
+    return wrap;
+  }
+  function info() { try { return N() && N().actionInfo ? JSON.parse(N().actionInfo()) : null; } catch (e) { return null; } }
+  function infoSheet() {
+    const i = info();
+    sheet({ title: 'Notification permissions', build(b, close) {
+      if (!i) { b.append(h('p', {}, 'Browser alerts sirf tab khula rehne par chalenge. Background reminders ke liye Android app use karo.')); return; }
+      b.append(h('p', {}, 'Notifications: ' + (i.notify ? 'On' : 'Off')), h('p', {}, 'Exact alarms: ' + (i.exact ? 'Allowed' : 'Not allowed — Android alert late kar sakta hai.')));
+      if (!i.notify) b.append(h('button', { class: 'btn pri', on: { click: () => { N().setNotify(true); close(); toast('Android permission mein Allow karo.'); } } }, 'Allow notifications'));
+      b.append(h('p', { class: 'muted' }, 'App screen band ho tab scheduled notifications chal sakte hain. Android Force stop/battery restrictions delivery rok sakti hain.'));
+    } });
+  }
+  function notesSheet() { App.show('notes'); }
+  return { card, execute, cancel, ctx, notesSheet, info, infoSheet, hud, webStep, notes: () => Productivity.list('note') };
+})();
+RENDER.actions = (d, ctx) => Actions.card(d, ctx);
 
 'use strict';
 /* 06-lock.js : local PIN lock. A convenience screen lock for this device only.
@@ -2968,11 +3972,7 @@ const DemoBackend = (() => {
       const mem = t.replace(/^.*?\b(remember( that)?|yaad rakh(na)?)\b\s*/i, '').trim() || t;
       return [{ type: 'memory', text: mem }, { type: 'text', text: 'Got it. I’ll use that from now on.' }];
     }
-    if (/self|audit your|your own code|improve yourself|deploy/i.test(t)) {
-      await steps(['Inspecting own source (read-only)', 'Preparing a staged proposal'], o);
-      return [{ type: 'text', text: 'I found one safe improvement: tighten the retry logic in the LLM router. I’d stage it in a copy and run the tests first.' },
-        { type: 'approve', id: uid('ap'), title: 'Stage a change to adarsh/llm_router.py', detail: 'Creates a staged copy, runs compile + tests. Nothing goes live until you approve a deploy.', action: 'self_engineering.propose("tighten retry logic")', scope: 'Staging copy only', risk: 'medium' }];
-    }
+    if (/self|audit your|your own code|improve yourself|deploy|architecture/i.test(t)) return { type: 'text', text: 'Architecture read-only hai. Demo mein actual reference nahi hai; Android/backend connect karo. Code editing/deploy disabled hai.' };
     if (/delete|send (an )?email|post |purchase|buy /i.test(t)) {
       await steps(['Checking what this touches'], o);
       return { type: 'approve', id: uid('ap'), title: 'Do this on your behalf?', detail: 'This action changes something outside the chat: “' + t.slice(0, 90) + '”.', action: 'external_action()', scope: 'One time only', risk: 'high' };
@@ -3019,7 +4019,7 @@ const HttpBackend = {
   async send(req, o) {
     const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
+    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
@@ -3086,30 +4086,24 @@ const Backend = (() => {
 })();
 
 'use strict';
-/* 08-boot.js : start-up + the public hook object your backend can use to push things into the UI */
+/* 08-boot.js : start-up + public UI hooks */
 (function boot() {
   load();
+  Productivity.init();
   App.applyTheme();
   App.buildDrawer();
   Chat.mount($('#v-chat'));
   App.drawerList();
 
-  /* Public surface for the architecture you add later:
-       ADARSH_UI.push(reply[, {chatId}])  deliver an AI message (proactive alert, finished mission, question) into a chat
-       ADARSH_UI.banner({title,text,onOpen}) top banner;  ADARSH_UI.toast(msg);  ADARSH_UI.send(text) type as the user */
   window.ADARSH_UI = {
     push: (r, o) => Chat.push(r, o), banner, toast, send: (t) => App.ask(t), open: (v) => App.show(v),
-    on: Bus.on, version: 3
+    on: Bus.on, version: 4
   };
 
   Backend.refresh();
-  /* coming back to the app: the engine may have started (or been killed) meanwhile */
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Backend.refresh(); });
-
-  if (window.__adarshDictation) STT.dict = window.__adarshDictation;  // Android app: native SpeechRecognizer
-  /* platform dictation (Chromium tabs / desktop app); Web Speech is the fallback inside STT */
+  if (window.__adarshDictation) STT.dict = window.__adarshDictation;
   try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || STT.dict || null; }).catch(() => {}); } catch (e) {}
-
   if (S.lock) Lock.lockNow();
 })();
 

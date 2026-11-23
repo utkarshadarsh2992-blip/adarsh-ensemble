@@ -51,10 +51,12 @@ def test_open_search_status_voice():
 
 
 def test_sensitive_actions_need_confirmation():
-    for cmd in ("mummy ko message bhejo ki main late hoon", "Rahul ko call karo 9876543210", "wifi band karo"):
+    for cmd in ("mummy ko message bhejo ki main late hoon", "Rahul ko call karo 9876543210"):
         p, s = one(cmd)
         assert s["risk"] == "confirm" and p["needsConfirm"] is True
-    assert one("notes clear karo")[1]["risk"] == "destructive"
+    blocked = plan("notes clear karo", "standard", NOW)
+    assert blocked["type"] == "blocked" and not blocked["steps"]
+    assert plan("wifi band karo", "standard", NOW)["type"] == "blocked"
 
 
 def test_calendar_title_kept():
@@ -77,7 +79,7 @@ def test_multi_step_and_coreference():
     assert [s["action"] for s in p["steps"]] == ["reminder.add", "note.add"]
     assert p["steps"][1]["args"]["text"] == p["steps"][0]["args"]["text"]
     p = plan("wifi band karo aur bluetooth band karo", "standard", NOW)
-    assert len(p["steps"]) == 2 and p["needsConfirm"]
+    assert p["type"] == "blocked" and not p["steps"]
 
 
 def test_multi_step_capped_and_unclear_falls_back():
@@ -96,7 +98,8 @@ def test_validation_drops_bad_steps():
         schema.check("app.open", {"app": "not-an-app"}, NOW)
     with pytest.raises(schema.Bad):
         schema.check("note.add", {"text": " "}, NOW)
-    assert schema.check("dnd.set", {}, NOW)["on"] is False   # default off, never a crash
+    with pytest.raises(schema.Denied):
+        schema.check("dnd.set", {}, NOW)
     assert schema.check("timer.start", {"seconds": 60}, NOW)["seconds"] == 60
 
 
@@ -117,16 +120,26 @@ def test_no_model_or_network_needed():
 
 
 def test_task_and_notification_wording():
-    # "task set karo" is a reminder when a time is given
+    # All task creation wording, including "task set karo", creates a task.
     p, s = one("task set karo kal 5 baje paani peena")
-    assert s["action"] == "reminder.add" and s["args"]["text"] == "paani peena"
+    assert s["action"] == "task.add" and s["args"]["title"] == "paani peena"
     assert time.localtime(s["args"]["at"] / 1000).tm_hour == 17
-    # ... and a to-do note when there is no time
+    # A timed task add is a task, not a reminder.
+    p, s = one("task add karo kal 7 baje padhai")
+    assert s["action"] == "task.add" and s["args"]["title"] == "padhai"
+    assert time.localtime(s["args"]["at"] / 1000).tm_hour == 7
+    # ... and a no-time task is still a task, not a note.
     p, s = one("task add karo ki kal exam hai")
-    assert s["action"] == "note.add" and "exam" in s["args"]["text"]
+    assert s["action"] == "task.add" and "exam" in s["args"]["title"]
     # "mujhe notification bhej dena" is still a reminder, not a chat question
     p, s = one("mujhe notification bhej dena 10 minute baad paani ke liye")
     assert s["action"] == "reminder.add" and s["args"]["at"] == NOW + 600_000
     # a bare command leaves a usable text instead of the filler word
     p, s = one("kaam yaad dila do 2 ghante baad")
     assert s["action"] == "reminder.add" and s["args"]["text"] == "yaad dilana"
+
+
+def test_own_code_is_blocked_and_architecture_is_conversation():
+    blocked = plan("apna code change karo", "standard", NOW)
+    assert blocked["type"] == "blocked" and not blocked["steps"]
+    assert plan("architecture kaise kaam karta hai", "standard", NOW) is None

@@ -4,7 +4,8 @@ import re, pathlib
 root = pathlib.Path(__file__).parent
 src = root / "src"
 html = (src / "index.html").read_text()
-css = (src / "css" / "app.css").read_text()
+styles = re.findall(r'<link rel="stylesheet" href="(css/[^"]+)">', html)
+css = "\n".join((src / s).read_text() for s in styles)
 scripts = re.findall(r'<script src="(js/[^"]+)"></script>', html)
 js = "\n".join((src / s).read_text() for s in scripts)
 

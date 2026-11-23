@@ -244,23 +244,85 @@ class MainActivity : AppCompatActivity() {
         }
 
         fun runActions(json: String): String = onMain {
-            val req = org.json.JSONObject(json)
-            val confirmed = req.optBoolean("confirmed", false)
-            val steps = req.optJSONArray("steps") ?: org.json.JSONArray()
-            val results = org.json.JSONArray()
-            for (i in 0 until steps.length()) {
-                results.put(current!!.actions!!.run(steps.getJSONObject(i), confirmed))
+            try {
+                val req = JSONObject(json)
+                val mode = if (!req.has("mode") || req.isNull("mode")) "standard" else req.opt("mode")
+                if (mode !is String || mode != "standard") {
+                    return@onMain JSONObject().put("ok", false).put("error", "Native actions require mode=standard").put("results", org.json.JSONArray()).toString()
+                }
+                val confirmed = if (!req.has("confirmed") || req.isNull("confirmed")) false else {
+                    if (req.opt("confirmed") !is Boolean) return@onMain JSONObject().put("ok", false).put("error", "confirmed must be boolean").toString()
+                    req.getBoolean("confirmed")
+                }
+                val steps = req.optJSONArray("steps") ?: return@onMain JSONObject().put("ok", false).put("error", "steps must be an array").toString()
+                val results = org.json.JSONArray()
+                for (i in 0 until steps.length()) {
+                    val step = steps.optJSONObject(i)
+                        ?: return@onMain JSONObject().put("ok", false).put("error", "steps[$i] must be an object").toString()
+                    results.put(current!!.actions!!.run(step, confirmed))
+                }
+                JSONObject().put("ok", true).put("results", results).toString()
+            } catch (e: Exception) {
+                JSONObject().put("ok", false).put("error", e.message ?: e.javaClass.simpleName).toString()
             }
-            JSONObject().put("results", results).toString()
         }
 
+        /** Unified native records API. The JS side no longer needs separate note/reminder stores. */
+        fun recordsList(): String = onMain {
+            try {
+                val arr = org.json.JSONArray()
+                ActionStore(current!!).all().forEach { arr.put(it) }
+                JSONObject().put("records", arr).toString()
+            } catch (e: Exception) {
+                JSONObject().put("records", org.json.JSONArray()).put("ok", false).put("error", e.message ?: e.javaClass.simpleName).toString()
+            }
+        }
+
+        /** Imports only {records:[...]} and never deletes records absent from the import. */
+        fun recordsImport(json: String): String = onMain {
+            try {
+                val req = JSONObject(json)
+                val records = req.optJSONArray("records") ?: return@onMain JSONObject().put("ok", false).put("error", "records must be an array").toString()
+                val store = ActionStore(current!!)
+                val result = store.importRecords(records)
+                // Import may contain future task/reminder/alarm/timer records; rearm from the
+                // persisted source so the receiver uses the imported title/kind, not JS extras.
+                current!!.actions!!.rearmAll()
+                val all = org.json.JSONArray()
+                store.all().forEach { all.put(it) }
+                JSONObject().put("ok", true).put("imported", result.imported).put("skipped", result.skipped).put("records", all).toString()
+            } catch (e: Exception) {
+                JSONObject().put("ok", false).put("error", e.message ?: e.javaClass.simpleName).toString()
+            }
+        }
+
+        /** Manual-only deletion endpoint; action steps can never delete or clear records. */
+        fun recordsDelete(id: String): String = onMain {
+            try {
+                if (id.isBlank()) return@onMain JSONObject().put("ok", false).put("error", "id must be non-empty").toString()
+                val deleted = current!!.actions!!.deleteRecord(id)
+                if (!deleted) JSONObject().put("ok", false).put("error", "No record has id '$id'")
+                else JSONObject().put("ok", true).put("detail", id).put("message", "Record deleted")
+            } catch (e: Exception) {
+                JSONObject().put("ok", false).put("error", e.message ?: e.javaClass.simpleName)
+            }.toString()
+        }
+
+        // Legacy note API retained for existing UI callers.
         fun listNotes(): String = onMain {
             val arr = org.json.JSONArray()
             ActionStore(current!!).notes().forEach { arr.put(it) }
             JSONObject().put("notes", arr).toString()
         }
 
-        fun deleteNote(id: String) = onMain { ActionStore(current!!).remove(id); """{"ok":true}""" }
+        fun deleteNote(id: String): String = onMain {
+            val record = ActionStore(current!!).find(id)
+            if (record == null || record.optString("kind") != "note") JSONObject().put("ok", false).put("error", "Note not found")
+            else {
+                val deleted = current!!.actions!!.deleteRecord(id)
+                JSONObject().put("ok", deleted)
+            }
+        }.toString()
         fun actionInfo(): String = onMain {
             val a = current!!
             val nm = a.getSystemService(NotificationManager::class.java)

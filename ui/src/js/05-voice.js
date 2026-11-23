@@ -33,6 +33,7 @@ const TTS = (() => {
   const webDev = () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
   const natural = () => S.settings.voiceEngine !== 'device' && typeof Backend !== 'undefined' && Backend.canTts() && !Backend.isDemo();
   let cur = null, seq = 0, audio = null, naturalDown = 0;
+  let devVoice = null; // last phone voice pushed to Kotlin
   const info = { last: '', why: '' };
   /* Kotlin -> page: ('start'|'done'|'error'|'stopped', id) */
   window.__adarshTts = (type, id) => { if (!cur || !cur.waiting || cur.waiting.id !== id) return; const w = cur.waiting; if (type === 'start') return; cur.waiting = null; w.done(type === 'done'); };
@@ -191,7 +192,9 @@ const STT = {
 };
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, inp, handsfree = true, speakOn = S.settings.voiceReplies !== false, openFlag = false, collected = [], micBtn;
+  let el, orb, stateEl, cap, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
+  let session = 0, releasePrompt = null, releaseAsk = null;
+  const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…' };
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s]; if (micBtn) micBtn.textContent = s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
   const caption = (u, a) => { cap.textContent = ''; if (u) cap.append(h('div', { class: 'u' }, u)); if (a) cap.append(h('div', {}, a)); cap.scrollTop = cap.scrollHeight; };
@@ -210,33 +213,35 @@ const Voice = (() => {
       h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
   function open() {
-    if (openFlag) return; openFlag = true; build(); el.hidden = false; setState('idle');
+    if (openFlag) return; session++; openFlag = true; build(); el.hidden = false; setState('idle');
     caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
   }
   function close() {
-    if (!openFlag) return; openFlag = false; STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
+    if (!openFlag) return; openFlag = false; session++;
+    if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
+    STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
   function toggle() {
     const s = el.dataset.state;
     if (s === 'listening') return STT.stop();
-    if (s === 'speaking') { TTS.stop(); setState('idle'); return; }
+    if (s === 'speaking') { session++; if (releasePrompt) releasePrompt(); TTS.stop(); setState('idle'); return; }
     if (s === 'thinking') return;
     listen();
   }
   function listen() {
-    let text = '';
+    let text = ''; const token = session;
     const ok = STT.start({
-      onPartial: (t) => { if (openFlag) caption((text + ' ' + t).trim()); },
-      onFinal: (t) => { text = (text + t).trim(); caption(text); },
-      onEnd: () => { if (!openFlag) return; if (text) say(text); else setState('idle'); },
-      onError: (m) => { caption('', m); }
+      onPartial: (t) => { if (active(token)) caption((text + ' ' + t).trim()); },
+      onFinal: (t) => { if (active(token)) { text = (text + t).trim(); caption(text); } },
+      onEnd: () => { if (!active(token)) return; if (text) say(text); else setState('idle'); },
+      onError: (m) => { if (active(token)) caption('', m); }
     });
     if (!ok) { caption('', 'Speech input isn’t available here. Type below.'); return; }
     setState('listening'); vibe();
   }
-  function typed() { const t = inp.value.trim(); if (!t) return; inp.value = ''; STT.stop(); TTS.stop(); say(t); }
+  function typed() { const t = inp.value.trim(); if (!t || Chat.isBusy()) return; inp.value = ''; session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt(); STT.stop(); TTS.stop(); say(t); }
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   /* Standard-mode actions run on the phone after the card mounts: wait for them so we speak the result, not the plan */
@@ -249,57 +254,67 @@ const Voice = (() => {
     return false;
   }
   /* one short yes/no turn, used when a sensitive action needs a spoken confirmation */
-  function askOnce(ms) {
+  function prompt(text, token) {
+    return new Promise(resolve => {
+      let done = false; const timer = setTimeout(() => { TTS.stop(); fin(); }, 20000);
+      const fin = () => { if (done) return; done = true; clearTimeout(timer); releasePrompt = null; resolve(); };
+      releasePrompt = fin;
+      if (!active(token)) return fin();
+      TTS.speak(text, fin);
+    });
+  }
+  function askOnce(ms, token) {
     return new Promise((resolve) => {
-      if (!STT.supported()) return resolve('');
-      let got = '', done = false;
-      const fin = (v) => { if (done) return; done = true; try { STT.stop(); } catch (e) {} resolve(v); };
+      if (!active(token) || !STT.supported()) return resolve('');
+      let got = '', done = false, timer;
+      const fin = (v) => { if (done) return; done = true; clearTimeout(timer); releaseAsk = null; try { STT.stop(); } catch (e) {} resolve(v); };
+      releaseAsk = fin;
       const ok = STT.start({
-        onPartial: (t) => { if (openFlag) caption(t); },
-        onFinal: (t) => { got = (got + ' ' + t).trim(); },
+        onPartial: (t) => { if (active(token)) caption(t); },
+        onFinal: (t) => { if (active(token)) got = (got + ' ' + t).trim(); },
         onEnd: () => fin(got),
         onError: () => fin(got)
       });
-      if (!ok) return resolve('');
+      if (!ok) return fin('');
       setState('listening');
-      setTimeout(() => fin(got), ms);
+      timer = setTimeout(() => fin(got), ms);
     });
   }
 
   async function say(text) {
-    setState('thinking'); caption(text); collected = [];
+    if (!openFlag || Chat.isBusy()) return;
+    const token = ++session, collected = [];
+    setState('thinking'); caption(text);
     const un = Bus.on('reply', ({ msg }) => collected.push(msg.reply));
     try { await Chat.submit(text, { voice: true }); } finally { un(); }   // voice: the engine answers short and speakable
-    if (!openFlag) return;
+    if (!active(token)) return;
+    if (!collected.length) { caption(text, 'Message send nahi hua. Chat mein source/connection check karo.'); setState('idle'); return; }
     const structured = collected.find(r => r.type === 'ask' || r.type === 'approve');
     const acts = collected.filter(r => r && r.type === 'actions');
-    const risky = acts.filter(a => (a.steps || []).some(s => s.risk !== 'safe'));
+    const risky = acts.filter(a => a.run && a.run.state === 'pending' && (a.steps || []).some(s => ['message.draft', 'call.dial'].includes(s.action)));
     if (risky.length) {   // "Sir, message bhejne se pehle confirm chahiye. Haan bolo to kar dunga."
       const a = risky[0];
       const q = 'Sir, ' + ((a.steps.find(s => s.risk !== 'safe') || {}).detail || 'ye kaam') + ' ke liye confirm chahiye. Haan bolo to kar dunga.';
       caption(text, q);
-      if (speakOn && TTS.ok()) { setState('speaking'); await new Promise(res => TTS.speak(q, res)); }
-      const ans = await askOnce(7000);
-      const yes = /^\s*(haan|han|ha|yes|yep|ok|okay|theek|kar do|kardo|karo|sure)\b/i.test(ans || '');
-      if (openFlag) {
-        if (yes) { setState('thinking'); await Actions.execute(a, true, a._ctx && a._ctx.redraw); }
-        else {
-          a.run = { state: 'cancel', results: {} }; a.text = 'Ji Sir, cancel kar diya.';
-          try { save(); } catch (e) {}
-          if (a._ctx && a._ctx.redraw) a._ctx.redraw();
-        }
-      }
-    } else if (acts.length) {
-      await waitDone(acts, 3500);   // native execution is quick; never hang the conversation
+      if (speakOn && TTS.ok()) { setState('speaking'); await prompt(q, token); }
+      if (!active(token)) return;
+      const ans = (await askOnce(7000, token)).trim().replace(/[.!?।]+$/g, '').toLowerCase();
+      if (!active(token)) return;
+      const yes = /^(haan|han|ha|yes|yep|ok|okay|theek|theek hai|kar do|kardo|karo|sure|हाँ|हां|ठीक है)( sir)?$/.test(ans);
+      const no = /^(nahi|nahin|no|nope|cancel|mat karo|rehne do|नहीं|नही)( sir)?$/.test(ans);
+      const c = Actions.ctx(a);
+      if (yes) { setState('thinking'); await Actions.execute(a, true, c && c.redraw); }
+      else if (no) Actions.cancel(a, c && c.redraw);
+      else { caption(text, 'Clear Haan/Nahi nahi mila. Kaam pending hai; chat card par confirm ya cancel karo.'); setState('idle'); return; }
     }
-    if (!openFlag) return;
+    if (!active(token)) return;
     const spoken = collected.map(r => (r && r.type === 'text' ? voiceText(r.text) : speechOf(r))).filter(Boolean).join(' ');
     caption(text, spoken || 'Done.');
     if (structured) {
       if (speakOn) TTS.speak(spoken); toast('Adarsh needs your answer in chat');
-      setTimeout(close, speakOn ? 1800 : 400); return;
+      setTimeout(() => { if (active(token)) close(); }, speakOn ? 1800 : 400); return;
     }
-    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!openFlag || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
+    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
     else { setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
   }
   /* Settings > Speak replies: read every new chat answer aloud (voice mode speaks on its own) */
@@ -310,4 +325,3 @@ const Voice = (() => {
   });
   return { open, close, get isOpen() { return openFlag; } };
 })();
-  let devVoice = null;   // last phone voice pushed to Kotlin (S.settings.deviceVoice)

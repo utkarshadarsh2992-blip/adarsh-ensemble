@@ -92,7 +92,7 @@ const Chat = (() => {
       col.className = 'col';
       c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
     }
-    if (busy) col.append(thinkEl);
+    if (busy && thinkEl) col.append(thinkEl);
     scroll();
   }
   const scroll = () => requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
@@ -132,7 +132,7 @@ const Chat = (() => {
     a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { toast(await copyText(m.reply.text || speechOf(m.reply)) ? 'Copied' : 'Copy not available here'); } } }, icon('copy', 's')));
     if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => { if (TTS.speaking()) { TTS.stop(); return; } toast('Bol raha hoon… dobara tap = stop'); TTS.speak(m.reply.type === 'text' ? m.reply.text : txt()); } } }, icon('speaker', 's')));
     ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
-    if (isLast) a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
+    if (isLast && m.reply.type !== 'actions') a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
     const used = m.reply && m.reply.uiMode && m.reply.uiMode !== 'standard' ? Modes.get(m.reply.uiMode) : null;
     if (used) a.append(h('span', { class: 'meta', title: 'Answered in ' + used.name + ' mode' }, icon(used.ic, 's'), used.name));
     return a;
@@ -214,7 +214,7 @@ const Chat = (() => {
   };
   const MAX_ANSWERS = 8, MAX_ANSWER_CHARS = 12000;
   let pasted = [];                       // [{source, text}] for the next question only. Never saved.
-  let lastExtra = { source: 'auto', answers: [] };
+  const requestMeta = new WeakMap(); // per-user-message one-session retry data; pasted answers never persisted
   const srcMode = () => S.settings.source || 'auto';
   const validAnswers = () => pasted.map(a => ({ source: (a.source || '').trim().slice(0, 60), text: (a.text || '').trim().slice(0, MAX_ANSWER_CHARS) })).filter(a => a.text);
   function sourceSheet() {
@@ -292,37 +292,42 @@ const Chat = (() => {
 
   /* ---------- send pipeline ---------- */
   function stop() { if (ctl) ctl.abort(); }
-  function histText() {
-    return (cur() ? cur().msgs : []).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
+  function histText(c = cur()) {
+    const allowPersonal = Productivity.access().personalOnline && Productivity.access().localRead;
+    return (c ? c.msgs : []).filter(m => !m.localOnly && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
   }
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
     if (!meta && App.view !== 'chat') App.show('chat');
-    const typed = textOverride == null;
-    const answers = typed && srcMode() !== 'auto' ? validAnswers() : [];
-    if (typed && srcMode() !== 'auto' && !answers.length) { toast('Paste at least one answer first'); sourceSheet(); return; }
+    const source = srcMode(), modeId = Modes.current().id;
+    const answers = source !== 'auto' ? validAnswers() : [];
+    if (source !== 'auto' && !answers.length) { toast('Manual/Hybrid source selected hai. Answer paste karo; source Auto nahi kiya.'); sourceSheet(); return; }
     const c = cur() || newChat();  // continue the open chat: every message used to start a new one, so follow-ups never saw earlier context
-    const um = { id: uid('m'), role: 'user', text, ts: Date.now(), atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
+    const um = { id: uid('m'), role: 'user', text, ts: Date.now(), requestSource: source, atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
+    requestMeta.set(um, { source, answers });
+    busy = true; // a second submission cannot race asynchronous FileReader work
     pushUser(c, um);
-    if (textOverride == null) { ta.value = ''; pending = []; pasted = []; drawAtts(); onInput(); }
+    pasted = []; // one-shot for every submission, including live voice / typed override
+    if (textOverride == null) { ta.value = ''; pending = []; }
+    drawAtts(); onInput();
     const attachments = await Promise.all(files.map(readAtt));
-    await runBackend(c, { text, attachments, meta, source: typed ? srcMode() : 'auto', answers });
+    await runBackend(c, { text, attachments, meta, source, answers, modeId });
   }
   function pushUser(c, um) {
     if (!c.msgs.length && um.text) c.title = um.text.slice(0, 42);
     c.msgs.push(um); c.ts = Date.now(); save(); Bus.emit('chats:changed'); renderThread();
   }
-  async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [] }) {
-    lastExtra = { source, answers };
-    const modeId = Modes.current().id;   // retry uses whatever mode is selected now
+  async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [], modeId = Modes.current().id }) {
     busy = true; ctl = new AbortController(); const t0 = Date.now();
     const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
     callRows = []; drawCalls();
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' } },
+      const perms = Productivity.access();
+      const personal = Productivity.modelContext(text, c.id);
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.charCodeAt(0) === 1) {  // structured model-call event (see config.emit_call)
             try { onCallEvent(JSON.parse(s.slice(s.indexOf('{')))); } catch (e) { /* ignore */ }
@@ -336,7 +341,14 @@ const Chat = (() => {
         callRows = arr[0].calls.map(c => ({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails || [] }));
         drawCalls();
       }
-      arr.forEach((r, i) => { if (i === 0) { r.uiMode = modeId; r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
+      for (const [i, r] of arr.entries()) {
+        r.uiMode = modeId;
+        if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
+        if (r.origin === 'local-rule' || ['blocked', 'clarification'].includes(r.type)) { const last = [...c.msgs].reverse().find(m => m.role === 'user' && m.text === text); if (last) last.localOnly = true; }
+        if (personal) r.personalContext = true;
+        if (r.type === 'actions' && r.origin === 'local-rule' && modeId === 'standard') await Actions.execute(r, false);
+        deliver(c, r);
+      }
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
@@ -347,11 +359,11 @@ const Chat = (() => {
   }
   const normReply = (r) => (typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
   function deliver(c, r) {
-    if (r.type === 'memory') { const m = { id: uid('mem'), text: r.text, pin: false, ts: Date.now() }; S.memories.unshift(m); r.memId = m.id; }
-    if (r.type === 'task') { const t = { id: uid('t'), title: r.title, due: r.due || null, done: false, ts: Date.now() }; S.tasks.push(t); r.taskId = t.id; }
+    // Only the explicit local action layer may mutate productivity data. Model/demo reply shapes are display-only.
+    if (r.type === 'memory' || r.type === 'task') r = { type: 'text', text: r.type === 'task' ? 'Task proposal: ' + (r.title || '') + '. Add karne ke liye Standard command bolo.' : 'Memory proposal: ' + (r.text || '') };
     if (r.type === 'mission') upsertMission(r);
     if (r.council) { r.councilId = uid('cn'); Council.put(r.councilId, r.council); delete r.council; }  // big: stored apart from the chat state
-    const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r };
+    const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r, personalContext: !!r.personalContext };
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });
     if (document.hidden && S.settings.notif && window.Notification && Notification.permission === 'granted') { try { new Notification('Adarsh', { body: speechOf(r).slice(0, 120) }); } catch (e) {} }
@@ -363,9 +375,15 @@ const Chat = (() => {
   }
   function retry() {
     const c = cur(); if (!c || busy) return;
+    const lastU = [...c.msgs].reverse().find(m => m.role === 'user');
+    if (!lastU) return;
+    const previous = c.msgs[c.msgs.length - 1];
+    if (previous && previous.reply && previous.reply.type === 'actions') return toast('Safe kaam repeat nahi kiye. Failed step ka naya command bolo.');
+    const extra = requestMeta.get(lastU) || { source: lastU.requestSource || srcMode(), answers: [] };
+    if (extra.source !== 'auto' && !extra.answers.length) { toast('Original pasted answers is session mein nahi hain. Dobara paste karke send karo; Auto nahi kiya.'); sourceSheet(); return; }
     while (c.msgs.length && c.msgs[c.msgs.length - 1].role === 'ai') c.msgs.pop();
-    const lastU = c.msgs[c.msgs.length - 1]; if (!lastU || lastU.role !== 'user') return renderThread();
-    renderThread(); runBackend(c, { text: lastU.text || '', ...lastExtra });
+    // Retry is a new request in the currently selected mode, with this message's original source/answers.
+    renderThread(); runBackend(c, { text: lastU.text || '', ...extra, modeId: Modes.current().id });
   }
 
   /* structured-reply follow-ups */
