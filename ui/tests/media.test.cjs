@@ -10,9 +10,15 @@ const { JSDOM } = require('jsdom');
 
 const UI = path.resolve(__dirname, '..');
 const INDEX = fs.readFileSync(path.join(UI, 'src/index.html'), 'utf8');
+const APP_CSS = fs.readFileSync(path.join(UI, 'src/css/app.css'), 'utf8');
 const ORDER = [...INDEX.matchAll(/<script\s+src="([^"]+)"\s*><\/script>/g)].map(m => m[1]);
 const settle = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 const text = el => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+
+test('generated media fits mobile cards without cropping or excessive zoom', () => {
+  assert.match(APP_CSS, /\.generated-media>img,\.generated-media>video\{[^}]*width:100%[^}]*object-fit:contain[^}]*\}/);
+  assert.match(APP_CSS, /\.generated-media>video\{aspect-ratio:16\/9\}/);
+});
 
 function mount({ mediaReply, nativeMethods = {} } = {}) {
   const dom = new JSDOM(INDEX, { url: 'https://appassets.androidplatform.net/assets/index.html', runScripts: 'outside-only', pretendToBeVisual: true });
