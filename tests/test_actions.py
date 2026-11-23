@@ -114,3 +114,19 @@ def test_no_model_or_network_needed():
     assert not hasattr(mod, "httpx") and not hasattr(mod, "config")   # pure local rules
     p = plan("5 minute ka timer lagao", "standard", NOW)
     assert p and p["steps"][0]["action"] == "timer.start"
+
+
+def test_task_and_notification_wording():
+    # "task set karo" is a reminder when a time is given
+    p, s = one("task set karo kal 5 baje paani peena")
+    assert s["action"] == "reminder.add" and s["args"]["text"] == "paani peena"
+    assert time.localtime(s["args"]["at"] / 1000).tm_hour == 17
+    # ... and a to-do note when there is no time
+    p, s = one("task add karo ki kal exam hai")
+    assert s["action"] == "note.add" and "exam" in s["args"]["text"]
+    # "mujhe notification bhej dena" is still a reminder, not a chat question
+    p, s = one("mujhe notification bhej dena 10 minute baad paani ke liye")
+    assert s["action"] == "reminder.add" and s["args"]["at"] == NOW + 600_000
+    # a bare command leaves a usable text instead of the filler word
+    p, s = one("kaam yaad dila do 2 ghante baad")
+    assert s["action"] == "reminder.add" and s["args"]["text"] == "yaad dilana"

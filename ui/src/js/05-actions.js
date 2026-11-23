@@ -75,6 +75,11 @@ const Actions = (() => {
     d.run = { state: 'running', results: {} };
     const steps = d.steps || [];
     const risky = steps.filter(s => s.risk !== 'safe');
+    /* a reminder nobody can see is useless: ask for notification access the first time we schedule one */
+    if (native() && steps.some(s => /^(reminder|alarm|timer)\./.test(s.action))) {
+      const i = info();
+      if (i && !i.notify) { try { N().setNotify(true); } catch (e) {} }
+    }
     hud('Ji Sir, ' + (steps[0].pending || 'kaam kar raha hoon'), true);
     if (redraw) redraw();
     const results = native() ? runNative(steps, confirmed) : steps.map(webStep);
@@ -123,6 +128,7 @@ const Actions = (() => {
 
   /* ---------- the card inside a chat message ---------- */
   function card(d, ctx) {
+    d._ctx = ctx;   // voice mode needs the same redraw to show progress
     const wrap = h('div', { class: 'card act' });
     wrap.append(h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')));
     wrap.append(h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));

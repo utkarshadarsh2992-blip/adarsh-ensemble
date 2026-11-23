@@ -84,14 +84,26 @@ def one(text: str, now: int) -> dict | None:
             return _step("alarm.add", at=w[0], text=label or "Alarm", human=w[1])
 
     # ---- reminder
-    if re.search(r"\b(reminder|remind|yaad dila|yaad dilao|yaad dilana|yaad karna)\b", t):
+    # "task set karo", "kaam yaad dila do": same reminder, only the wording differs
+    taskish = bool(re.search(r"\b(task|tasks|to-?do|kaam)\b", t)
+                   and re.search(r"\b(set|lagao|laga do|banao|bana do|add|yaad)\b", t))
+    notifyish = bool(re.search(r"\b(notification|notify|alert)\b", t)
+                     and re.search(r"\b(bhej|bhejo|dena|do|kar)\b", t))
+    if re.search(r"\b(reminder|remind|yaad dila|yaad dilao|yaad dilana|yaad karna)\b", t) or taskish or notifyish:
         w = tp.when(t, now)
-        default = w is None
-        if default:  # "reminder lagao" with no time: say so, use 10 minutes
-            w = (now + 600_000, tp.clock(now + 600_000) + " (default 10 min)")
-        body = re.sub(r"\b(reminder|remind|yaad dila|yaad dilao|yaad dilana|yaad karna|mujhe|me|to)\b", " ", t)
-        body = _clean(tp.strip_time(body))
-        return _step("reminder.add", at=w[0], text=body or "yaad dilana", human=w[1])
+        if w or not (taskish or notifyish):   # a task without a time is a to-do, handled by the note branch below
+            default = w is None
+            if default:  # "reminder lagao" with no time: say so, use 10 minutes
+                w = (now + 600_000, tp.clock(now + 600_000) + " (default 10 min)")
+            body = re.sub(r"\b(reminder|remind|yaad dila|yaad dilao|yaad dilana|yaad karna|task|tasks|to-?do|"
+                          r"notification|notify|alert|bhej dena|bhej do|bhejna|bhejo|mujhe|me|to)\b", " ", t)
+            body = _clean(tp.strip_time(body))
+            # drop the command words that may still sit at the front: "set karo paani peena"
+            body = _clean(re.sub(r"^(?:\s*(?:task|tasks|to-?do|kaam|set|lagao|laga|banao|bana|add|karo|kar|do|"
+                                 r"ke liye|liye|ka|ki|ek|naya|nayi|new)\b)+", " ", body))
+            if len(body) < 3 or body.lower() in {"task", "kaam", "reminder", "note", "yaad"}:
+                body = "yaad dilana"
+            return _step("reminder.add", at=w[0], text=body, human=w[1])
 
     # ---- calendar
     if re.search(r"\b(calendar|meeting|appointment|event)\b", t) and re.search(r"\b(add|banao|create|schedule|lagao|set)\b", t):
@@ -133,9 +145,9 @@ def one(text: str, now: int) -> dict | None:
             return _step("web.search", query=q)
 
     # ---- note
-    if re.search(r"\b(note|notes|likh lo|likh do|yaad rakho|save karo|save kar)\b", t):
-        body = re.sub(r"\b(note|notes|banao|bana do|bana|likh lo|likh do|yaad rakho|save karo|save kar|mein|me|"
-                      r"bhi|ek|new|naya|nayi|karo|kar do|ki|that)\b", " ", t)
+    if re.search(r"\b(note|notes|likh lo|likh do|yaad rakho|save karo|save kar)\b", t) or taskish:
+        body = re.sub(r"\b(note|notes|task|tasks|to-?do|banao|bana do|bana|likh lo|likh do|yaad rakho|save karo|save kar|"
+                      r"set|lagao|laga do|add|mein|me|bhi|ek|new|naya|nayi|karo|kar do|ki|that)\b", " ", t)
         body = _clean(body)
         return _step("note.add", text=body)
     return None

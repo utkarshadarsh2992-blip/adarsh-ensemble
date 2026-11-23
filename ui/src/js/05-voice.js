@@ -234,12 +234,61 @@ const Voice = (() => {
   }
   function typed() { const t = inp.value.trim(); if (!t) return; inp.value = ''; STT.stop(); TTS.stop(); say(t); }
 
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  /* Standard-mode actions run on the phone after the card mounts: wait for them so we speak the result, not the plan */
+  async function waitDone(list, ms) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (list.every(a => a.run && a.run.state !== 'running')) return true;
+      await sleep(80);
+    }
+    return false;
+  }
+  /* one short yes/no turn, used when a sensitive action needs a spoken confirmation */
+  function askOnce(ms) {
+    return new Promise((resolve) => {
+      if (!STT.supported()) return resolve('');
+      let got = '', done = false;
+      const fin = (v) => { if (done) return; done = true; try { STT.stop(); } catch (e) {} resolve(v); };
+      const ok = STT.start({
+        onPartial: (t) => { if (openFlag) caption(t); },
+        onFinal: (t) => { got = (got + ' ' + t).trim(); },
+        onEnd: () => fin(got),
+        onError: () => fin(got)
+      });
+      if (!ok) return resolve('');
+      setState('listening');
+      setTimeout(() => fin(got), ms);
+    });
+  }
+
   async function say(text) {
     setState('thinking'); caption(text); collected = [];
     const un = Bus.on('reply', ({ msg }) => collected.push(msg.reply));
     try { await Chat.submit(text, { voice: true }); } finally { un(); }   // voice: the engine answers short and speakable
     if (!openFlag) return;
     const structured = collected.find(r => r.type === 'ask' || r.type === 'approve');
+    const acts = collected.filter(r => r && r.type === 'actions');
+    const risky = acts.filter(a => (a.steps || []).some(s => s.risk !== 'safe'));
+    if (risky.length) {   // "Sir, message bhejne se pehle confirm chahiye. Haan bolo to kar dunga."
+      const a = risky[0];
+      const q = 'Sir, ' + ((a.steps.find(s => s.risk !== 'safe') || {}).detail || 'ye kaam') + ' ke liye confirm chahiye. Haan bolo to kar dunga.';
+      caption(text, q);
+      if (speakOn && TTS.ok()) { setState('speaking'); await new Promise(res => TTS.speak(q, res)); }
+      const ans = await askOnce(7000);
+      const yes = /^\s*(haan|han|ha|yes|yep|ok|okay|theek|kar do|kardo|karo|sure)\b/i.test(ans || '');
+      if (openFlag) {
+        if (yes) { setState('thinking'); await Actions.execute(a, true, a._ctx && a._ctx.redraw); }
+        else {
+          a.run = { state: 'cancel', results: {} }; a.text = 'Ji Sir, cancel kar diya.';
+          try { save(); } catch (e) {}
+          if (a._ctx && a._ctx.redraw) a._ctx.redraw();
+        }
+      }
+    } else if (acts.length) {
+      await waitDone(acts, 3500);   // native execution is quick; never hang the conversation
+    }
+    if (!openFlag) return;
     const spoken = collected.map(r => (r && r.type === 'text' ? voiceText(r.text) : speechOf(r))).filter(Boolean).join(' ');
     caption(text, spoken || 'Done.');
     if (structured) {
