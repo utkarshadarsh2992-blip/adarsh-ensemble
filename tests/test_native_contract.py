@@ -75,3 +75,11 @@ def test_native_matching_and_editing_preserve_js_semantics():
     assert "val timeChanged = a.has(\"at\")" in runner
     assert "if (timeChanged) record.remove(\"firedAt\")" in runner
     assert "if (kind == \"task\" || kind == \"work\") o.remove(\"text\")" in store
+
+
+def test_legacy_note_delete_serializes_inside_string_main_thread_bridge():
+    activity = source("MainActivity.kt")
+    body = activity.split("fun deleteNote(id: String): String = onMain {", 1)[1].split("fun actionInfo()", 1)[0]
+    assert "val result = if" in body
+    assert "result.toString()" in body
+    assert "}.toString()" not in body

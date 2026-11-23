@@ -317,12 +317,13 @@ class MainActivity : AppCompatActivity() {
 
         fun deleteNote(id: String): String = onMain {
             val record = ActionStore(current!!).find(id)
-            if (record == null || record.optString("kind") != "note") JSONObject().put("ok", false).put("error", "Note not found")
+            val result = if (record == null || record.optString("kind") != "note") JSONObject().put("ok", false).put("error", "Note not found")
             else {
                 val deleted = current!!.actions!!.deleteRecord(id)
                 JSONObject().put("ok", deleted)
             }
-        }.toString()
+            result.toString()
+        }
         fun actionInfo(): String = onMain {
             val a = current!!
             val nm = a.getSystemService(NotificationManager::class.java)
