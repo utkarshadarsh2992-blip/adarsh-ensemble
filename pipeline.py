@@ -340,6 +340,26 @@ async def run(
     )
 
 
+MAX_CALLS = 60
+
+
+def _compact_calls(trace: list) -> list[dict]:
+    """Small, UI-friendly view of the model trace: one row per role call, with what failed on the way."""
+    out = []
+    for e in (trace or [])[:MAX_CALLS]:
+        if e.get("stage") == "guard":
+            continue
+        row = {"stage": e.get("stage") or "", "model": e.get("used") or e.get("asked") or "",
+               "ok": bool(e.get("ok")), "secs": e.get("secs")}
+        if e.get("asked") and e.get("asked") != e.get("used"):
+            row["asked"] = e["asked"]
+        fails = [f"{k}: {v}" for k, v in (e.get("skips") or {}).items()]
+        if fails:
+            row["fails"] = fails[-4:]
+        out.append(row)
+    return out
+
+
 def _pack(
     answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, rounds_run, *,
     trace, warnings, guard_report, fallback=False, letter_to_name=None, engine="simple", extras=None,
@@ -355,6 +375,7 @@ def _pack(
         "debate_rounds_run": rounds_run,
         "latency_s": round(time.perf_counter() - t0, 2),
         "models_used": health.summarize(trace),  # which model actually answered, and how often
+        "calls": _compact_calls(trace),  # stage -> model, fail reasons (the UI's "model calls" panel)
     }
     if extras:
         out["proofs_summary"] = extras["proofs_summary"]

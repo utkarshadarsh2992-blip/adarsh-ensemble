@@ -227,6 +227,8 @@ async def handle(body: dict) -> dict | list[dict]:
     if master:
         replies[0]["master"] = True  # the UI offers "kya galat tha?" feedback only on these replies
         replies[0]["lessonIds"] = [x["id"] for x in master["lessons_used"]]
+    if res.get("calls"):
+        replies[0]["calls"] = res["calls"]  # the chat's "model calls" toggle shows this under the answer
     if res.get("council"):
         replies[0]["council"] = res["council"]  # shown on its own page, not in the chat scroll
     return replies

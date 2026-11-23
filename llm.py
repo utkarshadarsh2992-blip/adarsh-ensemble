@@ -293,10 +293,13 @@ async def chat(
                 reasons[cand.label] = "time budget used up"
                 out_of_time = True
                 break
+            config.emit_call({"t": "try", "stage": health.stage(), "model": cand.label, "provider": cand.provider})
             try:
                 text = await _try_model(client, cand, messages, temperature, max_tokens, timeout, retries)
             except _Skip as e:
                 reasons[cand.label] = str(e)
+                config.emit_call({"t": "fail", "stage": health.stage(), "model": cand.label,
+                                  "provider": cand.provider, "why": str(e)})
                 if not e.retry:
                     dead.add(cand.label)
                 elif e.retry_in is not None:
@@ -304,6 +307,8 @@ async def chat(
                 continue
             health.trace_add(spec, cand, True, messages=messages, output=text,
                              secs=time.perf_counter() - t_start, skips=reasons)
+            config.emit_call({"t": "ok", "stage": health.stage(), "model": cand.label, "provider": cand.provider,
+                              "asked": spec.label, "secs": round(time.perf_counter() - t_start, 1)})
             return text
         if out_of_time:
             break
@@ -316,4 +321,6 @@ async def chat(
                 break
             await asyncio.sleep(wait + 0.5)
     health.trace_add(spec, spec, False, messages=messages, secs=time.perf_counter() - t_start, skips=reasons)
+    config.emit_call({"t": "dead", "stage": health.stage(), "model": spec.label, "provider": spec.provider,
+                      "why": "koi model jawab nahi de paya"})
     raise LLMError(f"{spec.role or spec.label}: no model could answer: {reasons}")

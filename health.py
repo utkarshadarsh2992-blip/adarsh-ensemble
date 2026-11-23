@@ -333,6 +333,11 @@ def set_stage(name: str) -> None:
     _stage.set(name)
 
 
+def stage() -> str:
+    """The stage of the call happening now ("" when none was set)."""
+    return _stage.get()
+
+
 def trace_add(asked: ModelSpec, used: ModelSpec, ok: bool, *, messages=None, output=None, secs=None, skips=None) -> None:
     t = _trace.get()
     if t is None:

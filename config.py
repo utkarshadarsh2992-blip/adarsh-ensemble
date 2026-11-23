@@ -7,6 +7,7 @@ How it works: every ROLE has a PRIMARY model plus FALLBACKS (a chain). If the pr
 rate-limited, out of daily quota, has no API key, or is gone, the next model in the chain
 answers (see llm.py / health.py). That is what makes free quotas last longer.
 """
+import json
 import os
 import warnings
 from dataclasses import dataclass, field, replace
@@ -288,6 +289,21 @@ def emit(msg: str) -> None:
             cb(msg)
         except Exception:
             pass
+
+
+CALL_TAG = "\u0001call "  # marks a structured model-call line inside the plain progress text
+
+
+def emit_call(event: dict) -> None:
+    """One model-call event for the chat UI's live panel: {"t": "try"|"ok"|"fail"|"dead", "stage", "model",
+    "provider", "why", "secs"}. A client that does not know the tag simply shows it as a progress line."""
+    cb = PROGRESS.get()
+    if not cb:
+        return
+    try:
+        cb(CALL_TAG + json.dumps(event, ensure_ascii=False))
+    except Exception:
+        pass
 
 
 # Android (Chaquopy): there is no usable `python` executable to spawn, so the code-proof sandbox

@@ -602,6 +602,29 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .glabel{font:500 11px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:10px 6px 0;margin-bottom:-8px}
 .stack>.glabel:first-child{padding-top:0}
 
+/* ---------- model calls: live panel in the chat (toggle in the header) ---------- */
+.hdr{grid-template-columns:44px 1fr auto}
+.hdr-r{display:flex;align-items:center;justify-content:flex-end;gap:0}
+.ib.on{color:var(--accent)}
+.mcalls{margin:0 2px 8px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden}
+.mcalls .mch{display:flex;align-items:center;gap:7px;padding:6px 6px 6px 12px;font:500 12px/1.2 var(--sans);color:var(--fg)}
+.mcalls .mch b{font-weight:600}
+.mcalls .mch .muted{font:500 11px/1 var(--mono);color:var(--muted)}
+.mcalls .mch .sp{flex:1}
+.mcalls .mch .ib{width:30px;height:30px}
+.mcl{max-height:34vh;overflow:auto;border-top:1px solid var(--line);padding:4px 0}
+.mcr{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:5px 12px;font:500 11.5px/1.35 var(--mono);color:var(--muted)}
+.mcr .st{color:var(--fg);font-family:var(--sans);font-size:12px}
+.mcr .md{grid-column:1;color:var(--muted);word-break:break-all}
+.mcr .ms{grid-column:2;grid-row:1;color:var(--muted);white-space:nowrap}
+.mcr .why{grid-column:1/-1;color:var(--bad);font-size:11px;line-height:1.3;word-break:break-word}
+.mcr.ok .ms{color:var(--good)}
+.mcr.bad .ms{color:var(--bad)}
+.mcr.run .ms{color:var(--warn)}
+.mcr.run .st::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-right:6px;vertical-align:1px;animation:mc-pulse 1s infinite}
+@keyframes mc-pulse{50%{opacity:.25}}
+.mcalls-msg .mcl{max-height:none;border-top:0}
+
 </style></head><body><div class="phone" id="phone">
   <section class="view on" id="v-chat"></section>
   <section class="view" id="v-today"></section>
@@ -788,7 +811,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30 },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1 },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -1747,7 +1770,8 @@ const Modes = (() => {
 /* 03-chat.js : chat screen, composer, send pipeline, side-effects of structured replies */
 
 const Chat = (() => {
-  let thread, col, ta, sendBtn, voiceBtn, micBtn, atts, titleEl, statusEl, hdrEl, modeBtn, jump;
+  let thread, col, ta, sendBtn, voiceBtn, micBtn, atts, titleEl, statusEl, hdrEl, modeBtn, jump, callsBtn, callsEl;
+  let callRows = [];   // this answer's model calls: {stage, model, state: run|ok|fail|dead, why, secs, asked}
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
 
@@ -1770,8 +1794,9 @@ const Chat = (() => {
   function mount(root) {
     titleEl = h('h1', { class: 'wm' }, 'ADARSH');
     statusEl = h('span', { class: 'status' }, h('i'), h('span', {}, ''));
+    callsBtn = ibtn('search2', 'Model calls dikhao', toggleCalls, 'calls');
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
-      ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); }));
+      h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
     thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
     ta = h('textarea', { rows: 1, placeholder: Modes.current().placeholder, 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
@@ -1783,8 +1808,9 @@ const Chat = (() => {
     modeBtn = h('button', { class: 'modebtn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', on: { click: () => Modes.open(modeBtn) } });
     drawMode();
     jump = h('button', { class: 'jump', 'aria-label': 'Scroll to latest', on: { click: () => thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' }) } }, icon('arrowdown', 's'));
+    callsEl = h('div', { class: 'mcalls', hidden: true });
     root.append(hdrEl, thread,
-      h('div', { class: 'dock pad' }, jump,
+      h('div', { class: 'dock pad' }, jump, callsEl,
         h('div', { class: 'box' }, atts, ta, h('div', { class: 'row' }, plus, h('span', { class: 'sp' }), modeBtn, micBtn, sendBtn, voiceBtn)),
         h('p', { class: 'fine' }, 'Adarsh can make mistakes. Check important info.')));
     Bus.on('ask:answer', onAsk); Bus.on('approve:decide', onApprove);
@@ -1793,7 +1819,7 @@ const Chat = (() => {
     Bus.on('mission:action', onMission);
     Bus.on('backend:status', setStatus);
     Bus.on('mode:changed', onMode);
-    renderThread();
+    renderThread(); drawCalls();
   }
   function drawMode() {
     const m = Modes.current();
@@ -1856,6 +1882,11 @@ const Chat = (() => {
     const thought = Council.done(r);
     if (thought) wrap.append(thought);
     else if (r.steps && r.steps.length) wrap.append(h('details', { class: 'steps' }, h('summary', {}, icon('chev', 'chev'), 'Worked through ' + r.steps.length + ' steps'), r.steps.map(s => h('div', { class: 'st-row' }, s))));
+    if (callsOn() && r.calls && r.calls.length) {
+      const bad = r.calls.filter(c => !c.ok).length;
+      wrap.append(h('details', { class: 'steps mcalls-msg' }, h('summary', {}, icon('search2', 's'), 'Model calls: ' + r.calls.length + (bad ? ' · ' + bad + ' fail' : '')),
+        h('div', { class: 'mcl' }, r.calls.map(c => callRowEl({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails }, false)))));
+    }
     wrap.append(renderReply(r, ctx));
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type !== 'ask' && r.type !== 'approve' && r.type !== 'memory' && r.type !== 'task') wrap.append(actionsEl(m, isLast));
@@ -1871,6 +1902,74 @@ const Chat = (() => {
     const used = m.reply && m.reply.uiMode && m.reply.uiMode !== 'standard' ? Modes.get(m.reply.uiMode) : null;
     if (used) a.append(h('span', { class: 'meta', title: 'Answered in ' + used.name + ' mode' }, icon(used.ic, 's'), used.name));
     return a;
+  }
+
+  /* ---------- model calls: which model is being asked, and which one failed ---------- */
+  const STAGE_NAMES = { architect: 'Architect', judge: 'Judge', stripper: 'Claims', skeptic: 'Skeptic', refine: 'Refiner', classify: 'Question type', guard: 'Guard' };
+  function stageName(s) {
+    if (!s) return 'Model call';
+    if (STAGE_NAMES[s]) return STAGE_NAMES[s];
+    const [k, n] = s.split(':');
+    if (k === 'panel') return (n || 'draft').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+    if (k === 'falsifier') return 'Falsifier ' + (n || '');
+    if (k === 'debate') return 'Debate round ' + (n || '');
+    if (k === 'review') return (n === 'method' ? 'Method review' : 'Evidence review');
+    if (k === 'repair') return 'Format repair ' + (n || '');
+    return s.replace(/[:1-9]/g, ' ').trim().replace(/^./, c => c.toUpperCase());
+  }
+  const secsTxt = (s) => (s == null ? '' : (s >= 10 ? Math.round(s) + 's' : (Math.round(s * 10) / 10) + 's'));
+  const callsOn = () => !!S.settings.calls;
+  function toggleCalls() {
+    S.settings.calls = callsOn() ? 0 : 1; save();
+    drawCalls(); renderThread();
+    if (callsOn() && !callRows.length) toast('Model calls on: har model call yahan dikhega');
+  }
+  function onCallEvent(ev) {
+    if (!ev || !ev.t) return;
+    const stage = ev.stage || '', model = ev.model || '';
+    if (ev.t === 'try') {
+      callRows.push({ stage, model, provider: ev.provider, state: 'run' });
+    } else {
+      let row = null;
+      for (let i = callRows.length - 1; i >= 0; i--) {
+        const r = callRows[i];
+        if (r.model === model && r.stage === stage && r.state === 'run') { row = r; break; }
+      }
+      if (!row) { row = { stage, model, provider: ev.provider, state: 'run' }; callRows.push(row); }
+      if (ev.t === 'ok') { row.state = 'ok'; row.secs = ev.secs; if (ev.asked && ev.asked !== model) row.asked = ev.asked; }
+      else if (ev.t === 'fail') { row.state = 'fail'; row.why = ev.why || ''; }
+      else if (ev.t === 'dead') { row.state = 'dead'; row.why = ev.why || ''; }
+    }
+    drawCalls();
+  }
+  function callRowEl(r, live) {
+    const why = r.why || (r.fails && r.fails.length ? r.fails[0] : '');
+    const cls = r.state === 'ok' ? 'ok' : (r.state === 'fail' || r.state === 'dead') ? 'bad' : 'run';
+    return h('div', { class: 'mcr ' + cls },
+      h('span', { class: 'st' }, stageName(r.stage)),
+      h('span', { class: 'md' }, (r.asked && r.asked !== r.model ? r.asked + ' → ' : '') + r.model),
+      live && r.state === 'run' ? h('span', { class: 'ms' }, 'chal raha…')
+        : r.state === 'ok' ? h('span', { class: 'ms' }, secsTxt(r.secs) || 'ok')
+          : h('span', { class: 'ms' }, r.state === 'dead' ? 'fail' : 'fail'),
+      why ? h('span', { class: 'why' }, why) : null);
+  }
+  function drawCalls() {
+    if (!callsEl) return;
+    callsBtn.classList.toggle('on', callsOn());
+    callsBtn.setAttribute('aria-pressed', String(callsOn()));
+    callsEl.hidden = !callsOn();
+    if (!callsOn()) return;
+    callsEl.textContent = '';
+    const run = callRows.filter(r => r.state === 'run').length;
+    const bad = callRows.filter(r => r.state === 'fail' || r.state === 'dead').length;
+    callsEl.append(h('div', { class: 'mch' }, icon('search2', 's'), h('b', {}, 'Model calls'),
+      h('span', { class: 'muted' }, callRows.length ? callRows.length + ' calls' + (run ? ' · ' + run + ' chal rahe' : '') + (bad ? ' · ' + bad + ' fail' : '') : 'abhi kuch nahi'),
+      h('span', { class: 'sp' }), h('button', { class: 'ib', 'aria-label': 'Model calls band karo', on: { click: toggleCalls } }, icon('x', 's'))));
+    const list = h('div', { class: 'mcl' });
+    if (!callRows.length) list.append(h('div', { class: 'mcr muted' }, 'Sawaal bhejo: kaunsa model chal raha hai aur kaunsa fail hua, yahan dikhega.'));
+    callRows.slice(-40).forEach(r => list.append(callRowEl(r, true)));
+    callsEl.append(list);
+    list.scrollTop = list.scrollHeight;
   }
 
   /* ---------- answer source: auto / manual / hybrid ---------- */
@@ -1985,12 +2084,23 @@ const Chat = (() => {
     const modeId = Modes.current().id;   // retry uses whatever mode is selected now
     busy = true; ctl = new AbortController(); const t0 = Date.now();
     const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
+    callRows = []; drawCalls();
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
       const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
-        { signal: ctl.signal, onProgress: (s) => lv.push(s) });
+        { signal: ctl.signal, onProgress: (s) => {
+          if (typeof s === 'string' && s.charCodeAt(0) === 1) {  // structured model-call event (see config.emit_call)
+            try { onCallEvent(JSON.parse(s.slice(s.indexOf('{')))); } catch (e) { /* ignore */ }
+            return;
+          }
+          lv.push(s);
+        } });
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
+      if (arr[0] && Array.isArray(arr[0].calls) && arr[0].calls.length) {  // final list from the engine (also for the HTTP backend, which sends no live events)
+        callRows = arr[0].calls.map(c => ({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails || [] }));
+        drawCalls();
+      }
       arr.forEach((r, i) => { if (i === 0) { r.uiMode = modeId; r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');

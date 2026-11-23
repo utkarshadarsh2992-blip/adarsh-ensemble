@@ -41,7 +41,9 @@ Server rules: verify the token, keep your own allow-list (the Telegram `CHAT_ID`
 
 ## 3. Reply contract (every type the UI can draw)
 
-Always `{ "type": …, … }`. Unknown types fall back to text. Any reply may carry `steps: ["…"]` (shown folded as "Worked through N steps") and `notes: { title, items: [{ title, text }] }` (shown folded under the reply, e.g. what the falsifiers found). The request also carries `source` (`auto|manual|hybrid`), `answers` (`[{ source, text }]`, pasted from other AIs) and `reply: { lang: auto|hinglish|english|hindi, depth: simple|normal|detailed }`.
+Always `{ "type": …, … }`. Unknown types fall back to text. Any reply may carry `steps: ["…"]` (shown folded as "Worked through N steps") and `notes: { title, items: [{ title, text }] }` (shown folded under the reply, e.g. what the falsifiers found). Progress lines may also be structured model-call events: a string starting with `\u0001call ` followed by JSON `{t: try|ok|fail|dead, stage, model, provider, why, secs, asked}`. The chat shows them in its "Model calls" panel (`03-chat.js`); unknown clients just show the raw line. Finished replies also carry `calls: [{stage, model, ok, secs, asked?, fails?}]`.
+
+The request also carries `source` (`auto|manual|hybrid`), `answers` (`[{ source, text }]`, pasted from other AIs) and `reply: { lang: auto|hinglish|english|hindi, depth: simple|normal|detailed }`.
 
 | type | fields | maps from ADARSH v6 |
 |---|---|---|

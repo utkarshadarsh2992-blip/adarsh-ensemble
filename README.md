@@ -53,6 +53,12 @@ Mode: UI ka mode (Standard/V/Physics/Math/Business/Coding) mode hint chunta hai;
 
 Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din limit dhyan me rakho). Switches (0 = band): `RESEARCH`, `REVIEW`, `DEBATE`, `RESEARCH_TIMEOUT_S`, `ROLE_MAX_TOKENS`. Purana engine chahiye to `CHAT_ENGINE=verified`.
 
+## Chat UI: "Model calls" toggle
+
+Chat screen ke top-right corner me ek chhota icon (pulse line) hai. Woh on ho to sawaal bhejte hi composer ke upar ek chhota panel khulta hai jo har model call dikhata hai: kaunsa role, kaunsa model, kitna time laga, aur jo fail hua uska reason (jaise "daily token quota used up"). Header par "N calls · 1 chal raha · 2 fail" bhi dikhta hai. Jawab aane ke baad wahi list us jawab ke neeche "Model calls: N" me folded rehti hai, aur chat me save rehti hai. Toggle band karne par panel aur lists chhup jaate hain (data save rehta hai).
+
+Kaise: engine har model call par ek structured line bhejta hai (`config.emit_call`, prefix `\u0001call `), jo Android bridge se seedha JS tak jaati hai (`ui/src/js/03-chat.js`). HTTP backend live lines nahi bhej sakta, isliye wahan jawab ke saath `calls` list aati hai (`pipeline._compact_calls`) aur wahi panel bharta hai.
+
 ## Quota bachao (automatic)
 
 Free quota (Groq 200K tokens/din per model, OpenRouter 50 req/din sab free models milake) jaldi khatam na ho, isliye pehle se maujood per-minute slots, daily caps, 429 cooldown aur fallback ke upar ye aur hai (`health.py`, `llm.balance`, `roles.py`):
