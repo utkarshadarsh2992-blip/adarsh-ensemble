@@ -52,6 +52,21 @@ def install_fake_client(monkeypatch, response, calls):
     )
 
 
+def install_sequence_client(monkeypatch, responses, calls):
+    queue = list(responses)
+
+    class SequenceClient(FakeClient):
+        def stream(self, method, url, *, headers, json):
+            self.calls.append((url, headers, json))
+            return queue.pop(0)
+
+    monkeypatch.setattr(
+        nvidia_media.httpx,
+        "AsyncClient",
+        lambda **kwargs: SequenceClient(response=None, calls=calls, **kwargs),
+    )
+
+
 def test_flux_request_stores_jpeg_by_opaque_id_not_base64(monkeypatch, tmp_path):
     jpeg = b"\xff\xd8\xff" + b"fake-jpeg-data"
     calls = []
@@ -98,6 +113,81 @@ def test_cosmos3_video_request_is_bounded_and_stores_mp4(monkeypatch, tmp_path):
     assert result["type"] == "video" and result["mime"] == "video/mp4"
     assert result["frames"] == 73
     assert (tmp_path / f"{result['mediaId']}.mp4").read_bytes() == mp4
+    assert calls[0][1]["NVCF-POLL-SECONDS"] == "300"
+    assert len(calls) == 1
+
+
+def test_cosmos3_gateway_404_retries_once_on_function_invocation_route(monkeypatch, tmp_path):
+    mp4 = b"\x00\x00\x00\x18ftypisom" + b"fallback-mp4"
+    calls = []
+    assert nvidia_media.COSMOS3_FALLBACK_URL == (
+        "https://d09cd49d-d7f2-4361-928f-ea22af707249.invocation.api.nvcf.nvidia.com/v1/infer"
+    )
+    install_sequence_client(
+        monkeypatch,
+        [
+            FakeResponse(status_code=404, text="404 page not found"),
+            FakeResponse({"b64_video": base64.b64encode(mp4).decode(), "action": None}),
+        ],
+        calls,
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    monkeypatch.setenv("GENERATED_MEDIA_DIR", str(tmp_path))
+
+    result = asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A dog runs", "frames": 25}))
+
+    assert [call[0] for call in calls] == [nvidia_media.COSMOS3_URL, nvidia_media.COSMOS3_FALLBACK_URL]
+    assert calls[0][2] == calls[1][2]
+    assert calls[1][1]["Authorization"] == "Bearer key"
+    assert (tmp_path / f"{result['mediaId']}.mp4").read_bytes() == mp4
+
+
+@pytest.mark.parametrize("status", [401, 403, 422, 500])
+def test_cosmos3_non_404_errors_do_not_try_backup_route(monkeypatch, status):
+    calls = []
+    install_sequence_client(monkeypatch, [FakeResponse({"detail": "provider said no"}, status_code=status)], calls)
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    with pytest.raises(nvidia_media.MediaError, match=f"HTTP {status}"):
+        asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A dog runs", "frames": 25}))
+    assert [call[0] for call in calls] == [nvidia_media.COSMOS3_URL]
+
+
+def test_cosmos3_reports_backup_error_when_both_routes_fail(monkeypatch):
+    calls = []
+    install_sequence_client(
+        monkeypatch,
+        [
+            FakeResponse(status_code=404, text="404 page not found"),
+            FakeResponse({"detail": "Unauthorized access"}, status_code=403),
+        ],
+        calls,
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "secret-key")
+    with pytest.raises(nvidia_media.MediaError) as exc_info:
+        asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A dog runs", "frames": 25}))
+    message = str(exc_info.value)
+    assert "public route HTTP 404" in message and "backup NVCF route" in message and "HTTP 403" in message
+    assert "secret-key" not in message
+    assert len(calls) == 2
+
+
+def test_media_queued_202_is_reported_clearly(monkeypatch):
+    calls = []
+    install_sequence_client(monkeypatch, [FakeResponse(status_code=202, body=b"", headers={"nvcf-reqid": "abc"})], calls)
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    with pytest.raises(nvidia_media.MediaError, match="HTTP 202"):
+        asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A dog runs", "frames": 25}))
+    assert len(calls) == 1
+
+
+def test_flux_404_does_not_use_cosmos_backup_route(monkeypatch):
+    calls = []
+    install_sequence_client(monkeypatch, [FakeResponse(status_code=404, text="404 page not found")], calls)
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    with pytest.raises(nvidia_media.MediaError, match="HTTP 404"):
+        asyncio.run(nvidia_media.generate({"kind": "image", "prompt": "A tree"}))
+    assert [call[0] for call in calls] == [nvidia_media.FLUX_URL]
+    assert "NVCF-POLL-SECONDS" not in calls[0][1]
 
 
 def test_media_rejects_missing_key_invalid_frames_and_invalid_image_payload(monkeypatch, tmp_path):

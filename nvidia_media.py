@@ -18,6 +18,12 @@ import httpx
 
 FLUX_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux-3-image-klein"
 COSMOS3_URL = "https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano"
+# NVIDIA Build lists this NVCF function ID for cosmos3-nano. Its
+# function-specific invocation host serves the Cosmos NIM generator route
+# (`POST /v1/infer`). It is tried only when the public route above returns 404.
+COSMOS3_FUNCTION_ID = "d09cd49d-d7f2-4361-928f-ea22af707249"
+COSMOS3_FALLBACK_URL = f"https://{COSMOS3_FUNCTION_ID}.invocation.api.nvcf.nvidia.com/v1/infer"
+COSMOS3_POLL_SECONDS = "300"
 PROMPT_MAX = 2_000
 VIDEO_FRAMES = {25, 49, 73, 121}
 VIDEO_MAX_BYTES = 48 * 1024 * 1024
@@ -31,6 +37,10 @@ _ID = re.compile(r"^[0-9a-f]{32}$")
 
 class MediaError(ValueError):
     """A short, user-safe media request error."""
+
+    def __init__(self, message: str, status_code: int | None = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _root() -> Path:
@@ -130,8 +140,15 @@ async def _read_limited(response: httpx.Response, limit: int) -> tuple[bytearray
     return output, False
 
 
-async def _post(url: str, body: dict, api_key: str, timeout: float) -> dict:
+async def _post(url: str, body: dict, api_key: str, timeout: float, extra_headers: dict[str, str] | None = None) -> dict:
     limits = httpx.Limits(max_connections=2, max_keepalive_connections=0)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if extra_headers:
+        headers.update(extra_headers)
     try:
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(timeout, connect=20.0, write=45.0, pool=10.0),
@@ -141,16 +158,20 @@ async def _post(url: str, body: dict, api_key: str, timeout: float) -> dict:
             async with client.stream(
                 "POST",
                 url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
+                headers=headers,
                 json=body,
             ) as response:
                 if response.status_code < 200 or response.status_code >= 300:
                     error_body, truncated = await _read_limited(response, MAX_ERROR_BYTES)
-                    raise MediaError(_safe_provider_error(response.status_code, error_body, api_key, truncated))
+                    raise MediaError(
+                        _safe_provider_error(response.status_code, error_body, api_key, truncated),
+                        status_code=response.status_code,
+                    )
+                if response.status_code == 202:
+                    raise MediaError(
+                        "NVIDIA ne request queue kar di (HTTP 202), par video result abhi nahi aaya. Thodi der baad dobara try karo.",
+                        status_code=202,
+                    )
                 content_length = response.headers.get("content-length")
                 if content_length:
                     try:
@@ -215,7 +236,19 @@ async def generate(request: dict) -> dict:
         "fps": 24,
         "seed": 0,
     }
-    data = await _post(COSMOS3_URL, body, api_key, timeout=720.0)
+    cosmos_headers = {"NVCF-POLL-SECONDS": COSMOS3_POLL_SECONDS}
+    try:
+        data = await _post(COSMOS3_URL, body, api_key, timeout=720.0, extra_headers=cosmos_headers)
+    except MediaError as primary:
+        if primary.status_code != 404:
+            raise
+        try:
+            data = await _post(COSMOS3_FALLBACK_URL, body, api_key, timeout=720.0, extra_headers=cosmos_headers)
+        except MediaError as backup:
+            raise MediaError(
+                f"Cosmos3 public route HTTP 404 tha; backup NVCF route: {backup}",
+                status_code=backup.status_code,
+            ) from backup
     raw = _decode_payload(data.get("b64_video"), "video")
     media_id = _save("video", raw)
     return {"type": "video", "mediaId": media_id, "mime": "video/mp4", "prompt": prompt, "frames": frames, "fps": 24}
