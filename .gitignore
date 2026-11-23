@@ -12,3 +12,4 @@ local.properties
 *.aab
 android/app/libs/*.aar
 node_modules/
+tests/.usage-test.json
