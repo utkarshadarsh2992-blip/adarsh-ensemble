@@ -91,8 +91,8 @@ protobuf {
     }
     generateProtoTasks {
         all().configureEach {
-            builtins { id("java") { option("lite") } }
-            plugins { id("grpc") { option("lite") } }
+            builtins { create("java") { option("lite") } }
+            plugins { create("grpc") { option("lite") } }
         }
     }
 }
