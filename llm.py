@@ -257,6 +257,16 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         raise _Skip(f"HTTP {code}")
 
 
+def balance(chain: list) -> list:
+    """Helper roles: models that already used QUOTA_BALANCE_AT of their daily quota go to the back of the chain
+    (order kept otherwise). Critical calls (judge, repair, refiner...) keep their chain as written."""
+    at = config.QUOTA_BALANCE_AT
+    if not at or health.critical():
+        return chain
+    heavy = [c for c in chain if health.capped(c) and health.used_frac(c) >= at]
+    return chain if not heavy or len(heavy) == len(chain) else [c for c in chain if c not in heavy] + heavy
+
+
 async def chat(
     client: httpx.AsyncClient,
     spec: ModelSpec,
@@ -269,7 +279,7 @@ async def chat(
     budget: float | None = None,
 ) -> str:
     """budget = most seconds this whole call may take (all models together). None = no limit."""
-    chain = [spec] + [config.REGISTRY[label] for label in spec.fallbacks]
+    chain = balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks])
     reasons: dict[str, str] = {}
     dead: set[str] = set()  # failed for a reason waiting will not fix: not tried again in round 2
     t_start = time.perf_counter()

@@ -377,6 +377,16 @@ RPM_LIMIT = {"openai/gpt-oss-safeguard-20b": 3}  # per-model exceptions (Groq: s
 RL_MAX_WAIT_S = float(os.getenv("RL_MAX_WAIT_S", "12"))        # wait this long for a free slot, else try the next model
 RL_ROUND_WAIT_S = float(os.getenv("RL_ROUND_WAIT_S", "45"))    # if EVERY model is only rate-limited, wait up to this long once
 
+# Quota saving (see health.py). Stages that may use the LAST part of a daily quota (QUOTA_RESERVE_MARGIN):
+CRITICAL_STAGES = ("judge", "repair", "refine", "revise", "synth", "single", "classify", "architect")
+# Helper roles move a model that has used this share of its daily quota to the back of their chain (0 = off),
+# so one model (e.g. gpt-oss-120b, first for 3 roles) does not run dry by noon while the others sit idle.
+QUOTA_BALANCE_AT = float(os.getenv("QUOTA_BALANCE_AT", "0.6"))
+# Share of quota left (first model of every role) below which the roles engine saves on its own:
+QUOTA_TIGHT = float(os.getenv("QUOTA_TIGHT", "0.35"))  # deep -> fast
+QUOTA_LOW = float(os.getenv("QUOTA_LOW", "0.15"))      # fast, no debate, no reviewers (judge still answers)
+QUOTA_AUTO = os.getenv("QUOTA_AUTO", "1") == "1"       # 0 = never switch on its own
+
 
 def rpm_limit(spec: ModelSpec) -> int:
     if spec.model in RPM_LIMIT:

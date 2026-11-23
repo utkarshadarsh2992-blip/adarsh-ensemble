@@ -21,6 +21,10 @@ from config import PROVIDERS, ModelSpec
 
 STATE_FILE = os.getenv("USAGE_FILE", ".usage.json")
 MARGIN = float(os.getenv("QUOTA_MARGIN", "0.95"))  # stop at 95% of a daily quota
+# Helper roles (drafters, skeptic, falsifiers, debater, reviewers...) stop earlier, so the last part of every daily
+# quota stays free for the calls the answer can not do without (judge, format repair, refiner: see config.CRITICAL_STAGES).
+RESERVE_MARGIN = float(os.getenv("QUOTA_RESERVE_MARGIN", "0.8"))
+LEARN_MIN = int(os.getenv("QUOTA_LEARN_MIN", "20"))  # a daily 429 after fewer requests than this is not learned as the cap
 
 _cool: dict[str, float] = {}       # model label -> unix time until which it is skipped
 _prov_cool: dict[str, float] = {}  # provider -> unix time
@@ -36,17 +40,23 @@ def _today() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
 
 
-def _fresh() -> dict:
-    return {"day": _today(), "req": {}, "tok": {}}
+def _fresh(learned: dict | None = None) -> dict:
+    # out: quota key -> unix time a DAILY 429 said it is empty until (kept on disk, so an app restart does not
+    # spend a request just to hear "quota used up" again). learned: daily caps seen in real 429s; survive the day roll.
+    return {"day": _today(), "req": {}, "tok": {}, "out": {}, "learned": dict(learned or {})}
 
 
 def _load() -> dict:
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
-        if isinstance(data, dict) and data.get("day") == _today():
-            data.setdefault("req", {})
-            data.setdefault("tok", {})
+        if isinstance(data, dict):
+            learned = data.get("learned") if isinstance(data.get("learned"), dict) else {}
+            if data.get("day") != _today():
+                return _fresh(learned)
+            for k in ("req", "tok", "out"):
+                data.setdefault(k, {})
+            data["learned"] = learned
             return data
     except (OSError, ValueError):
         pass
@@ -58,8 +68,9 @@ _usage: dict = _load()
 
 def _roll() -> None:
     if _usage.get("day") != _today():
+        learned = _usage.get("learned") or {}
         _usage.clear()
-        _usage.update(_fresh())
+        _usage.update(_fresh(learned))
 
 
 def _save() -> None:
@@ -75,7 +86,8 @@ def quota_key(spec: ModelSpec) -> str:
     return "openrouter" if spec.provider == "openrouter" else f"{spec.provider}:{spec.model}"
 
 
-def req_limit(spec: ModelSpec) -> int:
+def _set_limit(spec: ModelSpec) -> int:
+    """The daily request cap from config (0 = not known)."""
     return {
         "openrouter": config.OPENROUTER_RPD,
         "groq": config.GROQ_RPD,
@@ -83,8 +95,51 @@ def req_limit(spec: ModelSpec) -> int:
     }.get(spec.provider, 0)
 
 
+def req_limit(spec: ModelSpec) -> int:
+    """Config cap, else the cap learned from a real daily 429 (Gemini, NVIDIA, Cloudflare do not publish theirs)."""
+    return _set_limit(spec) or int((_usage.get("learned") or {}).get(quota_key(spec), 0))
+
+
 def tok_limit(spec: ModelSpec) -> int:
     return {"groq": config.GROQ_TPD}.get(spec.provider, 0)
+
+
+def critical() -> bool:
+    """Is the current call one the answer can not do without? (No stage set = direct call: treated as critical.)"""
+    s = _stage.get() or ""
+    return not s or s.startswith(config.CRITICAL_STAGES)
+
+
+def used_frac(spec: ModelSpec) -> float:
+    """How much of today's quota this model has used, 0..1 (0 when no cap is known)."""
+    _roll()
+    key = quota_key(spec)
+    if _usage["out"].get(key, 0) > time.time():
+        return 1.0
+    f = 0.0
+    rl, tl = req_limit(spec), tok_limit(spec)
+    if rl:
+        f = max(f, _usage["req"].get(key, 0) / rl)
+    if tl:
+        f = max(f, _usage["tok"].get(key, 0) / tl)
+    return min(f, 1.0)
+
+
+def capped(spec: ModelSpec) -> bool:
+    return bool(req_limit(spec) or tok_limit(spec))
+
+
+def _quota_block(spec: ModelSpec, margin: float) -> str:
+    key = quota_key(spec)
+    if _usage["out"].get(key, 0) > time.time():
+        return "daily quota used up (provider said so)"
+    rl = req_limit(spec)
+    if rl and _usage["req"].get(key, 0) >= rl * margin:
+        return "daily request quota used up"
+    tl = tok_limit(spec)
+    if tl and _usage["tok"].get(key, 0) >= tl * margin:
+        return "daily token quota used up"
+    return ""
 
 
 def available(spec: ModelSpec) -> tuple[bool, str]:
@@ -97,14 +152,37 @@ def available(spec: ModelSpec) -> tuple[bool, str]:
     if _cool.get(spec.label, 0) > now:
         return False, f"cooling down {int(_cool[spec.label] - now)}s"
     _roll()
-    key = quota_key(spec)
-    rl = req_limit(spec)
-    if rl and _usage["req"].get(key, 0) >= rl * MARGIN:
-        return False, "daily request quota used up"
-    tl = tok_limit(spec)
-    if tl and _usage["tok"].get(key, 0) >= tl * MARGIN:
-        return False, "daily token quota used up"
+    why = _quota_block(spec, MARGIN)
+    if why:
+        return False, why
+    if not critical() and min(RESERVE_MARGIN, MARGIN) < MARGIN:
+        why = _quota_block(spec, RESERVE_MARGIN)
+        if why:
+            return False, f"last {int(round((1 - RESERVE_MARGIN) * 100))}% of today's quota kept for the judge"
     return True, ""
+
+
+def pressure(chains) -> tuple[str, float]:
+    """How tight today's quota is for the given role chains: ("ok" | "tight" | "low", share of quota left).
+    Uses the first model of each chain (where the load goes) and only models with a known cap.
+    "low" also when some role has no model left at all."""
+    _roll()
+    lefts, dead = [], False
+    for spec in chains:
+        chain = [spec] + [config.REGISTRY[label] for label in spec.fallbacks]
+        live = [c for c in chain if PROVIDERS[c.provider].api_key]
+        if not live:
+            continue
+        if all(capped(c) and used_frac(c) >= RESERVE_MARGIN for c in live):
+            dead = True
+        if PROVIDERS[spec.provider].api_key and capped(spec):
+            lefts.append(1.0 - used_frac(spec))
+    left = sum(lefts) / len(lefts) if lefts else 1.0
+    if dead or left < config.QUOTA_LOW:
+        return "low", left
+    if left < config.QUOTA_TIGHT:
+        return "tight", left
+    return "ok", left
 
 
 def wait_hint(specs) -> float | None:
@@ -116,10 +194,7 @@ def wait_hint(specs) -> float | None:
             continue
         _roll()
         key = quota_key(s)
-        rl, tl = req_limit(s), tok_limit(s)
-        if (rl and _usage["req"].get(key, 0) >= rl * MARGIN) or (
-            tl and _usage["tok"].get(key, 0) >= tl * MARGIN
-        ):
+        if _quota_block(s, MARGIN if critical() else min(RESERVE_MARGIN, MARGIN)):
             continue
         left = max(_cool.get(s.label, 0), _prov_cool.get(s.provider, 0)) - now
         if left > 0 and (best is None or left < best):
@@ -179,6 +254,13 @@ def rate_limited(spec: ModelSpec, wait: float | None, daily: bool = False) -> No
     if daily:
         secs = max(wait or 0.0, 3600.0)  # look again in an hour (one cheap call), not every few seconds
         cooldown(spec, secs)
+        _roll()
+        key = quota_key(spec)
+        _usage["out"][key] = time.time() + min(secs, 86400)
+        used = _usage["req"].get(key, 0)
+        if not _set_limit(spec) and used >= LEARN_MIN:  # unknown cap: remember it, so next time we stop BEFORE the 429
+            _usage["learned"][key] = used
+        _save()
         if spec.provider == "openrouter":
             cooldown_provider("openrouter", secs)  # one daily cap for all :free models: every one of them is out
         return
@@ -292,6 +374,8 @@ def snapshot() -> dict:
         "day_utc": _usage["day"],
         "requests_today": dict(_usage["req"]),
         "tokens_today": dict(_usage["tok"]),
+        "out_today": {k: int(v - now) for k, v in _usage.get("out", {}).items() if v > now},
+        "learned_daily_caps": dict(_usage.get("learned", {})),
         "cooling_down": cooling,
     }
 

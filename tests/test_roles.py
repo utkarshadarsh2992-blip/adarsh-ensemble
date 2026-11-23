@@ -96,6 +96,7 @@ def script(monkeypatch):
     monkeypatch.setattr(research, "gather", fake_gather)
     monkeypatch.setattr(config, "CHAT_ENGINE", "roles")
     monkeypatch.setattr(config, "RESEARCH_ENABLED", True)
+    monkeypatch.setattr(roles.health, "pressure", lambda chains: (s.get("pressure", "ok"), s.get("left", 1.0)))
     return s
 
 
@@ -323,3 +324,31 @@ def test_research_gather_real_function_fails_soft(monkeypatch):
 
 def test_android_key_list_has_tavily():
     assert "TAVILY_API_KEY" in android_entry.KEY_NAMES and "TAVILY_API_KEY" in config.SECRET_ENVS
+
+
+# ------------------------------------------------------------------ quota saving
+def test_tight_quota_turns_deep_into_fast(script):
+    script["pressure"], script["left"] = "tight", 0.3
+    script["map"]["conflicts"] = [{"issue": "value", "kind": "factual", "positions": {"A": "11.2", "B": "7.9"}}]
+    res = run()
+    c = script["calls"]
+    assert "specialist" not in c and "pattern" not in c
+    assert c.count("falsifier") == 2 and c.count("debater") == 1
+    assert res["quota"]["level"] == "tight" and res["quota"]["saved"]
+    assert any("Quota kam hai" in w for w in res["warnings"])
+
+
+def test_low_quota_keeps_only_what_the_answer_needs(script):
+    script["pressure"], script["left"] = "low", 0.1
+    script["map"]["conflicts"] = [{"issue": "value", "kind": "factual", "positions": {"A": "11.2", "B": "7.9"}}]
+    res = run()
+    c = script["calls"]
+    for r in ("debater", "method", "evidence", "refiner", "specialist"):
+        assert r not in c, r
+    assert "judge" in c and "architect" in c
+    assert res["council"]["roles"]["debate_skipped"] == "quota bachane ke liye band"
+
+
+def test_ok_quota_changes_nothing(script):
+    res = run()
+    assert "specialist" in script["calls"] and not res.get("quota", {}).get("saved")

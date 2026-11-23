@@ -53,6 +53,20 @@ Mode: UI ka mode (Standard/V/Physics/Math/Business/Coding) mode hint chunta hai;
 
 Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din limit dhyan me rakho). Switches (0 = band): `RESEARCH`, `REVIEW`, `DEBATE`, `RESEARCH_TIMEOUT_S`, `ROLE_MAX_TOKENS`. Purana engine chahiye to `CHAT_ENGINE=verified`.
 
+## Quota bachao (automatic)
+
+Free quota (Groq 200K tokens/din per model, OpenRouter 50 req/din sab free models milake) jaldi khatam na ho, isliye pehle se maujood per-minute slots, daily caps, 429 cooldown aur fallback ke upar ye aur hai (`health.py`, `llm.balance`, `roles.py`):
+
+| Kya | Kaise | Knob |
+|---|---|---|
+| Judge ka reserve | Helper roles kisi model ka daily quota 80% tak hi use karte hain; aakhri 20% Judge, format repair, Refiner, Architect, classifier ke liye | `QUOTA_RESERVE_MARGIN=0.8` |
+| Load balance | Helper role ki chain me jo model 60% quota kha chuka, wo peeche chala jaata hai, taaki ek hi model (jaise gpt-oss-120b) dopahar tak khatam na ho | `QUOTA_BALANCE_AT=0.6` (0 = band) |
+| Daily cap seekhna | Gemini/NVIDIA/Cloudflare apni daily limit nahi batate. Pehla daily 429 aate hi us din ki ginti cap ban jaati hai (`USAGE_FILE` me, din badalne par bhi yaad), agli baar 429 se pehle ruk jaata hai | `QUOTA_LEARN_MIN=20` |
+| Restart yaad | Daily 429 wala model file me "khatam" likha jaata hai, app restart par dobara request barbaad nahi hoti | — |
+| Apne aap halka | Pehle model ka quota ~35% se kam bacha to deep -> fast; ~15% se kam ya kisi role ka koi model na bacha to Debater + Reviewers/Refiner band. Jawab me note aata hai | `QUOTA_TIGHT`, `QUOTA_LOW`, `QUOTA_AUTO=0` se band |
+
+API ke `debug=true` jawab ke `usage` me `learned_daily_caps` aur `out_today` dikhte hain. Galat cap seekh liya ho to `USAGE_FILE` (default `.usage.json`, APK me app data ka `usage.json`) delete kar do.
+
 ## Answer quality passes (verified engine)
 1. **Format repair.** The judge must write fixed section headings (`Direct Core Truth / Verified Mechanism / Trap Warning`,
    or `Short answer / Explanation / Common mistake` for concept questions). If any is missing, the judge is asked again

@@ -186,6 +186,9 @@ async def handle(body: dict) -> dict | list[dict]:
             steps.append(f"Research: {len(res['sources'])} web sources padhe")
         if res.get("confidence"):
             steps.append(f"Confidence: {res['confidence']}")
+        q = res.get("quota") or {}
+        if q.get("saved"):
+            steps.append(f"Quota bachat (~{int(round(q.get('left', 0) * 100))}% bacha): " + ", ".join(q["saved"]))
     else:
         steps = [f"Task: {res.get('task_type', 'general')} · {res.get('style', 'solve')}"]
     if source != "auto":

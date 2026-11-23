@@ -203,6 +203,27 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     warnings: list[str] = []
     notes: list[dict] = []
     roles_dbg: dict = {"mode": mode, "format": fmt}
+    # [Q] Quota: when today's free quota is running out, save calls on our own instead of hitting 429s
+    review_on, debate_on = config.REVIEW_ENABLED, config.DEBATE_ENABLED
+    quota = {"level": "ok", "left": 1.0, "asked": "deep" if deep else "fast", "saved": []}
+    if config.QUOTA_AUTO:
+        quota["level"], quota["left"] = health.pressure(quota_chains())
+        if quota["level"] != "ok" and deep:
+            deep = False
+            quota["saved"].append("deep -> fast (specialist, Pattern Finder, 3rd falsifier, 2nd debate round, 2nd reviewer band)")
+        if quota["level"] == "low":
+            if debate_on:
+                debate_on = False
+                quota["saved"].append("Debater band")
+            if review_on:
+                review_on = False
+                quota["saved"].append("Reviewers + Refiner band")
+        if quota["saved"]:
+            pct = int(round(quota["left"] * 100))
+            msg = f"Quota kam hai (~{pct}% bacha): " + ", ".join(quota["saved"]) + ". Judge ke liye quota bachaya gaya."
+            config.emit(msg)
+            warnings.append(msg)
+    roles_dbg["quota"] = quota
 
     # [A] Architect
     plan = await _call(
@@ -317,9 +338,10 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
                 return await verified.verify_with_code(client, question, task, compact_text, fals_text, errors)
             return []
 
-        do_debate = config.DEBATE_ENABLED and needs_debate(claim_map, reports)
+        do_debate = debate_on and needs_debate(claim_map, reports)
         debate, proofs = await asyncio.gather(run_debate() if do_debate else asyncio.sleep(0, result=[]), run_proofs())
-        roles_dbg["debate_skipped"] = None if do_debate else "drafts me factual takraav nahi tha, koi claim nahi toota"
+        roles_dbg["debate_skipped"] = (None if do_debate else "quota bachane ke liye band" if not debate_on and config.DEBATE_ENABLED
+                                       else "band hai (DEBATE=0)" if not debate_on else "drafts me factual takraav nahi tha, koi claim nahi toota")
     else:
         full_text = compact_text = "(no drafts: every drafter failed)"
         fals_text = "No falsification report available."
@@ -356,7 +378,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     repair_log: list[dict] = []
     audit_texts: dict = {}
     repairs = 0
-    audit = {"enabled": config.REVIEW_ENABLED, "ran": False, "issues": [], "applied": [], "unsure": [], "label": "Reviewers"}
+    audit = {"enabled": review_on, "ran": False, "issues": [], "applied": [], "unsure": [], "label": "Reviewers"}
     reviews: dict = {}
     refiner_dbg: dict = {}
     if answer is None:
@@ -366,7 +388,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         answer, lint, repairs = await verified.enforce_format(client, judge_msgs, answer, proofs, style, errors, repair_log)
 
         # [G] Reviewers
-        if config.REVIEW_ENABLED and not verified.missing_sections(answer, style):
+        if review_on and not verified.missing_sections(answer, style):
             want_method = deep or mode in ("math", "physics", "coding")
             want_evidence = deep or not want_method
             config.emit("Reviewers: tareeka aur saboot jaanch rahe hain")
@@ -454,6 +476,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         "mode": mode,
         "confidence": confidence,
         "sources": sources,
+        "quota": quota,
         "debug": {
             "claims_map": claim_map,
             "falsification": reports,
@@ -465,6 +488,12 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         },
     }
     return answer, extras, panel_drafts, letter_to_name
+
+
+def quota_chains() -> list:
+    """The role chains one question leans on (first model of each = where the load goes)."""
+    return [config.ARCHITECT, config.THEORIST, config.EMPIRICIST, config.SKEPTIC, config.DEBATER,
+            config.SYNTHESIZER, config.METHOD_REVIEWER, config.EVIDENCE_REVIEWER, config.REFINER, *config.DEBATERS[:2]]
 
 
 def verified_summary(proofs: list[dict]) -> dict:

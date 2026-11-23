@@ -165,7 +165,9 @@ const Council = (() => {
       const revLine = (k, n) => { const r = rv[k]; return r ? row(n, r.ran ? (r.issues || []).length + ' galti/shak' : 'output padha nahi gaya') : row(n, 'is mode me nahi chala'); };
       stack.append(sec('roles', '11-role council', 'Architect ne plan banaya, web se sources padhe, drafters ne likha, Skeptic/Falsifier/Debater ne todne ki koshish ki, Judge ne likha, Reviewers ne jaancha, Refiner ne sudhara.',
         h('div', { class: 'ccard' }, row('Mode', R.mode || '—'), row('Format', R.format || '—'),
-          row('Confidence', R.confidence || '—')),
+          row('Confidence', R.confidence || '—'),
+          R.quota ? row('Quota', (R.quota.level === 'ok' ? 'theek' : R.quota.level === 'tight' ? 'kam' : 'bahut kam') + ' · ~' + Math.round((R.quota.left || 0) * 100) + '% bacha') : null,
+          R.quota && (R.quota.saved || []).length ? h('p', { class: 'warn' }, 'Quota bachane ke liye: ' + R.quota.saved.join(', ')) : null),
         R.plan ? fold('Architect ka plan', md(R.plan), true) : null,
         one('architect') ? callCard(one('architect')) : null,
         h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Research'), pill(src.length + ' sources', src.length ? 'good' : 'mute')),
