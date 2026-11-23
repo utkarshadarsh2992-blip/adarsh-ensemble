@@ -50,6 +50,16 @@ def _capture_pipeline(monkeypatch, *, quick=False):
     return chat_adapter, seen, calls
 
 
+def _fake_standard(calls=None, text="model answer", fail=False):
+    """Stand-in for standard_agent.answer (Standard mode = Groq gpt-oss-120b only)."""
+    import standard_agent
+    async def fake(messages, **kw):
+        if calls is not None:
+            calls.append(("gpt-oss-120b", messages, kw))
+        if fail:
+            raise standard_agent.StandardError("Sir, Groq ki teeno keys se jawab nahi aaya. Standard mode sirf Groq use karta hai.")
+        return {"text": text, "used": "gpt-oss-120b", "searches": 0, "wiki": [], "sources": [], "secs": 0.1}
+    return fake
 def _reply(value):
     return value[0] if isinstance(value, list) else value
 
@@ -291,6 +301,7 @@ def test_nonstandard_action_does_not_auto_switch_mode_or_call_models(monkeypatch
 
     monkeypatch.setattr(pipeline, "run", no_pipeline)
     monkeypatch.setattr(chat_adapter, "chat", no_chat)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", no_chat)
     out = _reply(asyncio.run(chat_adapter.handle({"text": "5 minute ka timer lagao", "mode": "coding"})))
     assert out["type"] == "text"
     assert "Standard select" in out["text"]
@@ -322,7 +333,13 @@ def test_casual_greetings_use_shortcut_only_in_standard(monkeypatch):
         pipeline_calls.append((question, kwargs))
         return _fake_result()
 
+    standard_calls = []
+    fake_std = _fake_standard(standard_calls, "Namaste Sir!")
+    async def counted(messages, **kw):
+        model_calls.append(1)
+        return await fake_std(messages, **kw)
     monkeypatch.setattr(chat_adapter, "chat", quick_chat)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", counted)
     monkeypatch.setattr(pipeline, "run", fake_pipeline)
     monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", False)
 
@@ -351,10 +368,10 @@ def test_quick_failure_does_not_promote_standard_to_council(monkeypatch):
         raise AssertionError("Standard quick failure must not promote to council")
 
     monkeypatch.setattr(chat_adapter, "chat", fail_quick)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", _fake_standard(fail=True))
     monkeypatch.setattr(pipeline, "run", no_pipeline)
     monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", True)
-
     out = _reply(asyncio.run(chat_adapter.handle({"text": "France ki rajdhani kya hai?", "mode": "standard"})))
-    assert "Mode wahi" in out["text"]
+    assert "Groq" in out["text"]
     assert out["uiMode"] == "standard"
     assert pipeline_calls == []

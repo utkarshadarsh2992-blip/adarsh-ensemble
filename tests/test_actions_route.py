@@ -10,6 +10,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 run = asyncio.run
 
 
+def _fake_standard(calls=None, text="model answer", fail=False):
+    """Stand-in for standard_agent.answer (Standard mode = Groq gpt-oss-120b only)."""
+    import standard_agent
+    async def fake(messages, **kw):
+        if calls is not None:
+            calls.append(("gpt-oss-120b", messages, kw))
+        if fail:
+            raise standard_agent.StandardError("Sir, Groq ki teeno keys se jawab nahi aaya. Standard mode sirf Groq use karta hai.")
+        return {"text": text, "used": "gpt-oss-120b", "searches": 0, "wiki": [], "sources": [], "secs": 0.1}
+    return fake
 def mods():
     import chat_adapter, pipeline
     return chat_adapter, pipeline
@@ -28,6 +38,7 @@ def no_models(monkeypatch):
         raise AssertionError("the council must not run for a local command")
 
     monkeypatch.setattr(chat_adapter, "chat", fake_chat)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", _fake_standard(calls))
     monkeypatch.setattr(pipeline, "run", boom)
     return calls
 

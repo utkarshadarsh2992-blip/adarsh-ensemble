@@ -11,6 +11,7 @@ const pill = (v) => { const [c, l] = VERDICT[v] || ['mute', String(v || '').repl
 const head = (kind, title, extra) => h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, kind), title ? h('h3', {}, title) : null), extra);
 const sec = (k, ...c) => h('div', { class: 'sec' }, k ? h('span', { class: 'k' }, k) : null, ...c);
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u || ''; } };
+const omittedNotice = () => h('div', { class: 'note' }, icon('warn', 's'), 'Some details omitted because this reply was too large.');
 
 /* reply.notes = { title, items: [{ title, text }] }: folded under the reply (falsifier findings). */
 const notesEl = (n) => h('details', { class: 'notes' },
@@ -49,7 +50,12 @@ const RENDER = {
         h('div', { class: 'checks' }, (c.checks || []).map(k => h('div', { class: 'check' }, h('b', {}, k.source), pill(k.verdict), k.note ? h('span', {}, k.note) : null)))));
     });
     if (d.sources && d.sources.length) card.append(h('details', { class: 'fold' }, h('summary', {}, icon('link', 's'), 'Sources (' + d.sources.length + ')', h('span', { style: 'flex:1' }), icon('chev', 'chev')),
-      h('div', { class: 'in' }, d.sources.map(s => h('div', { class: 'src' }, h('b', {}, '[' + s.n + ']'), s.url ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(s.url)) : (s.title || ''), s.url ? h('small', {}, hostOf(s.url)) : null)))));
+      h('div', { class: 'in' }, d.sources.map(s => {
+        const href = safeExternalUrl(s && s.url), raw = s && typeof s.url === 'string' ? s.url : '';
+        return h('div', { class: 'src' }, h('b', {}, '[' + (s && s.n != null ? s.n : '?') + ']'), href
+          ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(href))
+          : h('span', {}, s && s.title ? s.title + (raw ? ' (' + raw + ')' : '') : raw), href ? h('small', {}, hostOf(href)) : null);
+      }))));
     if (d.caveat) card.append(sec('', h('div', { class: 'note' }, icon('warn', 's'), d.caveat)));
     return card;
   },
@@ -166,7 +172,11 @@ const RENDER = {
 
 /* unknown reply type: degrade to text rather than crash */
 function renderReply(d, ctx) {
-  try { return (RENDER[d.type] || RENDER.text)(RENDER[d.type] ? d : { text: d.text || JSON.stringify(d, null, 2) }, ctx); }
+  try {
+    const el = (RENDER[d.type] || RENDER.text)(RENDER[d.type] ? d : { text: d.text || JSON.stringify(d, null, 2) }, ctx);
+    if (d._detailsOmitted) el.append(omittedNotice());
+    return el;
+  }
   catch (e) { console.error('render', d.type, e); return md('Could not display this reply (' + d.type + ').'); }
 }
 

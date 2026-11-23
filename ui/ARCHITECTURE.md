@@ -2,7 +2,7 @@
 
 Frontend only. No framework, no build step needed to edit (plain scripts). `python3 build.py` inlines everything into one page (`dist/adarsh.html`).
 
-## 1. Design idea (JARVIS-style)
+## 1. Design idea (Adarsh assistant style)
 
 One person, one assistant, many ways to talk to it, and the assistant can reach back.
 
@@ -70,7 +70,7 @@ Rule: if the AI needs a decision or missing info, it returns an `ask` or `approv
 * In voice mode the AI speaks the question and the overlay closes so you answer on the card.
 * Suggested rule for the backend: never execute a `risk: high` action without a recorded `allow`.
 
-## 5. Pushing from the backend (proactive JARVIS)
+## 5. Pushing from the backend (proactive Adarsh)
 
 ```js
 ADARSH_UI.push({type:'text', text:'Your 5 pm reminder is due.'})   // lands in the current chat (or {chatId})

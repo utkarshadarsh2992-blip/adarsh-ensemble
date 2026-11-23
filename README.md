@@ -57,7 +57,7 @@ Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din lim
 
 Chat ke 6 modes (Standard, V, Physics, Math, Business, Coding) ab sirf prompt hint nahi badalte. Har mode ka **apna model
 combination** hai (kaunsa model kaunsa role karega) aur **apna behaviour** (kitni jaanch). Ek mode badlo, baaki par asar nahi.
-Standard ab sirf 1 quick model call hai (neeche "Standard mode = instant answer"). Council plan wale modes: V, Physics, Math, Business, Coding.
+Standard ab sirf Groq gpt-oss-120b hai, jo khud web search + Wikipedia se research karta hai (neeche "Standard mode = Groq only"). Council plan wale modes: V, Physics, Math, Business, Coding.
 Model choice models ki jaani-maani strengths aur free quotas par based judgement hai, benchmark nahi.
 Har chain `config.check_chains` se check hoti hai (teeno core providers, pehla fallback doosre provider par, koi model do baar nahi).
 Quota kam ho to "always" wale extras (specialist, pattern finder, 3rd falsifier, always-debate) apne aap band ho jaate hain.
@@ -158,6 +158,16 @@ holds fades out when the list (max 30) is full. Settings > Lessons lists, edits 
 answer's prompt as "held".
 
 ## Providers
+
+**3 API keys per provider, 15 in total** (Settings > API keys, one group per provider): Groq 1-3, OpenRouter 1-3, Gemini 1-3,
+NVIDIA NIM 1-3, Cloudflare 1-3 (each Cloudflare slot = API token + Account ID; an empty Account ID in slot 2/3 uses slot 1's).
+Env names: `GROQ_API_KEY`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3` (same pattern for `OPENROUTER_API_KEY`, `GEMINI_API_KEY`,
+`NVIDIA_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`). A model is tried with key 1; when that key hits its limit (429),
+needs credits (402), is rejected (401/403) or the server is down (5xx / network), the same model is tried with key 2, then key 3,
+and only then the next model in the chain. Every key has its own cooldown and daily counters (`gpt-oss-120b#2` in Model calls).
+Voice (Gemini / Groq TTS) and NVIDIA FLUX / Cosmos media rotate over their provider keys the same way; NVIDIA noise removal uses the first NVIDIA key that is set.
+Keys are stored encrypted on the phone only (Android Keystore); the repo is public, so keys are never put in GitHub Secrets or the APK.
+
 Groq, OpenRouter, Gemini (core: har role ki chain me teeno) aur optional Cloudflare Workers AI, NVIDIA NIM (extra fallback; key na ho to skip). Cloudflare ko `CLOUDFLARE_API_TOKEN` aur `CLOUDFLARE_ACCOUNT_ID` dono chahiye. `bge-m3` embedding model hai, chat me use nahi hota. Cloudflare ke neurons token nahi hote, isliye local cap nahi: asli 429 aane par chain aage badhti hai.
 Model IDs jo docs me confirm nahi hue (NVIDIA ke teen, OpenRouter ka inkling, Cloudflare ka gemma) best guess hain. Galat ID par 404 aata hai, model 6 ghante ke liye skip hota hai aur agla model jawab deta hai. Android me Test connection sahi ID suggest karta hai.
 
@@ -165,11 +175,23 @@ Model IDs jo docs me confirm nahi hue (NVIDIA ke teen, OpenRouter ka inkling, Cl
 `pipeline.run(..., record=True)` har model call ka stage, prompt, output, time, fallback/skip reasons rakhta hai aur `out["council"]` banata hai (`council.py`): drafts, claims map, patterns, falsifiers, proofs, judge ka pehla jawab, repair log, audit before/after, draft->final provenance (shabd-milan se andaaza). Default off (bada hota hai); chat adapter on rakhta hai.
 
 
-## Standard mode = instant answer
+## Standard mode = Groq only (gpt-oss-120b + web search + Wikipedia)
 
-Standard mode no longer runs the council. It makes **one** call (`config.QUICK`: gpt-oss-120b on Groq, then
-gemini-3.1-flash-lite, nemotron-lightning, gpt-oss-20b, gemini-3.8-flash) with a short, direct, confident prompt.
-Reply style > Depth still applies (simple / normal / detailed). If every model in that chain fails, Standard returns a clear failure message without promoting the mode or silently starting a larger council. For checked answers select Verified, Physics, Math, Business or Coding yourself. `STANDARD_QUICK=0` explicitly enables Standard's own council plan; it still does not auto-select another mode.
+Standard mode calls **only Groq**, model `openai/gpt-oss-120b` (`standard_agent.py`). No Gemini, OpenRouter, NVIDIA or
+Cloudflare call happens for a Standard answer, not even as a fallback. The model researches by itself:
+
+- **Groq built-in web search** (`tools: [{"type": "browser_search"}]`): runs on Groq's side, fast, good for news, prices, scores and anything recent.
+- **`wikipedia_search`** (local function tool): the engine queries the Wikipedia API and sends the article intros back; good for stable facts.
+- The model decides when to search (simple / personal questions are answered directly). At most 3 tool rounds, `reasoning_effort` low
+  (medium when Deep is on), Groq's 【n†L..】 citation markers are removed, and the pages used are listed under the answer as **Sources**
+  (not in voice replies). If Groq refuses the tool combination (HTTP 400) the same key is retried with web search only, then without tools.
+- Questions that include permitted personal app records (notes, reminders...) run without search tools, so private details never become search queries.
+- Small talk (hi / thanks) is one Groq call without tools.
+- Groq keys 1, 2, 3 are tried in order: a 429 (limit), 401/402/403 (key/credits) or 5xx / network error moves to the next Groq key.
+  If all Groq keys fail, Standard shows a clear message; it never promotes the request to another provider or the council.
+- Attachments are not read in Standard (only the text goes). `STANDARD_QUICK=0` (server operators only) still enables Standard's own council plan.
+
+Docs: [Groq browser search](https://console.groq.com/docs/browser-search), [built-in + local tools](https://console.groq.com/docs/tool-use/built-in-tools).
 
 Settings > Reply style > **Council** (Fast / Deep) now really switches the council size for those modes (`reply.think`);
 before, only the `CHAT_MODE` env var did.
@@ -207,17 +229,17 @@ Existing voice is unchanged: Gemini TTS, then Groq Orpheus, then the phone's own
 - **Python backend (`voice_v6/`):** language detector (Devanagari, Roman Hindi), text normalizer (numbers, symbols), Hinglish processor (sentences, spans), speech queue (duplicate prevention, interrupt), router with dead-provider cool-down, and a protocol `{"tts": {"v6": "plan|chunk|control|status|install"}}`. `voice.synth()` falls back to local Piper when `PIPER_DIR` has the models and the `piper-tts` package exists. Nothing paid is required.
 - Benchmarks (6-core sandbox): Piper RTF 0.04-0.05 (first audio about 0.15 s); sherpa int8 RTF about 0.3; Kokoro RTF 0.58, English only, so not chosen.
 
-## Standard mode = Jarvis (in-app actions)
+## Standard mode = Adarsh (in-app actions)
 
 Standard mode can now *do* things inside the app, not only answer. The engine plans, the phone executes.
 
 - **Local rule parser** (`actions/`): supported Hindi/Hinglish/English commands use deterministic rules, no model/network dependency. Tasks, reminders, alarms, timers, notes, Work projects/logs, memory, safe display/voice settings, app opening, web search, phone status, calendar and voice mode. Up to 3 sequential steps with per-step results; unsupported/ambiguous command forms ask for detail instead of inventing a mutation.
 - **Execution** (`ActionRunner.kt`, `ActionStore.kt`, `04-productivity.js`): task/reminder/alarm/timer via `AlarmManager` + notification, re-armed after reboot; all productivity records in app-private atomic JSON. Stable IDs for edits/completion; fired records remain visible. Queued stale broadcasts are rejected after completion/rescheduling. UI browser mirror migrates without overwriting native IDs. Code changes are never an action capability.
 - **Risk policy**: safe allowlisted adds/edits/read/completion run immediately. Messages/calls require explicit confirmation, then open a draft/dialer where you press final Send/Call. AI delete/clear, PIN/security, DND, sensitive settings and Settings panels are disabled even if confirmed. Your manual controls remain separate. Privacy/source/mode toggles cannot be enabled by AI.
-- **Jarvis feel**: "Ji Sir" acknowledgements, a small HUD orb while work runs, a per-step card, and a spoken result. Only in Standard mode; toggle in Settings > Jarvis.
+- **Adarsh feel**: "Ji Sir" acknowledgements, a small HUD orb while work runs, a per-step card, and a spoken result. Only in Standard mode; toggle in Settings > Adarsh.
 - **Privacy**: local parsing/execution needs no cloud model. Basic commands work with zero model API keys on Android. Local action command/result turns are excluded from automatic online chat history. Online TTS may send spoken text to its provider, system mic recognition may be online, and explicit search queries reach search providers: this is not a guarantee of offline-only speech. No new analytics/server added; stored API keys remain outside model context. Wi-Fi/Bluetooth/DND/Settings-panel changes are denied, not silently opened.
 - **Voice mode does the same work**: tap the orb and say "task add kr do kal 7 bje padhai". Chat awaits actual execution before publishing/speaking results. Confirmation accepts a clear exact Haan/Nahi, not "haan nahi"; unclear/timeout stays pending for the chat card. Closing/interruption does not confirm anything or reopen the mic. Tap-to-talk is default; hands-free is an explicit in-session switch, no wake-word listener. Android may require notification/exact-alarm permissions; Force stop/battery restrictions can prevent delivery.
-- **Phone voice is selectable**: Settings > Voice & language > Phone voice lists the system TTS voices with their gender; tapping one speaks a sample. The picker falls back to a male voice when the engine's default is female. Default natural voice is `Orus` (male) so the Jarvis persona stays consistent across natural, offline and phone voices.
+- **Phone voice is selectable**: Settings > Voice & language > Phone voice lists the system TTS voices with their gender; tapping one speaks a sample. The picker falls back to a male voice when the engine's default is female. Default natural voice is `Orus` (male) so the Adarsh persona stays consistent across natural, offline and phone voices.
 - **Separate lists**: Tasks, Work (directly below Tasks), Reminders, Alarms & timers, Notes. "Task set/add/banao" always creates an actual Task, not a Reminder/Note. A due time additionally schedules a notification. All lists support manual forms and supported Standard typed/voice commands. Work is explicitly created large projects with category, goal, date, whole minutes, progress, outcome and activity entries; task completion never adds Work.
 
 ## AI access and read-only architecture
@@ -241,7 +263,7 @@ The app checks on launch/return with a throttle; Check for updates forces a fres
 
 ## Background live voice (outside the app)
 
-Voice mode > Outside app, or Settings > Background live voice: tap Start background voice while the app is visible, allow microphone/notification permission, then press Home or use another app. A native microphone/media foreground service owns recognition, the selected-mode engine request and speech output, not the hidden WebView. Stop from the ongoing notification, voice controls, or the exact stop command. It is off by default, never restarts at boot/process death, and expires after 30 minutes; start another session when needed.
+In **Standard mode**, open live voice (Voice mode) and simply press Back or Home: the conversation continues outside the app. While the voice screen is open the page keeps a ready session config on the phone; the activity starts the session at the moment it leaves the screen (Back handler / `onUserLeaveHint`), because Android only lets a visible app start a microphone foreground service. Microphone and notification permission are needed (the app asks once when the voice screen opens). Coming back to the app ends the background session at the next quiet moment and continues the same chat on the voice screen. There is no separate Settings entry or Outside-app button any more. A native microphone/media foreground service owns recognition, the selected-mode engine request and speech output, not the hidden WebView. Stop from the ongoing notification, voice controls, or the exact stop command. It is off by default, never restarts at boot/process death, and expires after 30 minutes; start another session when needed.
 
 The session captures the selected mode, Auto source, reply style, privacy permissions and voice selection. Manual/Hybrid are refused without changing them. Opening Settings, changing mode/source, locking the app, or starting typed chat/voice typing stops an active or permission-pending session; a later permission grant cannot restart a cancelled session. Natural speech retains the engine's voice fallback; installed Piper and then the selected phone voice remain available. The mic is paused during thinking/speaking to avoid self-input. Basic native productivity actions still use offline rules and canonical records. Calls/messages and screen-only settings/memory edits require returning to the app; background voice cannot bypass confirmation or security restrictions.
 

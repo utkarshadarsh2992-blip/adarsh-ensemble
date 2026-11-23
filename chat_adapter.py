@@ -7,6 +7,7 @@ and accepts a reply object, an array of replies, or {replies: [...]}.
 This module is the only place that knows both formats.
 """
 import os
+import json
 import re
 import time
 
@@ -19,6 +20,8 @@ import pipeline
 import app_context
 import app_knowledge
 from llm import LLMError, chat
+import verified
+import standard_agent
 
 # Greetings, thanks and other small talk do not need panel + falsifiers + judge.
 _CASUAL = re.compile(
@@ -31,10 +34,62 @@ CASUAL_SYSTEM = (
     "No headings, no lists, no disclaimers. Mirror the user's language (Hinglish stays Hinglish, Hindi stays Hindi)."
 )
 
-# Standard mode = one quick model call (STANDARD_QUICK=0 sends it through the full 11-role council again).
+# Standard mode = Groq only: openai/gpt-oss-120b with Groq's built-in web search + a Wikipedia tool
+# (standard_agent.py). STANDARD_QUICK=0 (server operators only) sends it through the full 11-role council again.
 QUICK_STANDARD = os.getenv("STANDARD_QUICK", "1") != "0"
 MAX_CONTEXT_CHARS = 2000   # how much earlier chat is passed along as context
 MAX_QUESTION_CHARS = 8000  # AskRequest.question limit
+MAX_HISTORY_ITEMS = 40
+MAX_HISTORY_TEXT = 2000
+MAX_ATTACHMENTS = 8
+MAX_ATTACHMENT_DATA_CHARS = 12 * 1024 * 1024
+MAX_META_CHARS = 64 * 1024
+
+
+def _bound_meta(value, depth: int = 0):
+    """Keep Android/server metadata finite before it reaches any model path."""
+    if depth >= 3:
+        return str(value)[:500]
+    if isinstance(value, dict):
+        return {str(k)[:80]: _bound_meta(v, depth + 1) for k, v in list(value.items())[:50]}
+    if isinstance(value, list):
+        return [_bound_meta(v, depth + 1) for v in value[:50]]
+    if isinstance(value, str):
+        return value[:4000]
+    if isinstance(value, (bool, int, float)) or value is None:
+        return value
+    return str(value)[:500]
+
+
+def _bound_request(body: dict) -> dict:
+    """Apply caps shared by Android and the FastAPI adapter."""
+    bounded = dict(body)
+    history = body.get("history")
+    if isinstance(history, list):
+        bounded["history"] = [
+            {**item, "text": str(item.get("text") or "")[:MAX_HISTORY_TEXT]}
+            for item in history[-MAX_HISTORY_ITEMS:]
+            if isinstance(item, dict)
+        ]
+    attachments = body.get("attachments")
+    if isinstance(attachments, list):
+        bounded_attachments = []
+        for item in attachments[:MAX_ATTACHMENTS]:
+            if not isinstance(item, dict):
+                continue
+            item = dict(item)
+            if isinstance(item.get("dataUrl"), str):
+                item["dataUrl"] = item["dataUrl"][:MAX_ATTACHMENT_DATA_CHARS]
+            bounded_attachments.append(item)
+        bounded["attachments"] = bounded_attachments
+    meta = _bound_meta(body.get("meta") or {})
+    try:
+        if len(json.dumps(meta, ensure_ascii=False)) > MAX_META_CHARS:
+            meta = {k: meta[k] for k in ("approval", "answer", "deep", "voice") if k in meta}
+    except (TypeError, ValueError):
+        meta = {}
+    bounded["meta"] = meta
+    return bounded
 
 
 def _context(history: list[dict] | None, current: str) -> str:
@@ -76,18 +131,16 @@ def _is_casual(text: str) -> bool:
 
 
 async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "normal") -> dict | None:
-    """One quick model call. None means: fall back to the full pipeline."""
+    """Standard small talk: one Groq gpt-oss-120b call, no tools. None means: use the normal Standard path."""
     try:
-        async with httpx.AsyncClient() as client:
-            out = await chat(
-                client, config.SYNTHESIZER,
-                [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text, reply_lang)},
-                 {"role": "user", "content": text}],
-                temperature=0.6, max_tokens=300, timeout=40, retries=0,
-            )
-    except LLMError:
+        out = await standard_agent.answer(
+            [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text, reply_lang)},
+             {"role": "user", "content": text}],
+            tools=False, max_tokens=500, temperature=0.7, budget=30,
+        )
+    except standard_agent.StandardError:
         return None
-    return {"type": "text", "text": out.strip(), "steps": ["Quick reply"]}
+    return {"type": "text", "text": out["text"], "steps": [f"Quick reply · Groq {out['used']}"]}
 
 
 QUICK_SYSTEM = (
@@ -104,31 +157,42 @@ QUICK_VOICE = (
     "This will be read aloud. Plain spoken sentences only: no markdown, no lists, no code, no URLs, no emojis. "
     "2 to 5 short sentences, conversational and confident."
 )
-async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool) -> dict | None:
-    """Standard mode: one model call, answer at once. None means: fall back to the full pipeline."""
+async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool, *,
+                       research: bool = True, deep: bool = False) -> dict:
+    """Standard mode: Groq gpt-oss-120b only. It searches the web (Groq browser_search) and Wikipedia by itself
+    when that helps. Never falls back to another provider; a failure comes back as a clear text reply."""
     system = QUICK_SYSTEM + " " + QUICK_DEPTH.get(depth, QUICK_DEPTH["normal"]) + " " + pipeline._language_hint(text, reply_lang)
+    if research:
+        system += " " + standard_agent.RESEARCH_HINT
     if voice:
         system += " " + QUICK_VOICE
     user = text + (extra or "")
-    t0 = time.perf_counter()
     trace = health.start_trace(False)
-    health.set_stage("quick")
+    health.set_stage("standard")
     try:
-        async with httpx.AsyncClient() as client:
-            out = await chat(client, config.QUICK, [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                             temperature=0.5, max_tokens=900 if depth != "detailed" else 1800, timeout=45, retries=0, budget=60)
-    except LLMError:
-        return None
-    out = out.strip()
-    if not out:
-        return None
-    used = list(health.summarize(trace).keys())
-    steps = ["Standard · quick answer (1 model" + (f": {used[0]}" if used else "") + ")", f"{round(time.perf_counter() - t0, 1)}s"]
-    rep = {"type": "text", "text": out, "steps": steps}
+        out = await standard_agent.answer(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            tools=research, max_tokens=3000 if (depth == "detailed" or deep) else 1600,
+            effort="medium" if deep else "low", temperature=0.5, budget=90 if deep else 75,
+        )
+    except standard_agent.StandardError as e:
+        return {"type": "text", "text": str(e), "uiMode": "standard", "steps": ["Standard · Groq only"]}
+    text_out = out["text"]
+    if not voice:
+        text_out += standard_agent.sources_block(out["sources"])
+    steps = [f"Standard · Groq {out['used']} (sirf Groq)"]
+    if out["searches"]:
+        steps.append(f"Web search x{out['searches']} (Groq built-in)")
+    if out["wiki"]:
+        steps.append("Wikipedia: " + ", ".join(q for q in out["wiki"] if q)[:160])
+    steps.append(f"{out['secs']}s")
+    rep = {"type": "text", "text": text_out, "steps": steps}
     calls = pipeline._compact_calls(trace)
     if calls:
         rep["calls"] = calls
     return rep
+
+
 def _audit_line(issue: dict, kind: str) -> str:
     quote = " ".join(str(issue.get("quote") or "").split())
     fix = " ".join(str(issue.get("fix") or "").split())
@@ -143,7 +207,7 @@ def _audit_line(issue: dict, kind: str) -> str:
 def _sources_block(res: dict) -> str:
     """Web sources the answer actually cites ([S1]...), as clickable links under the answer."""
     srcs = res.get("sources") or []
-    used = {int(n) for n in re.findall(r"\[S(\d+)", res.get("answer") or "")}
+    used = {int(n) for n in verified.SOURCE_CITATION_RE.findall(res.get("answer") or "")}
     cited = [s for s in srcs if s.get("n") in used]
     if not cited:
         return ""
@@ -192,6 +256,9 @@ def local_response(body: dict) -> dict | list[dict] | None:
 
 
 async def handle(body: dict) -> dict | list[dict]:
+    if not isinstance(body, dict):
+        return {"type": "text", "text": "Request body must be an object."}
+    body = _bound_request(body)
     if body.get("ping"):
         return {"ok": True}
     if isinstance(body.get("tts"), dict):
@@ -241,11 +308,14 @@ async def handle(body: dict) -> dict | list[dict]:
     private_context = private_context or "[Permitted relevant app records;" in extra
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
     extra = extra[:6000]
-    if QUICK_STANDARD and source == "auto" and ui_mode == "standard" and not body.get("attachments") and not meta.get("deep"):
-        quick = await _quick_reply(text[:MAX_QUESTION_CHARS - len(extra)], extra, reply_lang, depth, bool(meta.get("voice")))
-        if quick:
-            return [quick]
-        return [{"type": "text", "text": "Sir, Standard ke models abhi jawab nahi de paye. Mode wahi rakha hai; thodi der baad dobara try karo.", "uiMode": "standard"}]
+    if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
+        # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
+        has_records = "[Permitted relevant app records;" in extra
+        quick = await _quick_reply(text[:MAX_QUESTION_CHARS - len(extra)], extra, reply_lang, depth, bool(meta.get("voice")),
+                                   research=not has_records, deep=bool(meta.get("deep")))
+        if body.get("attachments"):
+            quick["text"] += "\n\n*Standard mode attachments nahi padhta (sirf text jaata hai).*"
+        return [quick]
     question = (text[: MAX_QUESTION_CHARS - len(extra)] + extra)[:MAX_QUESTION_CHARS]
 
     res = await pipeline.run(

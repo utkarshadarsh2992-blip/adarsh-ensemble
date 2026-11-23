@@ -27,7 +27,8 @@ RESERVE_MARGIN = float(os.getenv("QUOTA_RESERVE_MARGIN", "0.8"))
 LEARN_MIN = int(os.getenv("QUOTA_LEARN_MIN", "20"))  # a daily 429 after fewer requests than this is not learned as the cap
 
 _cool: dict[str, float] = {}       # model label -> unix time until which it is skipped
-_prov_cool: dict[str, float] = {}  # provider -> unix time
+_prov_cool: dict[str, float] = {}  # provider -> unix time (network circuit breaker: the whole server is skipped)
+_key_cool: dict[str, float] = {}   # key slot ("groq", "groq#2", ...) -> unix time (401 / 402 / daily cap of ONE key)
 _streak: dict[str, int] = {}       # consecutive failures per model label
 _perr: dict[str, list[float]] = {}  # provider -> timestamps of recent network-level failures
 _trace: contextvars.ContextVar = contextvars.ContextVar("trace", default=None)
@@ -64,26 +65,67 @@ def _load() -> dict:
 
 
 _usage: dict = _load()
+# The engine runs model calls from several threads (Android: one asyncio loop per request + voice / media threads), so
+# every change to the usage counters and every save happens under this lock (audit H8).
+_usage_lock = threading.RLock()
 
 
 def _roll() -> None:
-    if _usage.get("day") != _today():
-        learned = _usage.get("learned") or {}
-        _usage.clear()
-        _usage.update(_fresh(learned))
+    with _usage_lock:
+        if _usage.get("day") != _today():
+            learned = _usage.get("learned") or {}
+            _usage.clear()
+            _usage.update(_fresh(learned))
 
 
 def _save() -> None:
-    try:
-        with open(STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(_usage, f)
-    except OSError:
-        pass
+    """Atomic write (temp file + os.replace): a crash or a parallel save can not leave a half-written file."""
+    with _usage_lock:
+        try:
+            blob = json.dumps(_usage)
+        except (TypeError, ValueError, RuntimeError):
+            return
+        tmp = f"{STATE_FILE}.{os.getpid()}.{threading.get_ident()}.tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(blob)
+            os.replace(tmp, STATE_FILE)
+        except OSError:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
+def _slot(spec: ModelSpec) -> int:
+    return int(getattr(spec, "key_slot", 0) or 0)
+
+
+def key_id(spec: ModelSpec) -> str:
+    """Which API key a call uses: "groq" for key 1 (or an unpinned spec), "groq#2" / "groq#3" for the others."""
+    n = _slot(spec)
+    return spec.provider if n <= 1 else f"{spec.provider}#{n}"
 
 
 def quota_key(spec: ModelSpec) -> str:
-    # OpenRouter's daily limit is shared by all :free models; Groq/Gemini count per model.
-    return "openrouter" if spec.provider == "openrouter" else f"{spec.provider}:{spec.model}"
+    # OpenRouter's daily limit is shared by all :free models; Groq/Gemini count per model. Every API key has its own
+    # quota, so keys 2 and 3 count separately ("groq:openai/gpt-oss-120b#2"); key 1 keeps the old name.
+    base = "openrouter" if spec.provider == "openrouter" else f"{spec.provider}:{spec.model}"
+    n = _slot(spec)
+    return base if n <= 1 else f"{base}#{n}"
+
+
+def _slot_specs(spec: ModelSpec) -> list:
+    """An unpinned spec stands for all of its provider's configured keys; a pinned one only for itself."""
+    if _slot(spec):
+        return [spec]
+    slots = PROVIDERS[spec.provider].slots()
+    return [config.keyed(spec, n) for n in slots] if len(slots) > 1 else [spec]
+
+
+def _has_key(spec: ModelSpec) -> bool:
+    prov = PROVIDERS[spec.provider]
+    return bool(prov.key(_slot(spec)) if _slot(spec) else prov.api_key)
 
 
 def _set_limit(spec: ModelSpec) -> int:
@@ -111,7 +153,15 @@ def critical() -> bool:
 
 
 def used_frac(spec: ModelSpec) -> float:
-    """How much of today's quota this model has used, 0..1 (0 when no cap is known)."""
+    """How much of today's quota this model has used, 0..1 (0 when no cap is known). With several keys: the average
+    over the keys (3 keys = 3x the quota)."""
+    specs = _slot_specs(spec)
+    if len(specs) > 1:
+        return sum(_used_frac_one(s) for s in specs) / len(specs)
+    return _used_frac_one(spec)
+
+
+def _used_frac_one(spec: ModelSpec) -> float:
     _roll()
     key = quota_key(spec)
     if _usage["out"].get(key, 0) > time.time():
@@ -144,11 +194,14 @@ def _quota_block(spec: ModelSpec, margin: float) -> str:
 
 def available(spec: ModelSpec) -> tuple[bool, str]:
     prov = PROVIDERS[spec.provider]
-    if not prov.api_key:
-        return False, f"{prov.api_key_env} not set"
+    if not _has_key(spec):
+        return False, f"{config.slot_env(prov.api_key_env, _slot(spec) or 1)} not set"
     now = time.time()
     if _prov_cool.get(spec.provider, 0) > now:
         return False, f"provider cooling down {int(_prov_cool[spec.provider] - now)}s"
+    kid = key_id(spec)
+    if _key_cool.get(kid, 0) > now:
+        return False, f"key {kid} cooling down {int(_key_cool[kid] - now)}s"
     if _cool.get(spec.label, 0) > now:
         return False, f"cooling down {int(_cool[spec.label] - now)}s"
     _roll()
@@ -190,13 +243,12 @@ def wait_hint(specs) -> float | None:
     now = time.time()
     best = None
     for s in specs:
-        if not PROVIDERS[s.provider].api_key:
+        if not _has_key(s):
             continue
         _roll()
-        key = quota_key(s)
         if _quota_block(s, MARGIN if critical() else min(RESERVE_MARGIN, MARGIN)):
             continue
-        left = max(_cool.get(s.label, 0), _prov_cool.get(s.provider, 0)) - now
+        left = max(_cool.get(s.label, 0), _prov_cool.get(s.provider, 0), _key_cool.get(key_id(s), 0)) - now
         if left > 0 and (best is None or left < best):
             best = left
     return best
@@ -204,20 +256,22 @@ def wait_hint(specs) -> float | None:
 
 def note_request(spec: ModelSpec) -> None:
     """Count every HTTP attempt (providers may count failed ones too)."""
-    _roll()
-    key = quota_key(spec)
-    _usage["req"][key] = _usage["req"].get(key, 0) + 1
-    _save()
+    with _usage_lock:
+        _roll()
+        key = quota_key(spec)
+        _usage["req"][key] = _usage["req"].get(key, 0) + 1
+        _save()
 
 
 def success(spec: ModelSpec, tokens: int) -> None:
     _streak[spec.label] = 0
     _perr.pop(spec.provider, None)
     if tokens:
-        _roll()
-        key = quota_key(spec)
-        _usage["tok"][key] = _usage["tok"].get(key, 0) + tokens
-        _save()
+        with _usage_lock:
+            _roll()
+            key = quota_key(spec)
+            _usage["tok"][key] = _usage["tok"].get(key, 0) + tokens
+            _save()
 
 
 def cooldown(spec: ModelSpec, seconds: float) -> None:
@@ -226,6 +280,12 @@ def cooldown(spec: ModelSpec, seconds: float) -> None:
 
 def cooldown_provider(provider: str, seconds: float) -> None:
     _prov_cool[provider] = time.time() + min(seconds, 86400)
+
+
+def cooldown_key(spec: ModelSpec, seconds: float) -> None:
+    """Skip every model on THIS API key (bad key, no credits, the key's daily cap); the provider's other keys stay."""
+    kid = key_id(spec)
+    _key_cool[kid] = time.time() + min(seconds, 86400)
 
 
 def provider_error(provider: str) -> None:
@@ -254,21 +314,22 @@ def rate_limited(spec: ModelSpec, wait: float | None, daily: bool = False) -> No
     if daily:
         secs = max(wait or 0.0, 3600.0)  # look again in an hour (one cheap call), not every few seconds
         cooldown(spec, secs)
-        _roll()
-        key = quota_key(spec)
-        _usage["out"][key] = time.time() + min(secs, 86400)
-        used = _usage["req"].get(key, 0)
-        if not _set_limit(spec) and used >= LEARN_MIN:  # unknown cap: remember it, so next time we stop BEFORE the 429
-            _usage["learned"][key] = used
-        _save()
+        with _usage_lock:
+            _roll()
+            key = quota_key(spec)
+            _usage["out"][key] = time.time() + min(secs, 86400)
+            used = _usage["req"].get(key, 0)
+            if not _set_limit(spec) and used >= LEARN_MIN:  # unknown cap: remember it, so next time we stop BEFORE the 429
+                _usage["learned"][key] = used
+            _save()
         if spec.provider == "openrouter":
-            cooldown_provider("openrouter", secs)  # one daily cap for all :free models: every one of them is out
+            cooldown_key(spec, secs)  # one daily cap for all :free models of THIS key: every one of them is out
         return
     if wait:
         # small margin + jitter, so parallel callers do not all come back in the same second and fail together again
         cooldown(spec, wait + 1.0 + random.random() * 2.0)
         if spec.provider == "openrouter" and wait > 600:
-            cooldown_provider("openrouter", wait)  # daily cap hit: every :free model is out
+            cooldown_key(spec, wait)  # daily cap hit: every :free model on this key is out
     else:
         fail(spec, 30)
 
@@ -375,6 +436,7 @@ def snapshot() -> dict:
     now = time.time()
     cooling = {k: int(v - now) for k, v in _cool.items() if v > now}
     cooling.update({f"provider:{k}": int(v - now) for k, v in _prov_cool.items() if v > now})
+    cooling.update({f"key:{k}": int(v - now) for k, v in _key_cool.items() if v > now})
     return {
         "day_utc": _usage["day"],
         "requests_today": dict(_usage["req"]),
@@ -389,10 +451,12 @@ def reset(clear_usage: bool = False) -> None:
     """Forget cooldowns (used by tests)."""
     _cool.clear()
     _prov_cool.clear()
+    _key_cool.clear()
     _streak.clear()
     _perr.clear()
     with _slots_lock:
         _slots.clear()
     if clear_usage:
-        _usage.clear()
-        _usage.update(_fresh())
+        with _usage_lock:
+            _usage.clear()
+            _usage.update(_fresh())

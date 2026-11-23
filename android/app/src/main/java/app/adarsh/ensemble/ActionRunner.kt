@@ -533,11 +533,14 @@ class ActionRunner(private val ctx: Context) {
     private fun error(id: String, message: String) = JSONObject().put("id", id).put("ok", false).put("message", message)
 
     companion object {
-        const val CHANNEL = "jarvis"
+        const val CHANNEL = "adarsh_reminders"
+        /** Channel id used by older builds; removed so Settings > Notifications shows only the renamed channel. */
+        private const val OLD_CHANNEL = "jarvis"
         fun notify(ctx: Context, id: String, title: String, text: String): Boolean {
             return try {
                 val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 if (Build.VERSION.SDK_INT >= 26) {
+                    if (nm.getNotificationChannel(OLD_CHANNEL) != null) nm.deleteNotificationChannel(OLD_CHANNEL)
                     val ch = NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH)
                     ch.description = "Reminders, alarms, tasks and timers set by Adarsh"
                     ch.enableVibration(true); nm.createNotificationChannel(ch)

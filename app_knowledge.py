@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MODULES = {
-    "chat_adapter.py": "UI request routing: local actions first, Standard quick reply, selected-mode reasoning otherwise.",
+    "chat_adapter.py": "UI request routing: local actions first, Standard = Groq gpt-oss-120b agent, selected-mode reasoning otherwise.",
+    "standard_agent.py": "Standard mode: Groq-only gpt-oss-120b with Groq web search + Wikipedia tool; rotates Groq keys 1-3.",
     "pipeline.py": "Question classification, source handling (auto/manual/hybrid), role engine and answer packaging.",
     "roles.py": "11-role reasoning: architect, drafters, pattern finder, skeptic, falsifiers, debate, judge, reviewers, refiner. Selected mode wins.",
     "mode_plans.py": "Separate model chains and behaviour policy for Standard, Verified/V, Physics, Math, Business and Coding.",
@@ -72,7 +73,8 @@ def reference(mode: str = "standard") -> dict:
     return {
         "readOnly": True, "selectedMode": mode, "factsVersion": "mobile-updates-voice-v2", "modules": modules,
         "android": ANDROID, "ui": UI, "plans": plans, "selectedRoleFallbacks": chains,
-        "quick": {"primary": config.QUICK.label, "fallbacks": list(config.QUICK.fallbacks), "enabledByDefault": True},
+        "quick": {"primary": "gpt-oss-120b", "provider": "groq only (keys 1-3)", "fallbacks": [],
+                  "tools": ["Groq built-in browser_search", "wikipedia_search"], "enabledByDefault": True},
         "voice": {"auto": "Gemini -> Groq English where applicable -> Piper if ready -> system TTS",
                   "phone": "System TTS only; Gemini voice dropdown does not choose the system voice.",
                   "offline": "Piper hi rohan / en ryan after the model pack download; no provider text requests.",

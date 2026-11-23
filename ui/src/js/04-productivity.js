@@ -12,6 +12,8 @@ const Productivity = (() => {
   const result = (ok, message, extra = {}) => ({ ok, message, ...extra });
   const text = (v, max = 600) => typeof v === 'string' ? v.trim().slice(0, max) : '';
   const fields = ['id', 'kind', 'title', 'text', 'at', 'created', 'updated', 'done', 'firedAt', 'category', 'goal', 'progress', 'minutes', 'outcome', 'entries'];
+  const IMPORT_MAX_BYTES = 2 * 1024 * 1024, IMPORT_MAX_RECORDS = 500, IMPORT_RECORD_MAX_BYTES = 32 * 1024;
+  const jsonBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
   function safeRecord(r) {
     if (!r || !COLLECTIONS[r.kind]) return null;
     const out = {};
@@ -22,6 +24,26 @@ const Productivity = (() => {
     if (['task', 'work'].includes(out.kind)) { out.title = out.title || out.text; delete out.text; }
     else { out.text = out.text || out.title; delete out.title; }
     return out;
+  }
+  function importedRecord(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r) || jsonBytes(r) > IMPORT_RECORD_MAX_BYTES || typeof r.kind !== 'string' || !COLLECTIONS[r.kind]) return null;
+    const strCaps = { id: 120, title: 120, text: 600, category: 120, goal: 600, outcome: 600 };
+    for (const [k, max] of Object.entries(strCaps)) if (r[k] != null && (typeof r[k] !== 'string' || r[k].length > max)) return null;
+    for (const k of ['at', 'created', 'updated', 'firedAt', 'progress', 'minutes']) if (r[k] != null && (typeof r[k] !== 'number' || !Number.isFinite(r[k]) || r[k] < 0)) return null;
+    if (r.progress != null && r.progress > 100 || r.minutes != null && r.minutes > 1440) return null;
+    if (r.done != null && typeof r.done !== 'boolean') return null;
+    if (r.entries != null) {
+      if (!Array.isArray(r.entries) || r.entries.length > 100) return null;
+      for (const e of r.entries) {
+        if (!e || typeof e !== 'object' || Array.isArray(e) || (e.id != null && (typeof e.id !== 'string' || e.id.length > 120)) ||
+          (e.date != null && (typeof e.date !== 'string' || e.date.length > 40)) || (e.text != null && (typeof e.text !== 'string' || e.text.length > 600)) ||
+          (e.outcome != null && (typeof e.outcome !== 'string' || e.outcome.length > 600)) ||
+          (e.minutes != null && (typeof e.minutes !== 'number' || !Number.isFinite(e.minutes) || e.minutes < 0 || e.minutes > 1440)) ||
+          (e.progress != null && (typeof e.progress !== 'number' || !Number.isFinite(e.progress) || e.progress < 0 || e.progress > 100))) return null;
+      }
+    }
+    const x = safeRecord(r);
+    return x && jsonBytes(x) <= IMPORT_RECORD_MAX_BYTES ? x : null;
   }
   function absorb(records) {
     Object.keys(COLLECTIONS).forEach(k => { S[COLLECTIONS[k]] = []; });
@@ -193,7 +215,13 @@ const Productivity = (() => {
   }
   function exportRecords() { return Object.values(COLLECTIONS).flatMap(k => S[k]).map(safeRecord).filter(Boolean); }
   function importRecords(records) {
-    const rows = (records || []).map(safeRecord).filter(Boolean).map(r => ({ ...r, id: r.id || uid(r.kind), created: r.created || 1, updated: r.updated || r.created || 1 }));
+    if (!Array.isArray(records) || records.length > IMPORT_MAX_RECORDS || jsonBytes(records) > IMPORT_MAX_BYTES) return result(false, 'Backup records bahut bade ya zyada hain; import nahi hua.');
+    const rows = [];
+    for (const raw of records) {
+      const r = importedRecord(raw);
+      if (!r) return result(false, 'Backup me invalid ya bahut bada record mila; purana data preserve hai.');
+      rows.push({ ...r, id: r.id || uid(r.kind), created: r.created || 1, updated: r.updated || r.created || 1 });
+    }
     if (native() && N().recordsImport) { const r = JSON.parse(N().recordsImport(JSON.stringify({ records: rows }))); if (r.ok) { sync(); changed(); } return r; }
     rows.forEach(r => { if (r.kind === 'task') r.due = r.at || null; const a = list(r.kind), i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = r; else a.push(r); armWeb(r); }); changed(); return result(true, 'Records restore ho gaye');
   }

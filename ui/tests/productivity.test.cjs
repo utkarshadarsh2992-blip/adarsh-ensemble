@@ -734,7 +734,10 @@ test('native background errors are visible and voice typing stops a competing se
     backgroundVoiceStart: () => '{"ok":false,"error":"Enable notifications before starting background voice"}',
     backgroundVoiceStop: () => { stops++; return '{"ok":true,"active":false,"state":"stopped"}'; }
   } }); t.after(() => app.close());
-  app.BackgroundVoice.open(); await clickButton(app.document.querySelector('.shade'), 'Start background voice');
+  // No manual start button any more: Standard live voice hands off on Back/Home; the error still shows in the sheet.
+  assert.ok(!button(app.document, 'Start background voice'));
+  app.BackgroundVoice.open(); app.BackgroundVoice.start();
+  assert.ok(!button(app.document.querySelector('.shade'), 'Start background voice'));
   assert.equal(app.BackgroundVoice.active(), false);
   assert.match(textOf(app.document.querySelector('.shade')), /Enable notifications/);
   await clickButton(app.document.querySelector('.shade'), 'Close controls');

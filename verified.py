@@ -143,6 +143,7 @@ def missing_sections(answer: str, style: str) -> list[str]:
 
 
 _TAG_RE = re.compile(r"\s*\[(?:PROVEN by code|REASONED|UNVERIFIED)\]", re.IGNORECASE)
+SOURCE_CITATION_RE = re.compile(r"\[S([1-9]\d*)\]")
 
 # "r162 is the latest stable release as of 2026-11-22": the engine has no internet, so this comes from stale memory.
 _VER = r"(?:\bv?\d+(?:\.\d+)+\b|\br\d{2,4}\b|\b(?:19|20)\d{2}\b)"
@@ -156,7 +157,7 @@ def freshness_warning(answer: str) -> list[str]:
     for m in _FRESH.finditer(answer):
         start = answer.rfind("\n", 0, m.start()) + 1
         end = answer.find("\n", m.end())
-        if re.search(r"\[S\d+", answer[start : end if end != -1 else None]):
+        if SOURCE_CITATION_RE.search(answer[start : end if end != -1 else None]):
             continue  # backed by a web source fetched for this question (roles engine research step)
         return ["Jawab me 'latest / current / as of' ke saath version ya saal hai, bina kisi web source ke. "
                 "Ye model ki purani yaad se ho sakta hai: pehle official site par check karo."]
@@ -286,7 +287,7 @@ async def verify_with_code(client, question, task, map_text, fals_text, errors, 
     )
     return [
         {"claim": claim, "code": code, "status": r["status"], "output": r["output"]}
-        for (claim, code), r in zip(checks, runs)
+        for (claim, code), r in zip(checks, runs, strict=False)
     ]
 
 

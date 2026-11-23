@@ -19,7 +19,17 @@ const Lock = (() => {
   }
   const verify = async (pin) => S.lock && (await derive(pin, S.lock.salt, S.lock.alg)) === S.lock.hash;
 
+  const LOCK_STATE_KEY = 'adarsh.lockout.v1';
   let activePad = null, fails = 0, until = 0, hiddenAt = 0;
+  function loadLockState() {
+    try {
+      const x = JSON.parse(localStorage.getItem(LOCK_STATE_KEY) || '{}');
+      fails = Number.isInteger(x.fails) && x.fails >= 0 && x.fails < 5 ? x.fails : 0;
+      until = Number.isFinite(x.until) && x.until > 0 ? x.until : 0;
+    } catch (e) { fails = 0; until = 0; }
+  }
+  function saveLockState() { try { localStorage.setItem(LOCK_STATE_KEY, JSON.stringify({ fails, until })); } catch (e) {} }
+  loadLockState();
   document.addEventListener('keydown', (e) => {
     if (!activePad) return;
     if (/^\d$/.test(e.key)) activePad.press(e.key); else if (e.key === 'Backspace') activePad.press('b');
@@ -47,9 +57,10 @@ const Lock = (() => {
     const msg = h('p', { class: 'lk-msg', role: 'status' }, 'Enter your PIN');
     const pad = pinPad(S.lock.len || 4, async (pin, p) => {
       if (Date.now() < until) { p.shake(); msg.textContent = 'Too many tries. Wait ' + Math.ceil((until - Date.now()) / 1000) + 's.'; return; }
-      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; Bus.emit('lock:unlocked'); return; }
+      if (await verify(pin)) { fails = 0; until = 0; saveLockState(); activePad = null; root.hidden = true; root.textContent = ''; Bus.emit('lock:unlocked'); return; }
       fails++; p.shake(); vibe(30);
       if (fails >= 5) { until = Date.now() + 30000; fails = 0; msg.textContent = 'Too many tries. Locked for 30 s.'; } else msg.textContent = 'Wrong PIN. ' + (5 - fails) + ' tries left.';
+      saveLockState();
     });
     activePad = pad;
     root.append(h('div', { class: 'mark' }, 'A'), h('h2', {}, 'ADARSH'), msg, pad.el,

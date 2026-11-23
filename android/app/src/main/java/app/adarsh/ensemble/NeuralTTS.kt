@@ -12,6 +12,9 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.DigestInputStream
+import java.security.MessageDigest
+import java.util.UUID
 
 /**
  * Offline neural voice (Piper VITS models run by sherpa-onnx). Works with no internet and no API key once the
@@ -67,20 +70,45 @@ class NeuralTTS(ctx: Context) {
         c.connectTimeout = 20000; c.readTimeout = 30000; c.instanceFollowRedirects = true
         if (c.responseCode !in 200..299) throw RuntimeException("download HTTP ${c.responseCode}")
         val total = c.contentLengthLong.takeIf { it > 0 } ?: 22_000_000L
-        val target = File(root, pack); target.deleteRecursively()
-        val canon = root.canonicalPath
-        Counting(c.inputStream.buffered(), { n -> onPercent((n * 100 / total).toInt().coerceIn(0, 99)) }).use { raw ->
-            TarArchiveInputStream(BZip2CompressorInputStream(raw)).use { tar ->
-                while (true) {
-                    val e = tar.nextTarEntry ?: break
-                    val out = File(root, e.name)
-                    if (!out.canonicalPath.startsWith(canon)) continue   // never write outside our folder
-                    if (e.isDirectory) out.mkdirs() else { out.parentFile?.mkdirs(); out.outputStream().use { tar.copyTo(it) } }
+        val target = File(root, pack)
+        val temp = File(root, ".${pack}.tmp-${UUID.randomUUID()}")
+        val tempCanon = temp.canonicalPath
+        try {
+            temp.mkdirs()
+            val digest = MessageDigest.getInstance("SHA-256")
+            Counting(DigestInputStream(c.inputStream.buffered(), digest), { n -> onPercent((n * 100 / total).toInt().coerceIn(0, 99)) }).use { raw ->
+                TarArchiveInputStream(BZip2CompressorInputStream(raw)).use { tar ->
+                    while (true) {
+                        val e = tar.nextTarEntry ?: break
+                        val name = e.name
+                        if (name.isBlank() || name.startsWith("/") || File(name).isAbsolute() || e.isSymbolicLink || e.isLink) {
+                            throw RuntimeException("unsafe voice pack entry")
+                        }
+                        val out = File(temp, name)
+                        val outCanon = out.canonicalPath
+                        val prefix = tempCanon + File.separator
+                        if (outCanon != tempCanon && !outCanon.startsWith(prefix)) throw RuntimeException("unsafe voice pack path")
+                        if (e.isDirectory) out.mkdirs() else { out.parentFile?.mkdirs(); out.outputStream().use { tar.copyTo(it) } }
+                    }
                 }
             }
+            val actualHash = digest.digest().joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+            if (!actualHash.equals(PACK_SHA256[pack], ignoreCase = true)) throw RuntimeException("voice pack hash mismatch")
+            val candidate = File(temp, pack)
+            if (!File(candidate, "tokens.txt").exists() || candidate.listFiles { f -> f.name.endsWith(".onnx") }?.isEmpty() != false) throw RuntimeException("pack incomplete")
+            File(candidate, ".ok").writeText("1")
+            val old = File(root, ".${pack}.old-${UUID.randomUUID()}")
+            val hadOld = target.exists()
+            if (hadOld && !target.renameTo(old)) throw RuntimeException("could not stage old voice pack")
+            if (!candidate.renameTo(target)) {
+                if (hadOld) old.renameTo(target)
+                throw RuntimeException("could not install voice pack")
+            }
+            if (hadOld) old.deleteRecursively()
+        } finally {
+            temp.deleteRecursively()
+            c.disconnect()
         }
-        if (File(target, "tokens.txt").exists()) File(target, ".ok").writeText("1")
-        else throw RuntimeException("pack incomplete")
     }
 
     private fun engine(lang: String): OfflineTts? = synchronized(engines) {
@@ -132,6 +160,10 @@ class NeuralTTS(ctx: Context) {
         val PACKS = linkedMapOf(
             "hi" to "vits-piper-hi_IN-rohan-medium-int8",
             "en" to "vits-piper-en_US-ryan-medium-int8"
+        )
+        private val PACK_SHA256 = mapOf(
+            "vits-piper-hi_IN-rohan-medium-int8" to "b306822fe16516d3c882e070a7205d781524bd9e8f2d121c3da3e504afe20e05",
+            "vits-piper-en_US-ryan-medium-int8" to "376eb489d42e98cb49f0e13a633e8d88580bd247ed8aacc298a733210404f771"
         )
     }
 }

@@ -6,14 +6,39 @@
 const Council = (() => {
   let page = null, sink = null;          // sink: called with each new live step while the page is open in live mode
   const KEEP = 10;                       // full records kept on the phone; older ones are dropped (they are big)
+  const MAX_RECORD_BYTES = 512 * 1024;
   const IDX = 'adarsh.cn.idx', PRE = 'adarsh.cn.';
   const mem = new Map();                 // records of this session, even when storage is full or unavailable
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } };
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } };
   const index = () => { try { return JSON.parse(lsGet(IDX) || '[]'); } catch (e) { return []; } };
+  const bytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
+  function capRecord(rec) {
+    let omitted = false;
+    const copy = (v) => {
+      if (typeof v === 'string') return v.length > 12000 ? (omitted = true, v.slice(0, 12000) + '…') : v;
+      if (Array.isArray(v)) return v.length > 100 ? (omitted = true, v.slice(0, 100).map(copy)) : v.map(copy);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, copy(x)]));
+      return v;
+    };
+    let out = copy(rec);
+    const detailKeys = ['prompt', 'output', 'judge_raw', 'final', 'before', 'after', 'discarded', 'calls', 'drafts', 'steps', 'thinkLines', 'repairs', 'falsifiers', 'proofs', 'claims_map', 'provenance'];
+    for (const k of detailKeys) if (bytes(out) > MAX_RECORD_BYTES && out && Object.prototype.hasOwnProperty.call(out, k)) { delete out[k]; omitted = true; }
+    const shrink = (v) => {
+      if (typeof v === 'string') return v.length > 512 ? (omitted = true, v.slice(0, Math.max(256, Math.floor(v.length / 2))) + '…') : v;
+      if (Array.isArray(v)) return v.length > 8 ? (omitted = true, v.slice(0, Math.max(1, Math.floor(v.length / 2))).map(shrink)) : v.map(shrink);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]));
+      return v;
+    };
+    for (let i = 0; bytes(out) > MAX_RECORD_BYTES && i < 8; i++) out = shrink(out);
+    if (bytes(out) > MAX_RECORD_BYTES) { out = { question: String(rec && rec.question || '').slice(0, 1000), _detailsOmitted: true }; omitted = true; }
+    if (omitted && out && typeof out === 'object') out._detailsOmitted = true;
+    return out;
+  }
   /* Records live under their own keys, NOT inside the chat state: one big record must never make saving chats fail. */
   function put(id, rec) {
+    rec = capRecord(rec);
     mem.set(id, rec);
     let idx = index().filter(x => x !== id); idx.push(id);
     const text = JSON.stringify(rec);
@@ -25,7 +50,7 @@ const Council = (() => {
   function get(id) {
     if (mem.has(id)) return mem.get(id);
     const t = lsGet(PRE + id); if (!t) return null;
-    try { const r = JSON.parse(t); mem.set(id, r); return r; } catch (e) { return null; }
+    try { const r = capRecord(JSON.parse(t)); mem.set(id, r); return r; } catch (e) { return null; }
   }
 
   const fmtS = (s) => (s == null ? '' : s >= 60 ? Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's' : (s >= 10 ? Math.round(s) : Math.round(s * 10) / 10) + 's');
@@ -151,7 +176,7 @@ const Council = (() => {
       master ? tl('lessons', 'check', 'Lessons', (ls.lessons_used || []).length + ' lage, ' + (ls.learned || []).length + ' naye/majboot') : null,
       tl('prov', 'check', 'Kya aaya, kya gaya', 'draft se final tak'));
 
-    if (rec.trimmed) stack.append(h('p', { class: 'warn' }, 'Record bada tha, isliye kuch prompts chhote karke dikhaye gaye hain (model ko poore gaye the).'));
+    if (rec.trimmed || rec._detailsOmitted) stack.append(h('p', { class: 'warn' }, rec._detailsOmitted ? 'Details omitted: council record bahut bada tha, isliye kuch detail phone par nahi rakhi gayi.' : 'Record bada tha, isliye kuch prompts chhote karke dikhaye gaye hain (model ko poore gaye the).'));
     stack.append(
       h('p', { class: 'muted qline' }, '“' + clip(rec.question, 160) + '”'),
       score, modelsEl,
@@ -160,7 +185,7 @@ const Council = (() => {
     /* ---- roles (11-role engine) */
     if (rec.roles) {
       const R = rec.roles, src = R.sources || [];
-      const linkEl = (x) => x.url ? h('a', { href: x.url, target: '_blank', rel: 'noopener' }, x.title || x.url) : h('span', {}, x.title || '');
+      const linkEl = (x) => { const href = safeExternalUrl(x && x.url), raw = x && typeof x.url === 'string' ? x.url : ''; return href ? h('a', { href, target: '_blank', rel: 'noopener' }, x.title || href) : h('span', {}, x && x.title ? x.title + (raw ? ' (' + raw + ')' : '') : raw); };
       const deb = R.debate || [], rf = R.refiner || {}, rv = R.reviews || {};
       const revLine = (k, n) => { const r = rv[k]; return r ? row(n, r.ran ? (r.issues || []).length + ' galti/shak' : 'output padha nahi gaya') : row(n, 'is mode me nahi chala'); };
       stack.append(sec('roles', '11-role council', 'Architect ne plan banaya, web se sources padhe, drafters ne likha, Skeptic/Falsifier/Debater ne todne ki koshish ki, Judge ne likha, Reviewers ne jaancha, Refiner ne sudhara.',

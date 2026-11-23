@@ -11,5 +11,8 @@ local.properties
 *.apk
 *.aab
 android/app/libs/*.aar
+android/app/signing/*.jks
+android/app/signing/*.keystore
+android/app/signing/*.b64
 node_modules/
 tests/.usage-test.json

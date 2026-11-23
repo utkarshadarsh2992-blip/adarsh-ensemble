@@ -42,7 +42,7 @@ const Lessons = (() => {
         if (!r || !r.ok) { wrap.append(h('p', { class: 'warn' }, (r && r.error) || 'Lessons nahi khule.')); return; }
         const items = r.lessons || [];
         if (onChange) onChange(items.length);
-        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Manual master answer par 👎 daba kar "kya galat tha" likho, ya jab checks galti pakdenge to yahan apne aap judega.')); return; }
+        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Upar khud likh kar jodo, ya Manual master answer par 👎 daba kar "kya galat tha" likho. Jab checks galti pakdenge to yahan apne aap bhi judega.')); return; }
         items.forEach(x => wrap.append(h('div', { class: 'ccard' },
           h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), h('span', { class: 'chips' },
             h('span', { class: 'pill ' + (x.origin === 'user' ? 'info' : 'mute') }, x.origin === 'user' ? 'tumhara' : 'auto'),
@@ -54,7 +54,18 @@ const Lessons = (() => {
             h('button', { class: 'btn ghost', style: 'flex:1', on: { click: async () => paint(await call({ op: 'delete', id: x.id })) } }, 'Hatao')))));
         wrap.append(h('button', { class: 'btn danger', on: { click: () => confirmSheet({ title: 'Saare lessons hatao?', text: 'Master answer phir bina sikhe rules ke shuru hoga.', label: 'Hatao', danger: true, top: true, onYes: async () => paint(await call({ op: 'clear' })) }) } }, 'Sab hatao'));
       };
-      b.append(h('p', {}, 'Sirf Manual mode ka master answer inhe padhta hai. Auto aur Hybrid inhe nahi dekhte. Model ke weights nahi badalte: ye rules prompt me jaate hain aur jo tootte hain unka wazan badhta hai.'), wrap);
+      /* manual lesson: the user writes a rule directly, no thumbs-down needed */
+      const ta = h('textarea', { rows: '3', maxlength: '300', placeholder: 'Apna rule likho, jaise: "Har jawab me pehle seedha answer do, phir detail"', 'aria-label': 'Naya lesson', class: 'lesson-new', style: 'width:100%;background:var(--card);border:0;border-radius:14px;padding:12px;color:var(--fg);resize:none' });
+      const addBtn = h('button', { class: 'btn pri', 'data-lesson-add': '1', on: { click: async () => {
+        const t = ta.value.trim();
+        if (!t) { toast('Pehle lesson likho'); ta.focus(); return; }
+        addBtn.disabled = true;
+        const r = await call({ op: 'add', text: t });
+        addBtn.disabled = false;
+        if (r && r.ok) { ta.value = ''; toast('Lesson jud gaya'); paint(r); } else toast((r && r.error) || 'Save nahi hua');
+      } } }, 'Lesson jodo');
+      b.append(h('p', {}, 'Sirf Manual mode ka master answer inhe padhta hai. Auto aur Hybrid inhe nahi dekhte. Model ke weights nahi badalte: ye rules prompt me jaate hain aur jo tootte hain unka wazan badhta hai.'),
+        h('div', { class: 'ccard', style: 'display:flex;flex-direction:column;gap:8px' }, h('b', {}, 'Naya lesson khud likho'), ta, addBtn), wrap);
       wrap.append(h('p', { class: 'muted' }, 'Khul raha hai…'));
       call({ op: 'list' }).then(paint);
     } });

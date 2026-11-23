@@ -182,14 +182,16 @@ def debate_unresolved(text: str) -> bool:
 
 
 def cited_sources(answer: str, sources: list[dict]) -> list[dict]:
-    used = {int(n) for n in re.findall(r"\[S(\d+)", answer)}
+    used = {int(n) for n in verified.SOURCE_CITATION_RE.findall(answer)}
     return [s for s in sources if s["n"] in used]
 
 
 def strip_bad_cites(answer: str, sources: list[dict]) -> str:
     """[S7] when only 3 sources exist is an invented citation: remove it."""
     ok = {s["n"] for s in sources}
-    return re.sub(r"\s?\[S(\d+)\]", lambda m: m.group(0) if int(m.group(1)) in ok else "", answer)
+    return verified.SOURCE_CITATION_RE.sub(
+        lambda m: m.group(0) if int(m.group(1)) in ok else "", answer
+    ).rstrip()
 
 
 # ------------------------------------------------------------------ entry point
@@ -278,7 +280,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
               errors, max_tokens=config.PANEL_MAX_TOKENS, temperature=pol.draft_temp)
         for role, spec in drafters
     ])
-    panel_drafts = {role: text for (role, _), text in zip(drafters, outs) if text}
+    panel_drafts = {role: text for (role, _), text in zip(drafters, outs, strict=False) if text}
 
     all_drafts = dict(user_drafts)
     for label, text in panel_drafts.items():

@@ -36,6 +36,8 @@ head = f"""<title>ADARSH</title>
 </style>"""
 full = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+        # audit M1/L7: no frames, plugins or <base> rewrites (the native bridge is visible to every frame)
+        '<meta http-equiv="Content-Security-Policy" content="frame-src \'none\'; object-src \'none\'; base-uri \'none\'">'
         + head + '</head><body>' + body + '<script>' + js + '</script></body></html>')
 (root / "dist" / "adarsh.html").write_text(full)
 print("built", len(frag) // 1024, "KB")

@@ -1,5 +1,6 @@
 
 import java.net.URI
+import java.security.MessageDigest
 import java.util.Base64
 
 plugins {
@@ -72,8 +73,8 @@ chaquopy {
         version = "3.12"
 
         pip {
-            install("httpx>=0.27")
-            install("python-dotenv>=1.0")
+            install("httpx==0.28.1")
+            install("python-dotenv==1.2.4")
         }
     }
 
@@ -100,12 +101,30 @@ protobuf {
 // Offline neural voice runtime (sherpa-onnx, static onnxruntime; arm64 + x86_64 used). Downloaded once, not kept in git.
 val sherpaVersion = "1.12.40"
 val sherpaAar = file("libs/sherpa-onnx-$sherpaVersion.aar")
-if (!sherpaAar.exists() || sherpaAar.length() < 1_000_000) {
+val sherpaSha256 = "f6c225258b8528ab7537ff92fbb452df4c68d31632c19f45c8ddb9b56eea238d"
+fun sha256File(file: File): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    file.inputStream().use { input ->
+        val buffer = ByteArray(64 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            digest.update(buffer, 0, count)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}
+if (!sherpaAar.exists() || sherpaAar.length() < 1_000_000 || sha256File(sherpaAar) != sherpaSha256) {
+    if (sherpaAar.exists()) sherpaAar.delete()
     sherpaAar.parentFile.mkdirs()
     val tmp = File(sherpaAar.path + ".part")
     val url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$sherpaVersion/sherpa-onnx-static-link-onnxruntime-$sherpaVersion.aar"
     URI(url).toURL().openStream().use { i -> tmp.outputStream().use { o -> i.copyTo(o) } }
-    tmp.renameTo(sherpaAar)
+    if (!tmp.renameTo(sherpaAar)) throw GradleException("Could not install downloaded sherpa-onnx AAR")
+}
+if (sha256File(sherpaAar) != sherpaSha256) {
+    sherpaAar.delete()
+    throw GradleException("sherpa-onnx AAR SHA-256 mismatch")
 }
 
 dependencies {

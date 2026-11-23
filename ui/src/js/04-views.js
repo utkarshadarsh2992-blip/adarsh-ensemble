@@ -164,8 +164,7 @@ const App = (() => {
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },
-      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open()),
-      navItem('voice', 'Background live voice', 'Explicit Start · continue outside app · notification Stop', () => BackgroundVoice.open())));
+      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -176,8 +175,8 @@ const App = (() => {
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
-      swItem('sparkle', 'Jarvis (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.jarvis !== false, v => { S.settings.jarvis = v; })));
-    st.append(label('Jarvis'), h('div', { class: 'grp' },
+      swItem('sparkle', 'Adarsh (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
+    st.append(label('Adarsh'), h('div', { class: 'grp' },
       navItem('tasks', 'Tasks and Work', 'Drawer mein separate lists; Work sirf bade projects ke liye', () => show('tasks')),
       navItem('shield', 'AI access', 'Local read/edit, online context aur old chats ke alag controls', aiAccessSheet),
       navItem('code', 'Architecture (read-only)', 'Actual modules aur selected mode ka model plan; no code changes', architectureSheet),
@@ -331,19 +330,55 @@ const App = (() => {
     } });
   }
   function keysSummary() {
-    const st = window.AdarshKeys.status(); const ok = id => !!(st[id] && st[id].set);
-    const n = ['GROQ_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY'].filter(ok).length
-      + (ok('CLOUDFLARE_API_TOKEN') && ok('CLOUDFLARE_ACCOUNT_ID') ? 1 : 0);
-    return n ? n + ' of 5 providers set' : 'No keys yet. Add at least one to get answers';
+    const K = window.AdarshKeys, st = K.status(); const ok = id => !!(st[id] && st[id].set);
+    /* a Cloudflare slot counts when it has a token and an Account ID (its own, or slot 1's) */
+    const slotOk = (g, n) => ok(K.slotId(g.base, n)) && (!g.idBase || ok(K.slotId(g.idBase, n)) || ok(g.idBase));
+    let providers = 0, keys = 0;
+    (K.groups || []).forEach(g => { const c = [1, 2, 3].filter(n => slotOk(g, n)).length; keys += c; if (c) providers++; });
+    return providers ? providers + ' of 5 providers · ' + keys + ' of 15 keys set' : 'No keys yet. Add at least one to get answers';
   }
   function keysSheet() {
     sheet({ title: 'API keys', tall: true, build(b, close) {
       const K = window.AdarshKeys, st = K.status();
-      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'));
-      K.providers.forEach(p => {
+      if (st._notice) toast(st._notice);
+      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'),
+        h('p', {}, 'Har provider me 3 keys daal sakte ho. Pehle key 1 chalti hai; uski limit khatam ho (429), credits chahiye (402), key reject ho ya server down ho, to key 2, phir key 3. Khaali slot skip hota hai.'));
+      const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+      const field = (id, label, plain) => {
+        const cur = st[id] || {};
+        return h('input', { type: plain ? 'text' : 'password', placeholder: cur.set ? label + ': saved (' + cur.hint + '). Paste to replace' : 'Paste ' + label, 'aria-label': label, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+      };
+      (K.groups || []).forEach(g => {
+        const anySet = [1, 2, 3].some(n => (st[K.slotId(g.base, n)] || {}).set);
+        const box = h('details', { class: 'keygrp', open: anySet || g.name === 'Groq' ? '' : null },
+          h('summary', { class: 'l' }, g.name + ' · ' + [1, 2, 3].filter(n => (st[K.slotId(g.base, n)] || {}).set).length + '/3 keys'),
+          h('p', { class: 'muted' }, g.url));
+        [1, 2, 3].forEach(n => {
+          const keyId = K.slotId(g.base, n), idId = g.idBase ? K.slotId(g.idBase, n) : null;
+          const keyIn = field(keyId, g.name + (g.idBase ? ' token ' : ' key ') + n, false);
+          const idIn = idId ? field(idId, g.name + ' Account ID ' + n, true) : null;
+          const isSet = (st[keyId] || {}).set || (idId && (st[idId] || {}).set);
+          box.append(h('label', { class: 'l' }, 'Key ' + n + (n === 1 ? ' (pehle yeh)' : ' (backup)')), keyIn, idIn,
+            h('div', { class: 'frow' },
+              h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => {
+                const v = keyIn.value.trim(), acc = idIn ? idIn.value.trim() : '';
+                if (!v && !acc) return toast('Paste a key first');
+                let r = { ok: true };
+                if (acc) r = K.save(idId, acc);
+                if (r && r.ok && v) r = K.save(keyId, v);
+                done(r, g.name + ' key ' + n + ' saved');
+              } } }, 'Save'),
+              isSet ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => {
+                let r = (st[keyId] || {}).set ? K.remove(keyId) : { ok: true };
+                if (r && r.ok && idId && (st[idId] || {}).set) r = K.remove(idId);
+                done(r, g.name + ' key ' + n + ' deleted');
+              } } }, 'Delete') : null));
+        });
+        b.append(box);
+      });
+      K.providers.filter(p => !p.group).forEach(p => {
         const cur = st[p.id] || {};
-        const inp = h('input', { type: p.plain ? 'text' : 'password', placeholder: cur.set ? 'Saved (' + cur.hint + '). Paste a new key to replace' : 'Paste ' + p.name + (p.plain ? '' : ' key'), 'aria-label': p.name + ' API key', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-        const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+        const inp = field(p.id, p.name, p.plain);
         b.append(h('label', { class: 'l' }, p.name + ' · ' + p.url), inp,
           h('div', { class: 'frow' },
             h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { const v = inp.value.trim(); if (!v) return toast('Paste a key first'); done(K.save(p.id, v), p.name + ' key saved'); } } }, 'Save'),
@@ -405,19 +440,35 @@ const App = (() => {
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.id === 'f-import' && t.files[0]) {
+      /* audit M8: bounded size, known version, typed + capped lists before anything replaces local data */
+      const MAX_IMPORT_BYTES = 8 * 1024 * 1024, CAPS = { chats: 500, memories: 2000, missions: 500 };
+      if (t.files[0].size > MAX_IMPORT_BYTES) { toast('Backup file bahut badi hai (8 MB max).'); t.value = ''; return; }
       t.files[0].text().then(txt => {
-        const d = JSON.parse(txt);
-        if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('Invalid export');
+        if (txt.length > MAX_IMPORT_BYTES) return toast('Backup file bahut badi hai (8 MB max).');
+        let d;
+        try { d = JSON.parse(txt); } catch (err) { return toast('That file is not valid JSON'); }
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return toast('Yeh ADARSH backup file nahi hai.');
+        if (d.version !== undefined && d.version !== 1 && d.version !== 2) return toast('Backup version ' + String(d.version).slice(0, 12) + ' support nahi hai.');
+        if (d.records !== undefined && !Array.isArray(d.records)) return toast('Backup ke records galat format me hain.');
+        const isObj = x => !!x && typeof x === 'object' && !Array.isArray(x);
+        const lists = {};
+        for (const k of Object.keys(CAPS)) {
+          if (d[k] === undefined) continue;
+          if (!Array.isArray(d[k])) return toast('Backup me "' + k + '" galat format me hai.');
+          if (d[k].length > CAPS[k]) return toast('Backup me ' + k + ' bahut zyada hain (max ' + CAPS[k] + ').');
+          lists[k] = d[k].filter(isObj);
+        }
+        if (lists.chats) lists.chats = lists.chats.filter(c => typeof c.id === 'string' && c.id.length <= 200 && (c.messages === undefined || Array.isArray(c.messages)));
         const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
-        const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key] : []).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
+        const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key].slice(0, 2000) : []).filter(isObj).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
         confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
           try {
             const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
-            ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; });
+            ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(lists[k])) S[k] = lists[k]; });
             S.cur = S.chats[0] ? S.chats[0].id : null; saveNow(); Chat.renderThread(); drawerList(); toast('Imported');
           } catch (e) { toast('Import fail: ' + e.message); }
         } });
-      }).catch(() => toast('That file is not valid JSON')); t.value = '';
+      }).catch(() => toast('Backup file padh nahi paya')); t.value = '';
     }
     if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
   });

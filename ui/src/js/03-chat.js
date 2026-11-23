@@ -6,6 +6,30 @@ const Chat = (() => {
   let callRows = [];   // this answer's model calls: {stage, model, state: run|ok|fail|dead, why, secs, asked}
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
+  const MAX_REPLY_BYTES = 256 * 1024;
+  const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
+  function capReply(reply) {
+    let omitted = false;
+    const copy = (v) => {
+      if (typeof v === 'string') return v.length > 12000 ? (omitted = true, v.slice(0, 12000) + '…') : v;
+      if (Array.isArray(v)) return v.length > 100 ? (omitted = true, v.slice(0, 100).map(copy)) : v.map(copy);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, copy(x)]));
+      return v;
+    };
+    let out = copy(reply);
+    const detailKeys = ['council', 'calls', 'steps', 'thinkLines', 'notes', 'prompt', 'output', 'draft', 'questions', 'patterns', 'stages'];
+    for (const k of detailKeys) if (replyBytes(out) > MAX_REPLY_BYTES && out && Object.prototype.hasOwnProperty.call(out, k)) { delete out[k]; omitted = true; }
+    const shrink = (v) => {
+      if (typeof v === 'string') return v.length > 512 ? (omitted = true, v.slice(0, Math.max(256, Math.floor(v.length / 2))) + '…') : v;
+      if (Array.isArray(v)) return v.length > 8 ? (omitted = true, v.slice(0, Math.max(1, Math.floor(v.length / 2))).map(shrink)) : v.map(shrink);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]));
+      return v;
+    };
+    for (let i = 0; replyBytes(out) > MAX_REPLY_BYTES && i < 8; i++) out = shrink(out);
+    if (replyBytes(out) > MAX_REPLY_BYTES) { out = { type: 'text', text: 'Reply details omitted because the backend response was too large.' }; omitted = true; }
+    if (omitted && out && typeof out === 'object') out._detailsOmitted = true;
+    return out;
+  }
 
   const cur = () => S.chats.find(c => c.id === S.cur);
   function newChat() {
@@ -271,7 +295,7 @@ const Chat = (() => {
   function mediaPrompt(kind) {
     if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
     const keys = window.AdarshKeys && window.AdarshKeys.status ? window.AdarshKeys.status() : {};
-    if (!(keys.NVIDIA_API_KEY && keys.NVIDIA_API_KEY.set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
+    if (!['NVIDIA_API_KEY', 'NVIDIA_API_KEY_2', 'NVIDIA_API_KEY_3'].some(k => keys[k] && keys[k].set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
     sheet({ title: kind === 'image' ? 'Generate image' : 'Generate video', tall: true, build(b, close) {
       const prompt = h('textarea', { rows: '4', maxlength: '2000', placeholder: kind === 'image' ? 'Describe the image…' : 'Describe the video…', 'aria-label': 'Generation prompt', style: 'width:100%;min-height:110px;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;resize:vertical' });
       const frames = kind === 'video' ? h('select', { 'aria-label': 'Video duration', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit' },
@@ -416,7 +440,7 @@ const Chat = (() => {
       Bus.emit('busy', false);
     }
   }
-  const normReply = (r) => (typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
+  const normReply = (r) => capReply(typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
   function deliver(c, r) {
     // Only the explicit local action layer may mutate productivity data. Model/demo reply shapes are display-only.
     if (r.type === 'memory' || r.type === 'task') r = { type: 'text', text: r.type === 'task' ? 'Task proposal: ' + (r.title || '') + '. Add karne ke liye Standard command bolo.' : 'Memory proposal: ' + (r.text || '') };

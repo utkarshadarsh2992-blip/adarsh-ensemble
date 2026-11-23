@@ -624,7 +624,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .pop-item small.pi-how{font-size:11.5px;color:var(--fg2);opacity:.8}
 .combo-t{width:100%;border-collapse:collapse;font-size:13px}.combo-t td{padding:3px 6px;border-top:1px solid var(--line,rgba(127,127,127,.18))}.combo-t td:first-child{color:var(--muted);white-space:nowrap}
 
-/* ---------- Standard-mode actions (Jarvis) ---------- */
+/* ---------- Standard-mode actions (Adarsh) ---------- */
 .act{padding:14px 14px 10px}
 .act-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14.5px}
 .act-h b{font-weight:600;line-height:1.35}
@@ -658,3 +658,8 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .hud-orb:after{content:'';width:7px;height:7px;border-radius:50%;background:#7fb0ff;box-shadow:0 0 10px #7fb0ff}
 @keyframes hudpulse{0%{opacity:.85;transform:scale(.45)}100%{opacity:0;transform:scale(1.5)}}
 @media (prefers-reduced-motion: reduce){.hud.busy .hud-orb i{animation:none}.hud{transition:none}}
+/* API keys sheet: one fold per provider, 3 key slots inside */
+.keygrp{background:var(--card);border-radius:16px;padding:8px 14px 12px;margin:10px 0}
+.keygrp>summary{font-weight:600;padding:6px 0}
+.keygrp>summary::before{content:'\25B8  '}
+.keygrp[open]>summary::before{content:'\25BE  '}

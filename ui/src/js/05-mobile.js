@@ -50,21 +50,33 @@ const MobileUpdates = (() => {
 })();
 
 const BackgroundVoice = (() => {
-  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false;
+  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false, handedOff = false, notifHint = false;
   const N = () => window.AdarshNative;
   const supported = () => !!(N() && N().backgroundVoiceStart);
   const active = () => !!state.active || ['starting', 'permission_required'].includes(state.state);
+  /* States in which the user is not mid-sentence and no reply is being prepared or spoken. */
+  const QUIET = ['starting', 'listening', 'retrying'];
   function apply(value) {
     if (!value || typeof value !== 'object') return state;
     if (value.type === 'reply') return state;
     state = { ...value, message: value.message || value.error || '', state: value.state || (value.ok === false ? 'error' : value.active ? 'listening' : 'stopped') };
     if (redraw) redraw();
     Bus.emit('background:state', state);
+    if (handedOff && !document.hidden) setTimeout(maybeResume, 0);
     return state;
   }
   function call(method, ...args) {
     try { return apply(JSON.parse(N()[method](...args))); }
     catch (e) { return apply({ active: false, state: 'error', message: 'Background voice nahi chala. App dobara kholo aur permissions check karo.' }); }
+  }
+  function configFor(c) {
+    const access = Productivity.access();
+    return {
+      chatId: c ? c.id : uid('c'), mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
+      access, history: c && access.currentChat ? Chat.history(c) : [],
+      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' },
+      voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
+    };
   }
   function start() {
     if (!supported() || !Backend.isNative()) return toast('Outside-app voice ke liye embedded Android engine chahiye.');
@@ -72,20 +84,42 @@ const BackgroundVoice = (() => {
     if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
     if (Chat.isBusy()) return toast('Current answer complete hone do.');
     if ((S.settings.source || 'auto') !== 'auto') return toast('Background voice ko Auto source chahiye. Manual/Hybrid change nahi kiya; app mein answers paste karke use karo.');
-    const c = Chat.cur() || Chat.newChat(), access = Productivity.access();
-    const config = {
-      chatId: c.id, mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
-      access, history: access.currentChat ? Chat.history(c) : [],
-      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' },
-      voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
-    };
+    const config = configFor(Chat.cur() || Chat.newChat());
     Voice.close(); STT.stop(); TTS.stop();
     const out = call('backgroundVoiceStart', JSON.stringify(config));
     if (!out.ok && out.message) toast(out.message);
     return out;
   }
+  /* Standard-mode live voice keeps going after Back/Home: while the voice screen is open the phone holds a
+     ready config, and the app starts the 30-minute background session at the moment it leaves the screen. */
+  const canHandoff = () => supported() && !!N().backgroundVoiceArm && Backend.isNative() && Modes.current().id === 'standard' &&
+    (S.settings.source || 'auto') === 'auto' && $('#lock').hidden && !active();
+  function arm() {
+    if (!canHandoff()) return disarm();
+    try {
+      const r = JSON.parse(N().backgroundVoiceArm(JSON.stringify(configFor(Chat.cur()))));
+      if (r && r.armed && r.notifications === false && !notifHint) { notifHint = true; toast('App se bahar voice chalne ke liye notifications allow karo.'); }
+    } catch (e) {}
+  }
+  function disarm() { try { if (N() && N().backgroundVoiceArm) N().backgroundVoiceArm(''); } catch (e) {} }
+  /* Native started the session while the app was leaving: close the in-app screen without touching the session. */
+  window.__adarshVoiceHandoff = value => {
+    if (value && value.ok) { handedOff = true; Voice.close({ keepBackground: true }); }
+    apply(value);
+  };
+  /* Back in the app: when the session is quiet, end it and continue the same conversation on the voice screen. */
+  function maybeResume() {
+    if (!handedOff || document.hidden || !$('#lock').hidden) return;
+    if (active() && !QUIET.includes(state.state)) return;   // the user is speaking or a reply is on its way: wait for it
+    handedOff = false;
+    const wasActive = active();
+    if (wasActive) call('backgroundVoiceStop');
+    sync();
+    if (wasActive) setTimeout(() => Voice.open({ listen: true }), 500);   // give the service a moment to release the mic
+  }
   function stop(message) {
     if (!supported()) return;
+    handedOff = false;
     const was = active(); const out = call('backgroundVoiceStop');
     if (was && message) toast(message);
     return out;
@@ -111,10 +145,11 @@ const BackgroundVoice = (() => {
     const close = sheet({ title: 'Background live voice', tall: true, build(b) {
       const draw = () => {
         b.textContent = '';
-        b.append(h('p', {}, 'Start here, then use Home or another app. ADARSH keeps listening and speaking in this explicit session; the ongoing notification has Stop.'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
+        b.append(h('p', {}, 'Voice chat app ke bahar chal rahi hai. ADARSH sun raha hai aur bol raha hai; notification mein Stop hai.'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
           h('p', {}, 'Session mode: ' + (state.mode || Modes.current().name)));
-        b.append(h('button', { class: 'btn ' + (active() ? 'ghost' : 'pri'), on: { click: () => active() ? stop() : start() } }, active() ? 'Stop background voice' : 'Start background voice'));
-        b.append(h('p', { class: 'muted' }, 'Mic and notification permission required. Off by default; no boot restart. Up to 30 minutes per session. The mode and voice are captured at Start. Auto source only; other sources are not silently changed. Calls/messages and screen-only edits require reopening the app.'),
+        if (active()) b.append(h('button', { class: 'btn pri', on: { click: () => { close(); handedOff = false; call('backgroundVoiceStop'); sync(); setTimeout(() => Voice.open({ listen: true }), 500); } } }, 'App mein baat jaari rakho'),
+          h('button', { class: 'btn ghost', on: { click: () => stop() } }, 'Stop background voice'));
+        b.append(h('p', { class: 'muted' }, 'Standard mode mein live voice khula ho to Back ya Home dabane par ye apne aap shuru hota hai. Mic aur notification permission chahiye. Ek session max 30 minute. Auto source hi chalta hai. Calls/messages aur screen wale edits ke liye app kholna padta hai.'),
           h('p', { class: 'muted' }, 'Background sessions do not attach stored notes, tasks, memory or old chats as extra model context. Safe local commands can read allowed records on the phone. Current-chat history follows your sharing controls.'),
           h('p', { class: 'muted' }, 'Phone recognition may use the recognition provider online. AI/TTS use your existing configured providers. No raw recording is saved by ADARSH. Android battery restrictions and your installed recognizer can interrupt the session.'),
           h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Close controls'));
@@ -128,9 +163,9 @@ const BackgroundVoice = (() => {
   function init() {
     if (!supported()) return;
     call('backgroundVoiceStatus'); sync();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('backgroundVoiceStatus'); sync(); } });
-    Bus.on('mode:changed', () => { if (active()) stop('Mode changed. Restart background voice in the selected mode.'); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('backgroundVoiceStatus'); sync(); maybeResume(); } });
+    Bus.on('mode:changed', () => { if (active()) stop('Mode changed. Restart background voice in the selected mode.'); if (Voice.isOpen) arm(); });
     Bus.on('lock:unlocked', sync);
   }
-  return { init, open, start, stop, sync, active, supported, status: () => state };
+  return { init, open, start, stop, sync, arm, disarm, active, supported, status: () => state };
 })();

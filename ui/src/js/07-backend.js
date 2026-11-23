@@ -112,13 +112,34 @@ const DemoBackend = (() => {
   return { send, missionAction, suggestions, ping: async () => ({ ok: true, label: 'Demo backend (no server)' }) };
 })();
 
-const connUrl = () => S.conn.url || (window.ADARSH_SAME_ORIGIN ? '/api/chat' : '');
+const allowedHttpHost = (host) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+const safeBackendUrl = (raw) => {
+  if (typeof raw !== 'string' || !raw.trim()) return '';
+  try {
+    const u = new URL(raw.trim(), location.href);
+    if (u.protocol === 'https:' || (u.protocol === 'http:' && allowedHttpHost(u.hostname))) return u.href;
+  } catch (e) { /* malformed configured URL */ }
+  return '';
+};
+const connUrl = () => S.conn.url ? safeBackendUrl(S.conn.url) : (window.ADARSH_SAME_ORIGIN ? '/api/chat' : '');
+const backendTokenAllowed = (url) => {
+  try {
+    const u = new URL(url, location.href);
+    return u.protocol === 'https:';
+  } catch (e) { return false; }
+};
+const backendHeaders = (url) => {
+  const headers = { 'Content-Type': 'application/json' };
+  if (S.conn.token && backendTokenAllowed(url)) headers.Authorization = 'Bearer ' + S.conn.token;
+  return headers;
+};
 
 const HttpBackend = {
   async send(req, o) {
-    const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+    const url = connUrl(); if (!url) throw new Error('Backend URL must use HTTPS (or localhost HTTP for development).');
+    const headers = backendHeaders(url);
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
+    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
@@ -126,35 +147,36 @@ const HttpBackend = {
   },
   async lessons(op) {
     try {
-      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
-      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ lesson: op }) });
+      const url = connUrl(); if (!url) return { ok: false, error: 'Backend URL must use HTTPS.' };
+      const r = await fetch(url, { method: 'POST', headers: backendHeaders(url), body: JSON.stringify({ lesson: op }) });
       const j = await r.json(); const x = Array.isArray(j) ? j[0] : (j.replies ? j.replies[0] : j);
       return (x && x.lessonsResult) || (x && x.ok !== undefined ? x : { ok: false, error: 'Backend ne lessons nahi diye.' });
     } catch (e) { return { ok: false, error: 'Lessons server tak nahi pahunche.' }; }
   },
   async tts(req, ms) {
-    const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+    const url = connUrl(); if (!url) return { type: 'error', error: 'Backend URL must use HTTPS.' };
+    const headers = backendHeaders(url);
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms || 30000);
     try {
-      const r = await fetch(connUrl(), { method: 'POST', headers, signal: ctl.signal, body: JSON.stringify({ tts: req }) });
+      const r = await fetch(url, { method: 'POST', headers, signal: ctl.signal, body: JSON.stringify({ tts: req }) });
       if (!r.ok) return { type: 'error', error: 'HTTP ' + r.status };
       const j = await r.json(); return Array.isArray(j) ? j[0] : j;
     } finally { clearTimeout(t); }
   },
   async ping() {
     try {
-      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
-      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ ping: true }) });
-      return r.ok ? { ok: true, label: 'Connected (' + new URL(connUrl(), location.href).hostname + ')' } : { ok: false, label: 'HTTP ' + r.status };
+      const url = connUrl(); if (!url) return { ok: false, label: 'Backend URL must use HTTPS (or localhost HTTP).' };
+      const r = await fetch(url, { method: 'POST', headers: backendHeaders(url), body: JSON.stringify({ ping: true }) });
+      return r.ok ? { ok: true, label: 'Connected (' + new URL(url, location.href).hostname + ')' } : { ok: false, label: 'HTTP ' + r.status };
     } catch (e) { return { ok: false, label: 'Cannot reach the server (' + (e && e.message ? e.message : 'network') + ')' }; }
   }
 };
 
 const Backend = (() => {
   const custom = () => window.ADARSH_BACKEND;
-  const impl = () => custom() || (connUrl() ? HttpBackend : DemoBackend);
+  const impl = () => custom() || (S.conn.url ? HttpBackend : (connUrl() ? HttpBackend : DemoBackend));
   return {
-    isDemo: () => !custom() && !connUrl(),
+    isDemo: () => !custom() && !S.conn.url && !connUrl(),
     isNative: () => !!(custom() && custom().native),
     /* natural voice from the engine; null when this backend has none (demo, custom without tts) */
     canTts() { const b = impl(); return !!(b && b.tts); },

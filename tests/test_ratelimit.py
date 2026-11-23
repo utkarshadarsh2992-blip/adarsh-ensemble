@@ -178,7 +178,9 @@ def test_daily_quota_429_is_not_retried_for_an_hour():
 def test_openrouter_daily_cap_takes_the_whole_provider_out():
     spec = config.REGISTRY["nemotron-lightning"]
     health.rate_limited(spec, None, daily=True)
-    assert health.snapshot()["cooling_down"]["provider:openrouter"] >= 3500
+    # the daily cap belongs to ONE key: every :free model on that key is out (another OpenRouter key is not)
+    assert health.snapshot()["cooling_down"]["key:openrouter"] >= 3500
+    assert not health.available(config.REGISTRY["gemma-4-31b"])[0]
 
 
 def test_empty_answer_is_not_retried_in_the_second_round():

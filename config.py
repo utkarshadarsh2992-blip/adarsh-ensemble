@@ -16,6 +16,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Every provider takes up to KEY_SLOTS keys (Settings > API keys: Groq 1-3, OpenRouter 1-3, Gemini 1-3, NVIDIA 1-3,
+# Cloudflare 1-3 each with its own account id). Env names: GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3 ...
+# A call uses key 1; when that key hits its limit (429), needs credits (402), is rejected (401/403) or the server
+# fails (5xx / network), the SAME model is tried with key 2, then key 3, and only then the next model in the chain.
+# An empty slot is simply skipped (key 1 empty + key 2 set = key 2 is used first).
+KEY_SLOTS = 3
+
+
+def slot_env(name: str, slot: int) -> str:
+    """Env name of key slot `slot` (1-based): slot 1 keeps the old name, so existing setups keep working."""
+    return name if slot <= 1 else f"{name}_{slot}"
+
 
 @dataclass(frozen=True)
 class Provider:
@@ -24,19 +36,41 @@ class Provider:
     api_key_env: str
     needs: tuple = ()  # extra env values the endpoint needs besides the key (Cloudflare: account id)
 
+    def _need(self, env: str, slot: int) -> str:
+        """An extra value (Cloudflare account id) for a slot. Slots 2/3 fall back to slot 1's value when their own
+        is empty (several tokens of one account); a token of another account then just fails over."""
+        own = os.getenv(slot_env(env, slot), "").strip()
+        return own or (os.getenv(env, "").strip() if slot > 1 else "")
+
+    def key(self, slot: int = 1) -> str:
+        """The key in one slot, or "" when that slot is not fully configured (so it is skipped, not called)."""
+        if any(not self._need(n, slot) for n in self.needs):
+            return ""
+        return os.getenv(slot_env(self.api_key_env, slot), "").strip()
+
+    def slots(self) -> list[int]:
+        """The configured key slots, in the order they are tried."""
+        return [s for s in range(1, KEY_SLOTS + 1) if self.key(s)]
+
+    def url_for(self, slot: int = 1) -> str:
+        out = self.base_url
+        for n in self.needs:
+            out = out.replace("{" + n + "}", self._need(n, slot))
+        return out
+
     @property
     def api_key(self) -> str:
-        """The key, or "" when the provider is not fully configured (so it is skipped, not called)."""
-        if any(not os.getenv(n, "") for n in self.needs):
-            return ""
-        return os.getenv(self.api_key_env, "")
+        """The first configured key, or "" when no slot is fully configured (so the provider is skipped)."""
+        for s in range(1, KEY_SLOTS + 1):
+            k = self.key(s)
+            if k:
+                return k
+        return ""
 
     @property
     def url(self) -> str:
-        out = self.base_url
-        for n in self.needs:
-            out = out.replace("{" + n + "}", os.getenv(n, "").strip())
-        return out
+        s = self.slots()
+        return self.url_for(s[0] if s else 1)
 
 
 PROVIDERS = {
@@ -61,9 +95,16 @@ PROVIDERS = {
 }
 # The fallback plan must always be answerable from these three; the other providers are optional extras.
 CORE_PROVIDERS = ("groq", "openrouter", "gemini")
-# Every env name a key screen / android_entry may set.
-SECRET_ENVS = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
-               "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY", "TAVILY_API_KEY")
+# Every env name a key screen / android_entry may set: 3 slots x (5 provider keys + the Cloudflare account id) + Tavily.
+_SLOTTED_ENVS = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
+                 "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
+SECRET_ENVS = tuple(slot_env(n, s) for s in range(1, KEY_SLOTS + 1) for n in _SLOTTED_ENVS) + ("TAVILY_API_KEY",)
+
+
+def provider_keys(provider: str) -> list[tuple[int, str]]:
+    """[(slot, key)] for every configured slot of a provider (voice / media code rotates over these)."""
+    p = PROVIDERS[provider]
+    return [(s, p.key(s)) for s in p.slots()]
 
 
 @dataclass(frozen=True)
@@ -74,6 +115,19 @@ class ModelSpec:
     role: str = ""  # key in prompts.ROLES (the "thinking style" of this member)
     extra: dict = field(default_factory=dict, compare=False, hash=False, repr=False)
     fallbacks: tuple = ()  # labels from REGISTRY, tried in order
+    key_slot: int = 0  # 0 = whichever key is configured first; 1-3 = that key slot only (see keyed())
+
+
+def base_label(label: str) -> str:
+    """"gpt-oss-120b#2" -> "gpt-oss-120b" (the registry label without the key slot)."""
+    return label.split("#", 1)[0]
+
+
+def keyed(spec: "ModelSpec", slot: int) -> "ModelSpec":
+    """`spec` pinned to one key slot. Slot 1 keeps the plain label (same health / quota state as before multi-key);
+    slots 2 and 3 get "#2" / "#3", so each key has its own cooldowns and daily counters."""
+    base = base_label(spec.label)
+    return replace(spec, key_slot=slot, label=base if slot <= 1 else f"{base}#{slot}")
 
 
 # ----------------------------------------------------------------------------- registry

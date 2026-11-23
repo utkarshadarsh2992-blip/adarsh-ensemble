@@ -15,6 +15,16 @@ import pipeline  # noqa: E402
 import voice  # noqa: E402
 
 
+def _fake_standard(calls=None, text="model answer", fail=False):
+    """Stand-in for standard_agent.answer (Standard mode = Groq gpt-oss-120b only)."""
+    import standard_agent
+    async def fake(messages, **kw):
+        if calls is not None:
+            calls.append(("gpt-oss-120b", messages, kw))
+        if fail:
+            raise standard_agent.StandardError("Sir, Groq ki teeno keys se jawab nahi aaya. Standard mode sirf Groq use karta hai.")
+        return {"text": text, "used": "gpt-oss-120b", "searches": 0, "wiki": [], "sources": [], "secs": 0.1}
+    return fake
 def run(coro):
     return asyncio.run(coro)
 
@@ -24,13 +34,11 @@ def quick(monkeypatch):
     calls = []
 
     async def fake_chat(client, spec, messages, **kw):
-        calls.append((spec.label, messages, kw))
-        return "Paris hai France ki rajdhani."
-
+        raise AssertionError("Standard must not use the multi-provider chat() chain")
     async def boom(*a, **k):
         raise AssertionError("the council pipeline must not run for Standard")
-
     monkeypatch.setattr(chat_adapter, "chat", fake_chat)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", _fake_standard(calls, "Paris hai France ki rajdhani."))
     monkeypatch.setattr(pipeline, "run", boom)
     monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", True)
     return calls
@@ -45,7 +53,8 @@ def test_standard_is_one_call(quick):
     out = run(chat_adapter.handle({"text": "France ki rajdhani kya hai?", "mode": "standard"}))
     assert len(quick) == 1 and quick[0][0] == "gpt-oss-120b"
     assert out[0]["text"].startswith("Paris")
-    assert "quick answer" in out[0]["steps"][0]
+    assert "Groq" in out[0]["steps"][0] and "sirf Groq" in out[0]["steps"][0]
+    assert quick[0][2]["tools"] is True  # web search + Wikipedia tools offered
 
 
 def test_standard_voice_asks_for_spoken_style(quick):
@@ -73,18 +82,12 @@ def test_other_modes_still_use_the_council(monkeypatch, quick):
 
 
 def test_quick_failure_keeps_standard_without_council(monkeypatch, quick):
-    from llm import LLMError
-
-    async def fail(*a, **k):
-        raise LLMError("all down")
-
     async def fake_run(q, **kw):
         raise AssertionError("Standard must not promote to the council on failure")
-
-    monkeypatch.setattr(chat_adapter, "chat", fail)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", _fake_standard(fail=True))
     monkeypatch.setattr(pipeline, "run", fake_run)
     out = run(chat_adapter.handle({"text": "France ki rajdhani kya hai?", "mode": "standard"}))
-    assert "Mode wahi" in out[0]["text"] and out[0]["uiMode"] == "standard"
+    assert "Groq" in out[0]["text"] and out[0]["uiMode"] == "standard"
 
 
 # ------------------------------------------------------------------ voice.py

@@ -1,7 +1,7 @@
 """Hybrid router: best neural (existing Gemini/Groq) -> Piper local -> Android native.
 Dead providers are remembered for a cool-down so a failing one is not retried every sentence."""
 from __future__ import annotations
-import asyncio, base64, hashlib, os, time, uuid
+import asyncio, base64, os, re, time, uuid
 from . import hinglish_processor as hp
 from . import voice_config as cfg
 from .providers import local_tts, android_tts
@@ -9,6 +9,7 @@ from .speech_queue import QUEUE
 
 COOLDOWN = 120.0
 _dead: dict[str, float] = {}
+_SAFE_RESPONSE_ID = re.compile(r"^(?:[0-9a-f]{8,64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$", re.I)
 
 
 def mark_dead(name: str):
@@ -27,11 +28,29 @@ def _store(wav: bytes, rid: str, i: int) -> dict:
     d = os.environ.get("TTS_DIR")
     if not d:
         return {"mime": "audio/wav", "b64": base64.b64encode(wav).decode()}
+    # Response IDs are client-controlled. Never put an unvalidated value in a
+    # filesystem path; invalid IDs still work through the inline response.
+    if not _SAFE_RESPONSE_ID.fullmatch(rid):
+        return {"mime": "audio/wav", "b64": base64.b64encode(wav).decode()}
     os.makedirs(d, exist_ok=True)
     p = os.path.join(d, f"v6_{rid[:12]}_{i}.wav")
     with open(p, "wb") as f:
         f.write(wav)
     return {"file": p}
+
+
+def _chunk_snapshot(rid: str, index: int):
+    """Read a chunk and its queue state atomically under SpeechQueue's lock."""
+    with QUEUE._lock:
+        item = QUEUE.items.get(rid)
+        if not item:
+            return None
+        chunks = item.get("chunks") or []
+        if item.get("state") != "playing":
+            return {"state": item.get("state", "unknown"), "length": len(chunks)}
+        if index < 0 or index >= len(chunks):
+            return {"bad_index": True, "length": len(chunks)}
+        return {"state": "playing", "chunk": dict(chunks[index]), "length": len(chunks)}
 
 
 def local_wav(sentence: dict, profile: cfg.VoiceProfile) -> bytes:
@@ -66,17 +85,19 @@ async def speak(req: dict, remote=None) -> dict:
 async def chunk(req: dict, remote=None) -> dict:
     """Generate sentence `index` of response `response_id`. Order: remote neural -> local Piper -> device."""
     rid = str(req.get("response_id") or "")
-    it = QUEUE.items.get(rid)
-    if not it:
-        return {"type": "error", "error": "unknown response_id", "response_id": rid}
-    if not QUEUE.alive(rid):
-        return {"type": "cancelled", "response_id": rid, "state": QUEUE.state(rid)}
     try:
         i = int(req.get("index", 0))
-        s = it["chunks"][i]
-    except (ValueError, IndexError):
+    except (TypeError, ValueError):
         return {"type": "error", "error": "bad index", "response_id": rid}
-    last = i == len(it["chunks"]) - 1
+    snapshot = _chunk_snapshot(rid, i)
+    if snapshot is None:
+        return {"type": "error", "error": "unknown response_id", "response_id": rid}
+    if snapshot.get("state") != "playing":
+        return {"type": "cancelled", "response_id": rid, "state": snapshot["state"]}
+    if snapshot.get("bad_index"):
+        return {"type": "error", "error": "bad index", "response_id": rid}
+    s = snapshot["chunk"]
+    last = i == snapshot["length"] - 1
     profile = cfg.VoiceProfile.of(req.get("profile") or {"rate": req.get("rate", 1.0)})
     base = {"response_id": rid, "index": i, "last": last, "text": s["text"], "lang": s["lang"]}
     tried = []

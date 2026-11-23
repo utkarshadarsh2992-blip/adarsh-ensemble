@@ -34,7 +34,6 @@ def fake_models(monkeypatch):
 
     async def fake_chat(client, spec, messages, **kw):
         calls.append(spec.label)
-        sys_text = messages[0]["content"] if messages else ""
         if spec is config.CLASSIFIER:
             return "math"
         if spec is config.STRIPPER:
@@ -81,6 +80,7 @@ def test_lint_downgrades_unproven():
 
 def test_sandbox_blocks_bad_code_and_unsupported(monkeypatch):
     monkeypatch.setattr(config, "CODE_EXEC_SUPPORTED", True)
+    monkeypatch.setenv("CODE_PROOFS", "1")
     assert sandbox.run_python("import os\nprint('PASS')")["status"] == "REJECTED"
     assert sandbox.run_python("print('PASS')")["status"] == "PASS"
     monkeypatch.setattr(config, "CODE_EXEC_SUPPORTED", False)
@@ -302,11 +302,11 @@ def test_casual_path_skips_pipeline(monkeypatch):
         ran.append(1)
         raise AssertionError("pipeline must not run for greetings")
 
-    async def quick(client, spec, messages, **kw):
-        return "Hello! Kaise ho?"
-
+    async def quick(messages, **kw):
+        assert kw.get("tools") is False  # small talk: one Groq call, no search tools
+        return {"text": "Hello! Kaise ho?", "used": "gpt-oss-120b", "searches": 0, "wiki": [], "sources": [], "secs": 0.1}
     monkeypatch.setattr(pipeline, "run", no_pipeline)
-    monkeypatch.setattr(chat_adapter, "chat", quick)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", quick)
     for greeting in ("Hlo", "hello!", "Namaste", "thanks"):
         out = json.loads(android_entry.handle(json.dumps({"text": greeting})))
         assert out[0]["text"] == "Hello! Kaise ho?" and not ran
@@ -320,9 +320,8 @@ def test_casual_failure_falls_back_to_pipeline(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
 
     async def down(*a, **k):
-        raise llm.LLMError("down")
-
-    monkeypatch.setattr(chat_adapter, "chat", down)
+        raise chat_adapter.standard_agent.StandardError("down")
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", down)
     out = json.loads(android_entry.handle(json.dumps({"text": "Hlo"})))
     assert "Direct Core Truth" in out[0]["text"]  # fake pipeline models answer instead
 
@@ -745,8 +744,6 @@ def test_llm_chat_records_stage_prompt_output_and_skips(monkeypatch):
 
 
 def test_council_record_is_built_and_sent_to_the_ui(monkeypatch):
-    import chat_adapter
-
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
     out = json.loads(android_entry.handle(json.dumps({"text": "2+2 kya hai?"})))
     c = out[0]["council"]

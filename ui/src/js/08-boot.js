@@ -15,6 +15,7 @@
 
   Backend.refresh();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Backend.refresh(); });
+  document.addEventListener('click', hapticTap, true);   // Settings > Haptics: small vibration on every tap
   if (window.__adarshDictation) STT.dict = window.__adarshDictation;
   try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || STT.dict || null; }).catch(() => {}); } catch (e) {}
   if (S.lock) Lock.lockNow();

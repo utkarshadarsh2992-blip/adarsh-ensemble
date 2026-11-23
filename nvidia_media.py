@@ -38,9 +38,26 @@ _ID = re.compile(r"^[0-9a-f]{32}$")
 class MediaError(ValueError):
     """A short, user-safe media request error."""
 
-    def __init__(self, message: str, status_code: int | None = None):
+    def __init__(self, message: str, status_code: int | None = None, network: bool = False):
         super().__init__(message)
         self.status_code = status_code
+        self.network = network  # connection failed before any answer (not a timeout): another key may work
+
+
+# Settings > API keys has 3 NVIDIA slots. Key 1 is used first; on quota (429), credits (402), a rejected key
+# (401/403), a server error (5xx) or a failed connection the same request goes to key 2, then key 3.
+# A timeout is NOT repeated on another key: the job may still be running (and billed) at NVIDIA.
+NVIDIA_KEY_ENVS = ("NVIDIA_API_KEY", "NVIDIA_API_KEY_2", "NVIDIA_API_KEY_3")
+_KEY_SWITCH_STATUS = {401, 402, 403, 429, 500, 502, 503, 504}
+
+
+def _nvidia_keys() -> list[str]:
+    out: list[str] = []
+    for name in NVIDIA_KEY_ENVS:
+        value = os.environ.get(name, "").strip()
+        if value and value not in out:
+            out.append(value)
+    return out
 
 
 def _root() -> Path:
@@ -185,7 +202,7 @@ async def _post(url: str, body: dict, api_key: str, timeout: float, extra_header
     except httpx.TimeoutException as exc:
         raise MediaError("NVIDIA request timeout ho gaya. Generate dobara manually try karo.") from exc
     except httpx.HTTPError as exc:
-        raise MediaError(f"NVIDIA network request fail hua ({type(exc).__name__}).") from exc
+        raise MediaError(f"NVIDIA network request fail hua ({type(exc).__name__}).", network=True) from exc
     try:
         data = json.loads(response_body or b"")
     except (ValueError, UnicodeDecodeError) as exc:
@@ -193,6 +210,20 @@ async def _post(url: str, body: dict, api_key: str, timeout: float, extra_header
     if not isinstance(data, dict):
         raise MediaError("NVIDIA response format samajh nahi aaya.")
     return data
+
+
+async def _post_keys(url: str, body: dict, keys: list[str], timeout: float,
+                     extra_headers: dict[str, str] | None = None) -> dict:
+    """_post with key 1; on a key / quota / server problem the next configured key (see NVIDIA_KEY_ENVS)."""
+    for index, key in enumerate(keys):
+        try:
+            return await _post(url, body, key, timeout, extra_headers=extra_headers)
+        except MediaError as exc:
+            more = index + 1 < len(keys)
+            if more and (exc.status_code in _KEY_SWITCH_STATUS or exc.network):
+                continue
+            raise
+    raise MediaError("NVIDIA API key nahi mili. Settings > API keys mein NVIDIA key save karo.")
 
 
 async def generate(request: dict) -> dict:
@@ -203,8 +234,8 @@ async def generate(request: dict) -> dict:
     if kind not in {"image", "video"}:
         raise MediaError("Image ya video generation select karo.")
     prompt = _prompt(request.get("prompt"))
-    api_key = os.environ.get("NVIDIA_API_KEY", "").strip()
-    if not api_key:
+    keys = _nvidia_keys()
+    if not keys:
         raise MediaError("NVIDIA API key nahi mili. Settings > API keys mein NVIDIA key save karo.")
 
     if kind == "image":
@@ -217,7 +248,7 @@ async def generate(request: dict) -> dict:
             "steps": 35,
             "samples": 1,
         }
-        data = await _post(FLUX_URL, body, api_key, timeout=240.0)
+        data = await _post_keys(FLUX_URL, body, keys, timeout=240.0)
         artifacts = data.get("artifacts")
         encoded = artifacts[0].get("base64") if isinstance(artifacts, list) and artifacts and isinstance(artifacts[0], dict) else None
         raw = _decode_payload(encoded, "image")
@@ -238,12 +269,12 @@ async def generate(request: dict) -> dict:
     }
     cosmos_headers = {"NVCF-POLL-SECONDS": COSMOS3_POLL_SECONDS}
     try:
-        data = await _post(COSMOS3_URL, body, api_key, timeout=720.0, extra_headers=cosmos_headers)
+        data = await _post_keys(COSMOS3_URL, body, keys, timeout=720.0, extra_headers=cosmos_headers)
     except MediaError as primary:
         if primary.status_code != 404:
             raise
         try:
-            data = await _post(COSMOS3_FALLBACK_URL, body, api_key, timeout=720.0, extra_headers=cosmos_headers)
+            data = await _post_keys(COSMOS3_FALLBACK_URL, body, keys, timeout=720.0, extra_headers=cosmos_headers)
         except MediaError as backup:
             raise MediaError(
                 f"Cosmos3 public route HTTP 404 tha; backup NVCF route: {backup}",

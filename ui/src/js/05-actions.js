@@ -14,7 +14,7 @@ const Actions = (() => {
   const ctx = d => contexts.get(d);
   let hudEl = null, hudTimer = 0;
   function hud(text, busy) {
-    if (S.settings.jarvis === false) return;
+    if (S.settings.adarshActions === false) return;
     if (!hudEl) { hudEl = h('div', { class: 'hud', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'hud-orb' }, h('i'), h('i'), h('i')), h('span', { class: 'hud-t' })); document.body.append(hudEl); }
     hudEl.querySelector('.hud-t').textContent = text || 'Kaam kar raha hoon…';
     hudEl.classList.toggle('busy', !!busy); hudEl.classList.add('on'); clearTimeout(hudTimer);
@@ -95,7 +95,7 @@ const Actions = (() => {
     contexts.set(d, c);
     // Older builds stored a circular context on the reply. Remove it before any persistence.
     delete d._ctx;
-    const wrap = h('div', { class: 'card act' }, h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')),
+    const wrap = h('div', { class: 'card act' }, h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'ADARSH'), h('b', {}, d.text || 'Kaam kar raha hoon')),
       h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));
     const state = d.run && d.run.state;
     const need = (d.steps || []).some(s => ['message.draft', 'call.dial'].includes(s.action));

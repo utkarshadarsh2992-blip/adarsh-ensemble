@@ -8,7 +8,13 @@ import android.util.Log
 /** Fires a persisted task/reminder/alarm/timer without deleting its history. */
 class ActionReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        val id = intent.getStringExtra("id") ?: return
+        // ActionRunner's explicit PendingIntent historically has no action; reject every
+        // non-null action except the reserved one, and bind the record ID to its URI.
+        if (intent.action != null && intent.action != ACTION_FIRE) return
+        val uri = intent.data ?: return
+        if (uri.scheme != "adarsh" || uri.host != "action" || uri.pathSegments.size != 1) return
+        val id = uri.pathSegments[0]
+        if (intent.hasExtra("id") && intent.getStringExtra("id") != id) return
         try {
             ActionStore(ctx).transaction { records ->
                 val record = records.firstOrNull { it.optString("id") == id }
@@ -38,7 +44,10 @@ class ActionReceiver : BroadcastReceiver() {
         }
     }
 
-    companion object { private const val TAG = "AdarshAction" }
+    companion object {
+        private const val TAG = "AdarshAction"
+        private const val ACTION_FIRE = "app.adarsh.ensemble.ACTION_FIRE"
+    }
 }
 
 /** After a reboot Android's alarm queue is empty: re-arm every future native record. */

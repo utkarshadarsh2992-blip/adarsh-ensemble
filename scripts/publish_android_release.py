@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ COMMIT_RE = re.compile(r"^[0-9a-fA-F]{7,64}$")
 FULL_COMMIT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 ASSET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TAG_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+CERTIFICATE_RE = re.compile(r"^[0-9a-f]{64}$")
 MAX_APK_BYTES = 150 * 1024 * 1024
 MAX_MANIFEST_BYTES = 64 * 1024
 
@@ -52,6 +54,57 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _normalize_certificate(value: str) -> str:
+    normalized = value.replace(":", "").strip().lower()
+    if not CERTIFICATE_RE.fullmatch(normalized):
+        raise ValueError("invalid certificate SHA-256")
+    return normalized
+
+
+def inspect_apk_identity(
+    apk: Path,
+    *,
+    aapt2_path: str = "aapt2",
+    apksigner_path: str = "apksigner",
+) -> dict[str, Any]:
+    """Read identity from the APK itself using Android SDK verification tools."""
+    apk = Path(apk)
+    try:
+        badging = subprocess.run(
+            [aapt2_path, "dump", "badging", str(apk)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout
+        cert_output = subprocess.run(
+            [apksigner_path, "verify", "--verbose", "--print-certs", str(apk)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise ValueError(f"could not inspect APK identity: {error}") from error
+    package_match = re.search(
+        r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']*)'",
+        badging,
+        flags=re.MULTILINE,
+    )
+    if package_match is None:
+        raise ValueError("aapt2 did not report APK package/version")
+    cert_matches = re.findall(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", cert_output)
+    if not cert_matches:
+        raise ValueError("apksigner did not report an APK certificate")
+    return {
+        "applicationId": package_match.group(1),
+        "versionCode": int(package_match.group(2)),
+        "versionName": package_match.group(3),
+        # apksigner prints the active/current signer first for a rotated APK.
+        "certificateSha256": _normalize_certificate(cert_matches[0]),
+    }
+
+
 def build_manifest(
     apk: Path,
     *,
@@ -62,6 +115,7 @@ def build_manifest(
     tag: str,
     asset_name: str | None = None,
     notes: str = "",
+    certificate_sha256: str | None = None,
     repository: str = REPOSITORY,
 ) -> dict[str, Any]:
     """Create the schema consumed by UpdateManager from a local APK fixture."""
@@ -91,6 +145,8 @@ def build_manifest(
     }
     if notes:
         result["notes"] = notes[:8192]
+    if certificate_sha256 is not None:
+        result["certificateSha256"] = _normalize_certificate(certificate_sha256)
     validate_manifest(result, repository=repository, tag=tag)
     return result
 
@@ -125,6 +181,10 @@ def validate_manifest(manifest: dict[str, Any], *, repository: str = REPOSITORY,
         raise ValueError("invalid APK size")
     if "notes" in manifest and not isinstance(manifest["notes"], str):
         raise ValueError("notes must be text")
+    if "certificateSha256" in manifest:
+        if not isinstance(manifest["certificateSha256"], str):
+            raise ValueError("certificateSha256 must be text")
+        _normalize_certificate(manifest["certificateSha256"])
     encoded = json.dumps(manifest, separators=(",", ":")).encode()
     if len(encoded) > MAX_MANIFEST_BYTES:
         raise ValueError("manifest exceeds 64 KiB")
@@ -138,6 +198,9 @@ def verify_release_fixture(
     expected_version_code: int,
     repository: str = REPOSITORY,
     tag: str | None = None,
+    verify_apk_identity: bool = False,
+    aapt2_path: str = "aapt2",
+    apksigner_path: str = "apksigner",
 ) -> None:
     """Verify the local assets before gh uploads them."""
     validate_manifest(manifest, repository=repository, tag=tag)
@@ -151,6 +214,16 @@ def verify_release_fixture(
         raise ValueError("APK filename does not match manifest")
     if apk.stat().st_size != entry["size"] or sha256_file(apk) != entry["sha256"]:
         raise ValueError("APK digest/size does not match manifest")
+    if verify_apk_identity:
+        expected_certificate = manifest.get("certificateSha256")
+        if not isinstance(expected_certificate, str):
+            raise ValueError("manifest is missing certificateSha256")
+        actual = inspect_apk_identity(apk, aapt2_path=aapt2_path, apksigner_path=apksigner_path)
+        for field in ("applicationId", "versionCode", "versionName"):
+            if actual[field] != manifest[field]:
+                raise ValueError(f"APK {field} does not match manifest")
+        if actual["certificateSha256"] != _normalize_certificate(expected_certificate):
+            raise ValueError("APK certificate does not match manifest")
 
 
 def _asset_digest(path: Path) -> str:
@@ -284,6 +357,7 @@ def _parser() -> argparse.ArgumentParser:
     manifest.add_argument("--commit", required=True)
     manifest.add_argument("--tag", required=True)
     manifest.add_argument("--asset-name", required=True)
+    manifest.add_argument("--certificate-sha256")
     manifest.add_argument("--notes", default="")
     manifest.add_argument("--output", type=Path, required=True)
 
@@ -323,6 +397,7 @@ def main(argv: list[str] | None = None) -> int:
                 tag=args.tag,
                 asset_name=args.asset_name,
                 notes=args.notes,
+                certificate_sha256=args.certificate_sha256,
             )
             encoded = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
             if len(encoded.encode()) > MAX_MANIFEST_BYTES:

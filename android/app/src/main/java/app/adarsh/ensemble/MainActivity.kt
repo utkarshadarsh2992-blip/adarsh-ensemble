@@ -15,6 +15,9 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.webkit.ValueCallback
@@ -28,6 +31,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
@@ -62,6 +66,11 @@ class MainActivity : AppCompatActivity() {
     private var pendingBackground: PendingBackground? = null
     private var backgroundAwaitingPermission = false
     private var backgroundNotificationToken = -1
+    // Live voice handoff: while the in-app voice screen is open in Standard mode the page keeps a ready
+    // session config here. Back/Home starts the 30-minute background session while this screen is still
+    // resumed, which Android requires for a microphone foreground service.
+    @Volatile private var handoffConfig: String? = null
+    private var handoffNotifAsked = false
     // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private val filePicker = registerForActivityResult(
@@ -133,6 +142,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun notificationsReady(): Boolean {
+        val nm = getSystemService(NotificationManager::class.java)
+        val granted = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        return granted && nm?.areNotificationsEnabled() == true
+    }
+
+    /** Called on Back and Home while the screen is still resumed. True when the background session was started. */
+    private fun handoffToBackground(): Boolean {
+        val cfg = handoffConfig ?: return false
+        if (destroyed || !resumed || pendingBackground != null || BackgroundVoiceService.status().optBoolean("active")) return false
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || !notificationsReady()) return false
+        handoffConfig = null
+        backgroundGeneration++
+        dictation.destroy(); speaker?.stopAll(silent = true); neural?.stop()
+        val out = BackgroundVoiceService.start(this, cfg)
+        out.put("handoff", true)
+        js("window.__adarshVoiceHandoff&&window.__adarshVoiceHandoff($out)")
+        return out.optBoolean("ok")
+    }
+
+    override fun onUserLeaveHint() {
+        handoffToBackground()   // Home / Recents: the voice chat keeps going in the background
+        super.onUserLeaveHint()
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -167,8 +201,15 @@ class MainActivity : AppCompatActivity() {
             mediaPlaybackRequiresUserGesture = false   // spoken replies start after the answer arrives, not on a tap
         }
         web.webViewClient = object : WebViewClient() {
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-                loader.shouldInterceptRequest(request.url)
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (request.isForMainFrame) pageTrusted = isAppOrigin(request.url)
+                return loader.shouldInterceptRequest(request.url)
+            }
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                // M1: the bridge answers only while the top document is the bundled page.
+                pageTrusted = url != null && isAppOrigin(Uri.parse(url))
+                super.onPageStarted(view, url, favicon)
+            }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (request.url.host == HOST) return false
@@ -216,7 +257,7 @@ class MainActivity : AppCompatActivity() {
             override fun handleOnBackPressed() {
                 // an open "Kisne kya socha" page closes first; otherwise the app goes to the background
                 web.evaluateJavascript("(window.__adarshBack&&window.__adarshBack())") { r ->
-                    if (r != "true") moveTaskToBack(true)
+                    if (r != "true") { handoffToBackground(); moveTaskToBack(true) }
                 }
             }
         })
@@ -285,6 +326,11 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HOST = "appassets.androidplatform.net"
+        /** M1: true only while the main frame is https://appassets.androidplatform.net (set on the UI/IO thread). */
+        @Volatile private var pageTrusted = false
+        private fun isAppOrigin(u: Uri?): Boolean = u != null && u.scheme == "https" && u.host == HOST
+        /** Called by AdarshBridge before every method; the page also sets CSP frame-src 'none' so no frame can load. */
+        fun pageTrusted(): Boolean = pageTrusted && current?.destroyed == false
         private const val REPLY_CHANNEL = "replies"
         private const val REPLY_ID = 8
         @Volatile var current: MainActivity? = null
@@ -312,8 +358,21 @@ class MainActivity : AppCompatActivity() {
         }
         fun backgroundVoiceStop(): String = onMain {
             val a = current!!
-            a.backgroundGeneration++; a.pendingBackground = null; a.backgroundAwaitingPermission = false
+            a.backgroundGeneration++; a.pendingBackground = null; a.backgroundAwaitingPermission = false; a.handoffConfig = null
             BackgroundVoiceService.stop(a).toString()
+        }
+        fun backgroundVoiceArm(json: String): String = onMain {
+            val a = current!!
+            a.handoffConfig = json.trim().ifBlank { null }
+            val armed = a.handoffConfig != null
+            val notif = a.notificationsReady()
+            // Ask once, while the user is looking at the voice screen; leaving the app cannot show a dialog.
+            if (armed && !notif && Build.VERSION.SDK_INT >= 33 && a.resumed && !a.handoffNotifAsked &&
+                a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                a.handoffNotifAsked = true
+                a.notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            JSONObject().put("ok", true).put("armed", armed).put("notifications", notif).toString()
         }
         fun backgroundVoicePeek(): String = onMain { BackgroundVoiceService.peek(current!!).toString() }
         fun backgroundVoiceAck(json: String): String = onMain {
@@ -345,30 +404,86 @@ class MainActivity : AppCompatActivity() {
             return out
         }
 
-        fun runActions(json: String): String = onMain {
-            try {
-                val req = JSONObject(json)
-                val mode = if (!req.has("mode") || req.isNull("mode")) "standard" else req.opt("mode")
-                if (mode !is String || mode != "standard") {
-                    return@onMain JSONObject().put("ok", false).put("error", "Native actions require mode=standard").put("results", org.json.JSONArray()).toString()
+        private val SENSITIVE = setOf("message.draft", "call.dial")
+        /**
+         * H5: the page can no longer self-confirm a call or message. The JS "confirmed" flag only means the user
+         * tapped Confirm in chat; the step still runs only after a native dialog that shows the exact number/text
+         * from the same parsed step object that is executed (so the page cannot swap the arguments afterwards).
+         */
+        private fun nativeConfirm(step: JSONObject): Boolean {
+            val a = current ?: return false
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper() || !a.resumed) return false
+            val action = step.optString("action")
+            val args = step.optJSONObject("args") ?: JSONObject()
+            val to = args.optString("to")
+            val text = args.optString("text")
+            // What the dialog shows must be exactly what runs: inputs too long to show in full are refused.
+            if (to.length > 64 || text.length > 2000) return false
+            val msg = if (action == "call.dial") "Dialer kholun is number ke saath?\n\n$to"
+                else (if (args.optString("channel").equals("whatsapp", true)) "WhatsApp" else "SMS") +
+                    " draft kholun?\n\n" + (if (to.isNotBlank()) "To: $to\n" else "") + text
+            val latch = java.util.concurrent.CountDownLatch(1)
+            val yes = java.util.concurrent.atomic.AtomicBoolean(false)
+            val expired = java.util.concurrent.atomic.AtomicBoolean(false)
+            val dialog = java.util.concurrent.atomic.AtomicReference<AlertDialog?>(null)
+            a.runOnUiThread {
+                if (a.destroyed || a.isFinishing || current !== a) { latch.countDown(); return@runOnUiThread }
+                try {
+                    dialog.set(AlertDialog.Builder(a)
+                        .setTitle("ADARSH: confirm karo")
+                        .setMessage(msg)
+                        .setPositiveButton("Haan") { _, _ -> if (!expired.get()) yes.set(true) }
+                        .setNegativeButton("Nahi", null)
+                        .setOnDismissListener { latch.countDown() }
+                        .show())
+                } catch (_: Exception) { latch.countDown() }
+            }
+            val answered = latch.await(60, java.util.concurrent.TimeUnit.SECONDS)
+            if (!answered) {
+                expired.set(true)
+                a.runOnUiThread { try { dialog.get()?.dismiss() } catch (_: Exception) {} }
+            }
+            return answered && yes.get() && !expired.get()
+        }
+        fun runActions(json: String): String {
+            val bad = { m: String -> JSONObject().put("ok", false).put("error", m).put("results", org.json.JSONArray()).toString() }
+            val req = try { JSONObject(json) } catch (_: Exception) { return bad("Invalid request") }
+            val mode = if (!req.has("mode") || req.isNull("mode")) "standard" else req.opt("mode")
+            if (mode !is String || mode != "standard") return bad("Native actions require mode=standard")
+            val asked = if (!req.has("confirmed") || req.isNull("confirmed")) false else {
+                if (req.opt("confirmed") !is Boolean) return bad("confirmed must be boolean")
+                req.getBoolean("confirmed")
+            }
+            val steps = req.optJSONArray("steps") ?: return bad("steps must be an array")
+            if (steps.length() > 20) return bad("Too many steps")
+            val parsed = ArrayList<JSONObject>()
+            for (i in 0 until steps.length()) parsed.add(steps.optJSONObject(i) ?: return bad("steps[$i] must be an object"))
+            // Native confirmation happens on this bridge thread (not the UI thread) so the dialog can be answered.
+            val approved = BooleanArray(parsed.size)
+            val declined = BooleanArray(parsed.size)
+            for ((i, step) in parsed.withIndex()) {
+                if (step.optString("action") in SENSITIVE && asked) {
+                    approved[i] = nativeConfirm(step)
+                    declined[i] = !approved[i]
                 }
-                val confirmed = if (!req.has("confirmed") || req.isNull("confirmed")) false else {
-                    if (req.opt("confirmed") !is Boolean) return@onMain JSONObject().put("ok", false).put("error", "confirmed must be boolean").toString()
-                    req.getBoolean("confirmed")
+            }
+            return onMain {
+                try {
+                    val results = org.json.JSONArray()
+                    for ((i, step) in parsed.withIndex()) {
+                        if (declined[i]) {
+                            results.put(JSONObject().put("id", step.optString("id", "step")).put("ok", false)
+                                .put("message", "Cancel kar diya: phone par confirm nahi hua"))
+                            continue
+                        }
+                        results.put(current!!.actions!!.run(step, approved[i]))
+                    }
+                    JSONObject().put("ok", true).put("results", results).toString()
+                } catch (e: Exception) {
+                    JSONObject().put("ok", false).put("error", (e.message ?: e.javaClass.simpleName).take(200)).toString()
                 }
-                val steps = req.optJSONArray("steps") ?: return@onMain JSONObject().put("ok", false).put("error", "steps must be an array").toString()
-                val results = org.json.JSONArray()
-                for (i in 0 until steps.length()) {
-                    val step = steps.optJSONObject(i)
-                        ?: return@onMain JSONObject().put("ok", false).put("error", "steps[$i] must be an object").toString()
-                    results.put(current!!.actions!!.run(step, confirmed))
-                }
-                JSONObject().put("ok", true).put("results", results).toString()
-            } catch (e: Exception) {
-                JSONObject().put("ok", false).put("error", e.message ?: e.javaClass.simpleName).toString()
             }
         }
-
         /** Unified native records API. The JS side no longer needs separate note/reminder stores. */
         fun recordsList(): String = onMain {
             try {
@@ -449,8 +564,30 @@ class MainActivity : AppCompatActivity() {
         fun neuralResume() = ui { it.neural?.resume() }
 
         // ---- small native helpers the WebView cannot do itself
-        fun haptic(ms: Int) = ui {
-            it.web.performHapticFeedback(if (ms >= 25) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.VIRTUAL_KEY)
+        // WebView.performHapticFeedback is silently dropped when the phone's "touch vibration" setting is off,
+        // so the in-app Haptics switch drives the vibrator directly and only falls back to the View API.
+        fun haptic(ms: Int) {
+            val c = appCtx
+            val strong = ms >= 25
+            try {
+                val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= 31) {
+                    c?.getSystemService(VibratorManager::class.java)?.defaultVibrator
+                } else {
+                    @Suppress("DEPRECATION")
+                    c?.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                }
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    val effect = if (Build.VERSION.SDK_INT >= 29) {
+                        VibrationEffect.createPredefined(if (strong) VibrationEffect.EFFECT_HEAVY_CLICK else VibrationEffect.EFFECT_CLICK)
+                    } else {
+                        VibrationEffect.createOneShot(ms.coerceIn(10, 60).toLong(), VibrationEffect.DEFAULT_AMPLITUDE)
+                    }
+                    vibrator.vibrate(effect)
+                    return
+                }
+            } catch (_: Exception) {
+            }
+            ui { it.web.performHapticFeedback(if (strong) HapticFeedbackConstants.LONG_PRESS else HapticFeedbackConstants.VIRTUAL_KEY) }
         }
         fun copyText(text: String): Boolean {
             val c = appCtx ?: return false

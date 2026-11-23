@@ -10,9 +10,11 @@ import os
 import sys
 import threading
 
-# keep in sync with config.SECRET_ENVS (not imported here: config must load after init())
-KEY_NAMES = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
-             "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY", "TAVILY_API_KEY")
+# keep in sync with config.SECRET_ENVS (not imported here: config must load after init()).
+# 3 key slots per provider: X, X_2, X_3 (Cloudflare: token + account id per slot), plus Tavily.
+_SLOTTED = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
+            "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
+KEY_NAMES = tuple(n if s == 1 else f"{n}_{s}" for s in (1, 2, 3) for n in _SLOTTED) + ("TAVILY_API_KEY",)
 _ready = False
 
 
@@ -75,7 +77,8 @@ def status() -> str:
             "providers": {k: bool(v.api_key) for k, v in config.PROVIDERS.items()},
             "plan_problems": config.PLAN_PROBLEMS + __import__("mode_plans").PLAN_PROBLEMS,
             "python": sys.version.split()[0],
-            "voice": {"gemini": bool(os.environ.get("GEMINI_API_KEY")), "groq_english": bool(os.environ.get("GROQ_API_KEY"))},
+            "keys": {k: v.slots() for k, v in config.PROVIDERS.items()},
+            "voice": {"gemini": bool(config.PROVIDERS["gemini"].api_key), "groq_english": bool(config.PROVIDERS["groq"].api_key)},
         }
     )
 
@@ -88,45 +91,50 @@ def diagnose() -> str:
 
     lines = []
     for name, prov in config.PROVIDERS.items():
-        if not prov.api_key:
-            if name == "cloudflare" and (os.environ.get("CLOUDFLARE_API_TOKEN") or os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
+        slots = prov.slots()
+        if not slots:
+            cf_parts = [config.slot_env(n, s) for s in range(1, config.KEY_SLOTS + 1)
+                        for n in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID")]
+            if name == "cloudflare" and any(os.environ.get(n) for n in cf_parts):
                 lines.append("cloudflare: API token aur Account ID dono chahiye, ek abhi bhi missing hai")
             else:
                 lines.append(f"{name}: key nahi hai")
             continue
-        try:
-            r = httpx.get(
-                f"{prov.url}/models", headers={"Authorization": f"Bearer {prov.api_key}"}, timeout=20
-            )
-        except Exception as e:  # network, DNS, TLS
-            lines.append(f"{name}: NETWORK FAIL {type(e).__name__}: {str(e)[:120]}")
-            continue
-        if r.status_code in (401, 403):
-            lines.append(f"{name}: key reject hui (HTTP {r.status_code})")
-            continue
-        if name == "cloudflare" and r.status_code in (404, 405):
-            lines.append("cloudflare: model list nahi deta, isliye key/ID ka pata pehle asli jawab me chalega")
-            continue
-        if r.status_code != 200:
-            lines.append(f"{name}: HTTP {r.status_code} {r.text[:80]}")
-            continue
-        try:
-            ids = {str(m.get("id", "")).removeprefix("models/") for m in r.json().get("data", [])}
-        except Exception:
-            lines.append(f"{name}: OK (HTTP 200), par model list padh nahi paya")
-            continue
-        ours = [m for m in config.REGISTRY.values() if m.provider == name]
-        missing = [m.model for m in ours if m.model not in ids]
-        line = f"{name}: key OK, {len(ours) - len(missing)}/{len(ours)} configured models mile"
-        if missing:
-            hints = []
-            for mid in missing:
-                tail = mid.split("/")[-1].removesuffix(":free")
-                close = sorted(i for i in ids if tail and tail.lower() in i.lower())[:2]
-                hints.append(mid + (f" (shayad: {', '.join(close)})" if close else ""))
-            line += ". Nahi mile: " + ", ".join(hints)
-        lines.append(line)
+        for slot in slots:
+            lines.append(_diagnose_key(httpx, config, name, prov, slot, len(slots) > 1 or slot > 1))
     return _text("**Connection test**\n\n" + "\n".join("- " + ln for ln in lines))
+
+
+def _diagnose_key(httpx, config, name: str, prov, slot: int, numbered: bool) -> str:
+    """One GET /models with one key slot. `numbered`: say which key ("groq key 2") when the provider has several."""
+    who = f"{name} key {slot}" if numbered else name
+    try:
+        r = httpx.get(
+            f"{prov.url_for(slot)}/models", headers={"Authorization": f"Bearer {prov.key(slot)}"}, timeout=20
+        )
+    except Exception as e:  # network, DNS, TLS
+        return f"{who}: NETWORK FAIL {type(e).__name__}: {str(e)[:120]}"
+    if r.status_code in (401, 403):
+        return f"{who}: key reject hui (HTTP {r.status_code})"
+    if name == "cloudflare" and r.status_code in (404, 405):
+        return f"{who}: model list nahi deta, isliye key/ID ka pata pehle asli jawab me chalega"
+    if r.status_code != 200:
+        return f"{who}: HTTP {r.status_code} {r.text[:80]}"
+    try:
+        ids = {str(m.get("id", "")).removeprefix("models/") for m in r.json().get("data", [])}
+    except Exception:
+        return f"{who}: OK (HTTP 200), par model list padh nahi paya"
+    ours = [m for m in config.REGISTRY.values() if m.provider == name]
+    missing = [m.model for m in ours if m.model not in ids]
+    line = f"{who}: key OK, {len(ours) - len(missing)}/{len(ours)} configured models mile"
+    if missing:
+        hints = []
+        for mid in missing:
+            tail = mid.split("/")[-1].removesuffix(":free")
+            close = sorted(i for i in ids if tail and tail.lower() in i.lower())[:2]
+            hints.append(mid + (f" (shayad: {', '.join(close)})" if close else ""))
+        line += ". Nahi mile: " + ", ".join(hints)
+    return line
 
 
 async def _run(body: dict, progress):
@@ -248,5 +256,5 @@ def handle(request_json: str, progress=None, request_id=None) -> str:
         )
     except RuntimeError as e:
         return _text(f"Models se jawab nahi mila: {e}")
-    except Exception as e:  # keep the app alive whatever a provider does
-        return _text(f"Engine error ({type(e).__name__}): {e}")
+    except Exception as e:  # keep the app alive whatever a provider does (keys are scrubbed by _text)
+        return _text(f"Engine error ({type(e).__name__}): {str(e)[:300]}")

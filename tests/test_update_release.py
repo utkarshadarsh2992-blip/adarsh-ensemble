@@ -243,7 +243,8 @@ def test_cache_provider_is_narrow_and_ci_release_is_main_only():
     assert "FINAL_GATE" in workflow
     assert "gh release upload" in workflow
     assert "GH_TOKEN" in workflow
-    assert "secrets." not in workflow
+    assert "secrets.ADARSH_RELEASE_KEYSTORE_B64" in workflow
+    assert "secrets.ADARSH_RELEASE_STORE_PASSWORD" in workflow
 
 
 def test_gradle_version_name_tracks_run_number_without_changing_debug_identity():

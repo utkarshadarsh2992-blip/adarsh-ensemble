@@ -226,16 +226,21 @@ const Voice = (() => {
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
     el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, 'VOICE · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, BackgroundVoice.supported() ? h('button', { class: 'chipbtn', on: { click: () => BackgroundVoice.open() } }, 'Outside app') : null), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
-  function open() {
+  /* opts.listen: coming back from the background session, so start listening right away */
+  function open(opts = {}) {
     if (BackgroundVoice.active()) return BackgroundVoice.open();
-    if (openFlag) return; session++; openFlag = true; build(); el.hidden = false; setState('idle');
-    caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
+    if (openFlag) return; session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.hidden = false; setState('idle');
+    caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
+    BackgroundVoice.arm();
+    if (opts.listen && STT.supported()) listen();
   }
-  function close() {
+  /* opts.keepBackground: the phone already moved this conversation to the background session */
+  function close(opts = {}) {
     if (!openFlag) return; openFlag = false; session++;
+    if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
@@ -304,6 +309,7 @@ const Voice = (() => {
     setState('thinking'); caption(text);
     const un = Bus.on('reply', ({ msg }) => collected.push(msg.reply));
     try { await Chat.submit(text, { voice: true }); } finally { un(); }   // voice: the engine answers short and speakable
+    if (openFlag) BackgroundVoice.arm();   // the background session must continue with this turn in its history
     if (!active(token)) return;
     if (!collected.length) { caption(text, 'Message send nahi hua. Chat mein source/connection check karo.'); setState('idle'); return; }
     const structured = collected.find(r => r.type === 'ask' || r.type === 'approve');

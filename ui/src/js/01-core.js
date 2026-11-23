@@ -64,10 +64,30 @@ function h(tag, props, ...kids) {
 const ibtn = (name, label, fn, cls = '') => h('button', { class: 'ib ' + cls, 'aria-label': label, on: { click: fn } }, icon(name));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+/* Backend/model URLs are untrusted. Only absolute HTTPS links may become anchors. */
+function safeExternalUrl(u) {
+  if (typeof u !== 'string') return null;
+  const raw = u.trim();
+  if (!raw || raw.startsWith('//')) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' ? parsed.href : null;
+  } catch (e) { return null; }
+}
 /* Haptics: the Android WebView ignores navigator.vibrate, so the app does it natively when it can */
+let lastVibe = 0;
 function vibe(ms = 8) {
   if (!S.settings.haptics) return;
+  const now = Date.now();
+  if (now - lastVibe < 60) return;   // one tap = one buzz, even when a handler also calls vibe()
+  lastVibe = now;
   try { if (window.AdarshNative && AdarshNative.haptic) return AdarshNative.haptic(ms); if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+const HAPTIC_TAP = 'button,[role="button"],[role="switch"],[role="tab"],a[href],summary,label,input[type="checkbox"],input[type="radio"],select';
+function hapticTap(ev) {
+  const t = ev && ev.target && ev.target.closest ? ev.target.closest(HAPTIC_TAP) : null;
+  if (!t || t.disabled || t.getAttribute('aria-disabled') === 'true') return;
+  vibe(8);
 }
 /* Copy that works in the Android WebView too (navigator.clipboard is often missing or blocked there) */
 async function copyText(text) {
@@ -93,7 +113,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -102,6 +122,9 @@ function load() {
     const raw = localStorage.getItem(KEY); if (!raw) return;
     const d = JSON.parse(raw); const base = DEFAULTS();
     const ds = d.settings || {};
+    /* The Standard-mode assistant switch was saved as `jarvis` by older builds; keep the user's choice under its new name. */
+    if (ds.adarshActions === undefined && typeof ds.jarvis === 'boolean') ds.adarshActions = ds.jarvis;
+    delete ds.jarvis;
     /* v4 redesign: replies are serif by default. Data saved by an older build has no `ui4`, so its old default 'sans' is moved to 'serif' once. */
     Object.assign(S, base, d, { settings: { ...base.settings, ...ds, ...(ds.ui4 ? {} : { font: 'serif' }), ui4: 1 }, conn: { ...base.conn, ...(d.conn || {}) } });
   } catch (e) { console.warn('load failed', e); }
@@ -176,7 +199,10 @@ function inline(text) {
     else if (t[0] === '$') out.push(Tex.span(t.slice(1, -1)));
     else if (t.startsWith('**')) out.push(h('strong', {}, t.slice(2, -2)));
     else if (t[0] === '*') out.push(h('em', {}, t.slice(1, -1)));
-    else { const mm = /\[([^\]]+)\]\((.+)\)/.exec(t); out.push(h('a', { href: mm[2], target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1])); }
+    else {
+      const mm = /\[([^\]]+)\]\((.+)\)/.exec(t), href = mm && safeExternalUrl(mm[2]);
+      out.push(href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1]) : t);
+    }
     last = m.index + t.length;
   }
   if (last < text.length) out.push(text.slice(last));

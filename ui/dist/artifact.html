@@ -629,7 +629,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .pop-item small.pi-how{font-size:11.5px;color:var(--fg2);opacity:.8}
 .combo-t{width:100%;border-collapse:collapse;font-size:13px}.combo-t td{padding:3px 6px;border-top:1px solid var(--line,rgba(127,127,127,.18))}.combo-t td:first-child{color:var(--muted);white-space:nowrap}
 
-/* ---------- Standard-mode actions (Jarvis) ---------- */
+/* ---------- Standard-mode actions (Adarsh) ---------- */
 .act{padding:14px 14px 10px}
 .act-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:14.5px}
 .act-h b{font-weight:600;line-height:1.35}
@@ -663,6 +663,11 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .hud-orb:after{content:'';width:7px;height:7px;border-radius:50%;background:#7fb0ff;box-shadow:0 0 10px #7fb0ff}
 @keyframes hudpulse{0%{opacity:.85;transform:scale(.45)}100%{opacity:0;transform:scale(1.5)}}
 @media (prefers-reduced-motion: reduce){.hud.busy .hud-orb i{animation:none}.hud{transition:none}}
+/* API keys sheet: one fold per provider, 3 key slots inside */
+.keygrp{background:var(--card);border-radius:16px;padding:8px 14px 12px;margin:10px 0}
+.keygrp>summary{font-weight:600;padding:6px 0}
+.keygrp>summary::before{content:'\25B8  '}
+.keygrp[open]>summary::before{content:'\25BE  '}
 
 /* ProductivityViews only: every selector is prefixed with pv- to keep this sheet isolated. */
 .pv-intro{display:flex;flex-direction:column;gap:3px;padding:4px 2px 0}.pv-intro b{font:500 22px/1.2 var(--serif)}.pv-intro span{color:var(--muted);font-size:14px}.pv-section{display:flex;flex-direction:column;gap:12px}.pv-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:4px 2px 0}.pv-section-head b{font:500 18px var(--serif)}.pv-section-head small{display:block;color:var(--muted);font-size:13px;margin-top:2px}.pv-form{display:flex;flex-direction:column;gap:11px}.pv-form-card{background:var(--card);border-radius:var(--r-l);padding:16px}.pv-field{display:flex;flex-direction:column;gap:5px;min-width:0}.pv-label{font:500 10.5px/1.2 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}.pv-hint{color:var(--muted);font-size:12px;line-height:1.35}.pv-input,.pv-textarea{width:100%;border:1px solid var(--line);outline:0;background:var(--paper);border-radius:12px;padding:11px 13px;min-height:44px}.pv-input:focus,.pv-textarea:focus{border-color:var(--sel);box-shadow:0 0 0 2px color-mix(in srgb,var(--sel) 18%,transparent)}.pv-textarea{min-height:88px;resize:vertical;line-height:1.45}.pv-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}.pv-actions .btn{flex:1;min-width:132px}.pv-platform-note{margin:0;padding:11px 13px;border-radius:14px;background:color-mix(in srgb,var(--warn) 11%,transparent);color:var(--fg2);font-size:13px;line-height:1.45}.pv-search-row{display:flex;gap:8px;align-items:center;margin-top:2px}.pv-search{flex:1;background:var(--card);border:0;min-height:46px}.pv-list-wrap{display:flex;flex-direction:column;gap:8px}.pv-record{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:16px;padding:11px 10px 11px 14px;min-width:0}.pv-record.is-complete{opacity:.72}.pv-record-main{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}.pv-record-title{display:flex;align-items:center;gap:8px;min-width:0}.pv-record-title svg{color:var(--accent)}.pv-record-title b{font-weight:500;overflow-wrap:anywhere}.pv-record-main small{color:var(--muted);font-size:12.5px;line-height:1.35;overflow-wrap:anywhere}.pv-record-meta{display:flex;align-items:center;gap:8px;flex:none}.pv-record-actions{display:flex;align-items:center;gap:1px;flex:none}.pv-icon-btn{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--muted)}.pv-icon-btn:active{background:var(--card2);color:var(--fg)}.pv-icon-btn.is-danger:active{color:var(--bad)}.pv-check{width:28px;height:28px;border:2px solid var(--muted);border-radius:50%;display:grid;place-items:center;color:#fff;flex:none}.pv-check[aria-checked="true"]{background:var(--good);border-color:var(--good)}.pv-check svg{width:15px;height:15px;stroke-width:3}.pv-status{font:500 10.5px/1.1 var(--mono);letter-spacing:.02em;color:var(--muted);white-space:nowrap}.pv-status.is-fired{color:var(--warn)}.pv-status.is-done{color:var(--good)}.pv-empty{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:var(--muted);padding:34px 18px;background:var(--card);border-radius:20px}.pv-empty svg{color:var(--accent);margin-bottom:3px}.pv-empty b{font-weight:500;color:var(--fg)}.pv-empty span{font-size:13.5px;line-height:1.4;max-width:34ch}.pv-empty small{font-size:12px;line-height:1.4;max-width:35ch}.pv-timers{border-top:1px solid var(--line);padding-top:16px}.pv-note{background:var(--card);border-radius:18px;padding:15px 16px 10px}.pv-note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}.pv-note-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;color:var(--muted)}.pv-note-foot small{font-size:11.5px}.pv-chip{font:500 10.5px var(--mono);color:var(--muted);background:var(--card2);padding:4px 7px;border-radius:999px;white-space:nowrap}.pv-project{background:var(--card);border-radius:20px;padding:16px}.pv-project-head{display:flex;align-items:flex-start;gap:10px}.pv-project-title{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}.pv-project-title b{font:500 19px/1.25 var(--serif);overflow-wrap:anywhere}.pv-project-goal{margin:12px 0 0;line-height:1.45;color:var(--fg2);white-space:pre-wrap;overflow-wrap:anywhere}.pv-progress-line{display:flex;align-items:center;gap:9px;margin-top:13px}.pv-progress-bar{height:6px;flex:1;background:var(--card2);border-radius:6px;overflow:hidden}.pv-progress-bar i{display:block;height:100%;background:var(--accent);border-radius:inherit}.pv-progress-line>span{font:500 11px var(--mono);color:var(--muted);width:35px;text-align:right}.pv-project-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;color:var(--muted);font-size:12.5px}.pv-project-stats b{color:var(--fg);font-weight:500}.pv-outcome{display:flex;flex-direction:column;gap:3px;margin-top:13px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--good) 9%,transparent);font-size:13px;line-height:1.4}.pv-outcome b{font:500 10.5px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--good)}.pv-outcome span{white-space:pre-wrap;overflow-wrap:anywhere}.pv-entry-details{margin-top:13px;border-top:1px solid var(--line)}.pv-entry-details>summary{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 0 4px;color:var(--fg2);font-size:13.5px}.pv-entry-details>summary span{font:500 11px var(--mono);color:var(--muted)}.pv-entries{display:flex;flex-direction:column;gap:7px;margin-top:7px}.pv-entry{padding:10px 11px;background:var(--card2);border-radius:12px}.pv-entry-head{display:flex;justify-content:space-between;gap:8px;color:var(--muted);font:500 11px var(--mono)}.pv-entry-head span{white-space:nowrap}.pv-entry p{margin:7px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;line-height:1.4}.pv-entry small{display:block;color:var(--muted);font-size:12px;line-height:1.35;margin-top:5px;white-space:pre-wrap;overflow-wrap:anywhere}.pv-muted{color:var(--muted);font-size:13px;line-height:1.4}.pv-log-btn{width:100%;margin-top:13px}.pv-log-btn svg{width:17px;height:17px}@media (max-width:360px){.pv-record-meta{gap:3px}.pv-status{display:none}.pv-form-card{padding:14px}.pv-project{padding:14px}}
@@ -784,16 +789,24 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
   };
 
   /* API keys live in Android Keystore-backed storage. JS only ever sees a short hint, never the key. */
+  /* 3 key slots per provider (15 keys): key 1 is used first; when it hits its limit, needs credits (402), is rejected or
+     the server fails, the engine moves to key 2, then key 3, then the next model. Cloudflare: every slot = token + Account ID. */
+  const slotId = (base, n) => n === 1 ? base : base + '_' + n;
+  const groups = [
+    { name: 'Groq', base: 'GROQ_API_KEY', url: 'console.groq.com/keys' },
+    { name: 'OpenRouter', base: 'OPENROUTER_API_KEY', url: 'openrouter.ai/keys' },
+    { name: 'Gemini', base: 'GEMINI_API_KEY', url: 'aistudio.google.com/apikey' },
+    { name: 'NVIDIA NIM', base: 'NVIDIA_API_KEY', url: 'build.nvidia.com' },
+    { name: 'Cloudflare', base: 'CLOUDFLARE_API_TOKEN', idBase: 'CLOUDFLARE_ACCOUNT_ID', url: 'dash.cloudflare.com/profile/api-tokens (Workers AI) · Account ID: Workers AI page' }
+  ];
+  const providers = [];
+  groups.forEach(g => [1, 2, 3].forEach(n => {
+    providers.push({ id: slotId(g.base, n), name: g.name + ' key ' + n, group: g.name, slot: n, url: g.url });
+    if (g.idBase) providers.push({ id: slotId(g.idBase, n), name: g.name + ' Account ID ' + n, group: g.name, slot: n, url: g.url, plain: true });
+  }));
+  providers.push({ id: 'TAVILY_API_KEY', name: 'Tavily web search (optional)', url: 'app.tavily.com · without it, research uses Wikipedia only' });
   window.AdarshKeys = {
-    providers: [
-      { id: 'GROQ_API_KEY', name: 'Groq', url: 'console.groq.com/keys' },
-      { id: 'GEMINI_API_KEY', name: 'Gemini', url: 'aistudio.google.com/apikey' },
-      { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', url: 'openrouter.ai/keys' },
-      { id: 'CLOUDFLARE_API_TOKEN', name: 'Cloudflare token', url: 'dash.cloudflare.com/profile/api-tokens (Workers AI)' },
-      { id: 'CLOUDFLARE_ACCOUNT_ID', name: 'Cloudflare Account ID', url: 'dash.cloudflare.com, Workers AI page', plain: true },
-      { id: 'NVIDIA_API_KEY', name: 'NVIDIA NIM', url: 'build.nvidia.com' },
-      { id: 'TAVILY_API_KEY', name: 'Tavily web search (optional)', url: 'app.tavily.com · without it, research uses Wikipedia only' }
-    ],
+    groups, providers, slotId,
     status() { try { return JSON.parse(N.keyStatus()); } catch (e) { return {}; } },
     save(id, value) { try { return JSON.parse(N.saveKey(id, value)); } catch (e) { return { ok: false, error: 'Could not save.' }; } },
     remove(id) { try { return JSON.parse(N.deleteKey(id)); } catch (e) { return { ok: false, error: 'Could not delete.' }; } }
@@ -866,10 +879,30 @@ function h(tag, props, ...kids) {
 const ibtn = (name, label, fn, cls = '') => h('button', { class: 'ib ' + cls, 'aria-label': label, on: { click: fn } }, icon(name));
 const uid = (p = 'x') => p + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+/* Backend/model URLs are untrusted. Only absolute HTTPS links may become anchors. */
+function safeExternalUrl(u) {
+  if (typeof u !== 'string') return null;
+  const raw = u.trim();
+  if (!raw || raw.startsWith('//')) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'https:' ? parsed.href : null;
+  } catch (e) { return null; }
+}
 /* Haptics: the Android WebView ignores navigator.vibrate, so the app does it natively when it can */
+let lastVibe = 0;
 function vibe(ms = 8) {
   if (!S.settings.haptics) return;
+  const now = Date.now();
+  if (now - lastVibe < 60) return;   // one tap = one buzz, even when a handler also calls vibe()
+  lastVibe = now;
   try { if (window.AdarshNative && AdarshNative.haptic) return AdarshNative.haptic(ms); if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+}
+const HAPTIC_TAP = 'button,[role="button"],[role="switch"],[role="tab"],a[href],summary,label,input[type="checkbox"],input[type="radio"],select';
+function hapticTap(ev) {
+  const t = ev && ev.target && ev.target.closest ? ev.target.closest(HAPTIC_TAP) : null;
+  if (!t || t.disabled || t.getAttribute('aria-disabled') === 'true') return;
+  vibe(8);
 }
 /* Copy that works in the Android WebView too (navigator.clipboard is often missing or blocked there) */
 async function copyText(text) {
@@ -895,7 +928,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, jarvis: true },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -904,6 +937,9 @@ function load() {
     const raw = localStorage.getItem(KEY); if (!raw) return;
     const d = JSON.parse(raw); const base = DEFAULTS();
     const ds = d.settings || {};
+    /* The Standard-mode assistant switch was saved as `jarvis` by older builds; keep the user's choice under its new name. */
+    if (ds.adarshActions === undefined && typeof ds.jarvis === 'boolean') ds.adarshActions = ds.jarvis;
+    delete ds.jarvis;
     /* v4 redesign: replies are serif by default. Data saved by an older build has no `ui4`, so its old default 'sans' is moved to 'serif' once. */
     Object.assign(S, base, d, { settings: { ...base.settings, ...ds, ...(ds.ui4 ? {} : { font: 'serif' }), ui4: 1 }, conn: { ...base.conn, ...(d.conn || {}) } });
   } catch (e) { console.warn('load failed', e); }
@@ -978,7 +1014,10 @@ function inline(text) {
     else if (t[0] === '$') out.push(Tex.span(t.slice(1, -1)));
     else if (t.startsWith('**')) out.push(h('strong', {}, t.slice(2, -2)));
     else if (t[0] === '*') out.push(h('em', {}, t.slice(1, -1)));
-    else { const mm = /\[([^\]]+)\]\((.+)\)/.exec(t); out.push(h('a', { href: mm[2], target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1])); }
+    else {
+      const mm = /\[([^\]]+)\]\((.+)\)/.exec(t), href = mm && safeExternalUrl(mm[2]);
+      out.push(href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1]) : t);
+    }
     last = m.index + t.length;
   }
   if (last < text.length) out.push(text.slice(last));
@@ -1199,6 +1238,7 @@ const pill = (v) => { const [c, l] = VERDICT[v] || ['mute', String(v || '').repl
 const head = (kind, title, extra) => h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, kind), title ? h('h3', {}, title) : null), extra);
 const sec = (k, ...c) => h('div', { class: 'sec' }, k ? h('span', { class: 'k' }, k) : null, ...c);
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u || ''; } };
+const omittedNotice = () => h('div', { class: 'note' }, icon('warn', 's'), 'Some details omitted because this reply was too large.');
 
 /* reply.notes = { title, items: [{ title, text }] }: folded under the reply (falsifier findings). */
 const notesEl = (n) => h('details', { class: 'notes' },
@@ -1237,7 +1277,12 @@ const RENDER = {
         h('div', { class: 'checks' }, (c.checks || []).map(k => h('div', { class: 'check' }, h('b', {}, k.source), pill(k.verdict), k.note ? h('span', {}, k.note) : null)))));
     });
     if (d.sources && d.sources.length) card.append(h('details', { class: 'fold' }, h('summary', {}, icon('link', 's'), 'Sources (' + d.sources.length + ')', h('span', { style: 'flex:1' }), icon('chev', 'chev')),
-      h('div', { class: 'in' }, d.sources.map(s => h('div', { class: 'src' }, h('b', {}, '[' + s.n + ']'), s.url ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(s.url)) : (s.title || ''), s.url ? h('small', {}, hostOf(s.url)) : null)))));
+      h('div', { class: 'in' }, d.sources.map(s => {
+        const href = safeExternalUrl(s && s.url), raw = s && typeof s.url === 'string' ? s.url : '';
+        return h('div', { class: 'src' }, h('b', {}, '[' + (s && s.n != null ? s.n : '?') + ']'), href
+          ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(href))
+          : h('span', {}, s && s.title ? s.title + (raw ? ' (' + raw + ')' : '') : raw), href ? h('small', {}, hostOf(href)) : null);
+      }))));
     if (d.caveat) card.append(sec('', h('div', { class: 'note' }, icon('warn', 's'), d.caveat)));
     return card;
   },
@@ -1354,7 +1399,11 @@ const RENDER = {
 
 /* unknown reply type: degrade to text rather than crash */
 function renderReply(d, ctx) {
-  try { return (RENDER[d.type] || RENDER.text)(RENDER[d.type] ? d : { text: d.text || JSON.stringify(d, null, 2) }, ctx); }
+  try {
+    const el = (RENDER[d.type] || RENDER.text)(RENDER[d.type] ? d : { text: d.text || JSON.stringify(d, null, 2) }, ctx);
+    if (d._detailsOmitted) el.append(omittedNotice());
+    return el;
+  }
   catch (e) { console.error('render', d.type, e); return md('Could not display this reply (' + d.type + ').'); }
 }
 
@@ -1382,14 +1431,39 @@ function speechOf(d) {
 const Council = (() => {
   let page = null, sink = null;          // sink: called with each new live step while the page is open in live mode
   const KEEP = 10;                       // full records kept on the phone; older ones are dropped (they are big)
+  const MAX_RECORD_BYTES = 512 * 1024;
   const IDX = 'adarsh.cn.idx', PRE = 'adarsh.cn.';
   const mem = new Map();                 // records of this session, even when storage is full or unavailable
   const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } };
   const lsDel = (k) => { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } };
   const index = () => { try { return JSON.parse(lsGet(IDX) || '[]'); } catch (e) { return []; } };
+  const bytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
+  function capRecord(rec) {
+    let omitted = false;
+    const copy = (v) => {
+      if (typeof v === 'string') return v.length > 12000 ? (omitted = true, v.slice(0, 12000) + '…') : v;
+      if (Array.isArray(v)) return v.length > 100 ? (omitted = true, v.slice(0, 100).map(copy)) : v.map(copy);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, copy(x)]));
+      return v;
+    };
+    let out = copy(rec);
+    const detailKeys = ['prompt', 'output', 'judge_raw', 'final', 'before', 'after', 'discarded', 'calls', 'drafts', 'steps', 'thinkLines', 'repairs', 'falsifiers', 'proofs', 'claims_map', 'provenance'];
+    for (const k of detailKeys) if (bytes(out) > MAX_RECORD_BYTES && out && Object.prototype.hasOwnProperty.call(out, k)) { delete out[k]; omitted = true; }
+    const shrink = (v) => {
+      if (typeof v === 'string') return v.length > 512 ? (omitted = true, v.slice(0, Math.max(256, Math.floor(v.length / 2))) + '…') : v;
+      if (Array.isArray(v)) return v.length > 8 ? (omitted = true, v.slice(0, Math.max(1, Math.floor(v.length / 2))).map(shrink)) : v.map(shrink);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]));
+      return v;
+    };
+    for (let i = 0; bytes(out) > MAX_RECORD_BYTES && i < 8; i++) out = shrink(out);
+    if (bytes(out) > MAX_RECORD_BYTES) { out = { question: String(rec && rec.question || '').slice(0, 1000), _detailsOmitted: true }; omitted = true; }
+    if (omitted && out && typeof out === 'object') out._detailsOmitted = true;
+    return out;
+  }
   /* Records live under their own keys, NOT inside the chat state: one big record must never make saving chats fail. */
   function put(id, rec) {
+    rec = capRecord(rec);
     mem.set(id, rec);
     let idx = index().filter(x => x !== id); idx.push(id);
     const text = JSON.stringify(rec);
@@ -1401,7 +1475,7 @@ const Council = (() => {
   function get(id) {
     if (mem.has(id)) return mem.get(id);
     const t = lsGet(PRE + id); if (!t) return null;
-    try { const r = JSON.parse(t); mem.set(id, r); return r; } catch (e) { return null; }
+    try { const r = capRecord(JSON.parse(t)); mem.set(id, r); return r; } catch (e) { return null; }
   }
 
   const fmtS = (s) => (s == null ? '' : s >= 60 ? Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's' : (s >= 10 ? Math.round(s) : Math.round(s * 10) / 10) + 's');
@@ -1527,7 +1601,7 @@ const Council = (() => {
       master ? tl('lessons', 'check', 'Lessons', (ls.lessons_used || []).length + ' lage, ' + (ls.learned || []).length + ' naye/majboot') : null,
       tl('prov', 'check', 'Kya aaya, kya gaya', 'draft se final tak'));
 
-    if (rec.trimmed) stack.append(h('p', { class: 'warn' }, 'Record bada tha, isliye kuch prompts chhote karke dikhaye gaye hain (model ko poore gaye the).'));
+    if (rec.trimmed || rec._detailsOmitted) stack.append(h('p', { class: 'warn' }, rec._detailsOmitted ? 'Details omitted: council record bahut bada tha, isliye kuch detail phone par nahi rakhi gayi.' : 'Record bada tha, isliye kuch prompts chhote karke dikhaye gaye hain (model ko poore gaye the).'));
     stack.append(
       h('p', { class: 'muted qline' }, '“' + clip(rec.question, 160) + '”'),
       score, modelsEl,
@@ -1536,7 +1610,7 @@ const Council = (() => {
     /* ---- roles (11-role engine) */
     if (rec.roles) {
       const R = rec.roles, src = R.sources || [];
-      const linkEl = (x) => x.url ? h('a', { href: x.url, target: '_blank', rel: 'noopener' }, x.title || x.url) : h('span', {}, x.title || '');
+      const linkEl = (x) => { const href = safeExternalUrl(x && x.url), raw = x && typeof x.url === 'string' ? x.url : ''; return href ? h('a', { href, target: '_blank', rel: 'noopener' }, x.title || href) : h('span', {}, x && x.title ? x.title + (raw ? ' (' + raw + ')' : '') : raw); };
       const deb = R.debate || [], rf = R.refiner || {}, rv = R.reviews || {};
       const revLine = (k, n) => { const r = rv[k]; return r ? row(n, r.ran ? (r.issues || []).length + ' galti/shak' : 'output padha nahi gaya') : row(n, 'is mode me nahi chala'); };
       stack.append(sec('roles', '11-role council', 'Architect ne plan banaya, web se sources padhe, drafters ne likha, Skeptic/Falsifier/Debater ne todne ki koshish ki, Judge ne likha, Reviewers ne jaancha, Refiner ne sudhara.',
@@ -1741,7 +1815,7 @@ const Lessons = (() => {
         if (!r || !r.ok) { wrap.append(h('p', { class: 'warn' }, (r && r.error) || 'Lessons nahi khule.')); return; }
         const items = r.lessons || [];
         if (onChange) onChange(items.length);
-        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Manual master answer par 👎 daba kar "kya galat tha" likho, ya jab checks galti pakdenge to yahan apne aap judega.')); return; }
+        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Upar khud likh kar jodo, ya Manual master answer par 👎 daba kar "kya galat tha" likho. Jab checks galti pakdenge to yahan apne aap bhi judega.')); return; }
         items.forEach(x => wrap.append(h('div', { class: 'ccard' },
           h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), h('span', { class: 'chips' },
             h('span', { class: 'pill ' + (x.origin === 'user' ? 'info' : 'mute') }, x.origin === 'user' ? 'tumhara' : 'auto'),
@@ -1753,7 +1827,18 @@ const Lessons = (() => {
             h('button', { class: 'btn ghost', style: 'flex:1', on: { click: async () => paint(await call({ op: 'delete', id: x.id })) } }, 'Hatao')))));
         wrap.append(h('button', { class: 'btn danger', on: { click: () => confirmSheet({ title: 'Saare lessons hatao?', text: 'Master answer phir bina sikhe rules ke shuru hoga.', label: 'Hatao', danger: true, top: true, onYes: async () => paint(await call({ op: 'clear' })) }) } }, 'Sab hatao'));
       };
-      b.append(h('p', {}, 'Sirf Manual mode ka master answer inhe padhta hai. Auto aur Hybrid inhe nahi dekhte. Model ke weights nahi badalte: ye rules prompt me jaate hain aur jo tootte hain unka wazan badhta hai.'), wrap);
+      /* manual lesson: the user writes a rule directly, no thumbs-down needed */
+      const ta = h('textarea', { rows: '3', maxlength: '300', placeholder: 'Apna rule likho, jaise: "Har jawab me pehle seedha answer do, phir detail"', 'aria-label': 'Naya lesson', class: 'lesson-new', style: 'width:100%;background:var(--card);border:0;border-radius:14px;padding:12px;color:var(--fg);resize:none' });
+      const addBtn = h('button', { class: 'btn pri', 'data-lesson-add': '1', on: { click: async () => {
+        const t = ta.value.trim();
+        if (!t) { toast('Pehle lesson likho'); ta.focus(); return; }
+        addBtn.disabled = true;
+        const r = await call({ op: 'add', text: t });
+        addBtn.disabled = false;
+        if (r && r.ok) { ta.value = ''; toast('Lesson jud gaya'); paint(r); } else toast((r && r.error) || 'Save nahi hua');
+      } } }, 'Lesson jodo');
+      b.append(h('p', {}, 'Sirf Manual mode ka master answer inhe padhta hai. Auto aur Hybrid inhe nahi dekhte. Model ke weights nahi badalte: ye rules prompt me jaate hain aur jo tootte hain unka wazan badhta hai.'),
+        h('div', { class: 'ccard', style: 'display:flex;flex-direction:column;gap:8px' }, h('b', {}, 'Naya lesson khud likho'), ta, addBtn), wrap);
       wrap.append(h('p', { class: 'muted' }, 'Khul raha hai…'));
       call({ op: 'list' }).then(paint);
     } });
@@ -1888,6 +1973,30 @@ const Chat = (() => {
   let callRows = [];   // this answer's model calls: {stage, model, state: run|ok|fail|dead, why, secs, asked}
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
+  const MAX_REPLY_BYTES = 256 * 1024;
+  const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
+  function capReply(reply) {
+    let omitted = false;
+    const copy = (v) => {
+      if (typeof v === 'string') return v.length > 12000 ? (omitted = true, v.slice(0, 12000) + '…') : v;
+      if (Array.isArray(v)) return v.length > 100 ? (omitted = true, v.slice(0, 100).map(copy)) : v.map(copy);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, copy(x)]));
+      return v;
+    };
+    let out = copy(reply);
+    const detailKeys = ['council', 'calls', 'steps', 'thinkLines', 'notes', 'prompt', 'output', 'draft', 'questions', 'patterns', 'stages'];
+    for (const k of detailKeys) if (replyBytes(out) > MAX_REPLY_BYTES && out && Object.prototype.hasOwnProperty.call(out, k)) { delete out[k]; omitted = true; }
+    const shrink = (v) => {
+      if (typeof v === 'string') return v.length > 512 ? (omitted = true, v.slice(0, Math.max(256, Math.floor(v.length / 2))) + '…') : v;
+      if (Array.isArray(v)) return v.length > 8 ? (omitted = true, v.slice(0, Math.max(1, Math.floor(v.length / 2))).map(shrink)) : v.map(shrink);
+      if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shrink(x)]));
+      return v;
+    };
+    for (let i = 0; replyBytes(out) > MAX_REPLY_BYTES && i < 8; i++) out = shrink(out);
+    if (replyBytes(out) > MAX_REPLY_BYTES) { out = { type: 'text', text: 'Reply details omitted because the backend response was too large.' }; omitted = true; }
+    if (omitted && out && typeof out === 'object') out._detailsOmitted = true;
+    return out;
+  }
 
   const cur = () => S.chats.find(c => c.id === S.cur);
   function newChat() {
@@ -2153,7 +2262,7 @@ const Chat = (() => {
   function mediaPrompt(kind) {
     if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
     const keys = window.AdarshKeys && window.AdarshKeys.status ? window.AdarshKeys.status() : {};
-    if (!(keys.NVIDIA_API_KEY && keys.NVIDIA_API_KEY.set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
+    if (!['NVIDIA_API_KEY', 'NVIDIA_API_KEY_2', 'NVIDIA_API_KEY_3'].some(k => keys[k] && keys[k].set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
     sheet({ title: kind === 'image' ? 'Generate image' : 'Generate video', tall: true, build(b, close) {
       const prompt = h('textarea', { rows: '4', maxlength: '2000', placeholder: kind === 'image' ? 'Describe the image…' : 'Describe the video…', 'aria-label': 'Generation prompt', style: 'width:100%;min-height:110px;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;resize:vertical' });
       const frames = kind === 'video' ? h('select', { 'aria-label': 'Video duration', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit' },
@@ -2298,7 +2407,7 @@ const Chat = (() => {
       Bus.emit('busy', false);
     }
   }
-  const normReply = (r) => (typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
+  const normReply = (r) => capReply(typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
   function deliver(c, r) {
     // Only the explicit local action layer may mutate productivity data. Model/demo reply shapes are display-only.
     if (r.type === 'memory' || r.type === 'task') r = { type: 'text', text: r.type === 'task' ? 'Task proposal: ' + (r.title || '') + '. Add karne ke liye Standard command bolo.' : 'Memory proposal: ' + (r.text || '') };
@@ -2390,6 +2499,8 @@ const Productivity = (() => {
   const result = (ok, message, extra = {}) => ({ ok, message, ...extra });
   const text = (v, max = 600) => typeof v === 'string' ? v.trim().slice(0, max) : '';
   const fields = ['id', 'kind', 'title', 'text', 'at', 'created', 'updated', 'done', 'firedAt', 'category', 'goal', 'progress', 'minutes', 'outcome', 'entries'];
+  const IMPORT_MAX_BYTES = 2 * 1024 * 1024, IMPORT_MAX_RECORDS = 500, IMPORT_RECORD_MAX_BYTES = 32 * 1024;
+  const jsonBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
   function safeRecord(r) {
     if (!r || !COLLECTIONS[r.kind]) return null;
     const out = {};
@@ -2400,6 +2511,26 @@ const Productivity = (() => {
     if (['task', 'work'].includes(out.kind)) { out.title = out.title || out.text; delete out.text; }
     else { out.text = out.text || out.title; delete out.title; }
     return out;
+  }
+  function importedRecord(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r) || jsonBytes(r) > IMPORT_RECORD_MAX_BYTES || typeof r.kind !== 'string' || !COLLECTIONS[r.kind]) return null;
+    const strCaps = { id: 120, title: 120, text: 600, category: 120, goal: 600, outcome: 600 };
+    for (const [k, max] of Object.entries(strCaps)) if (r[k] != null && (typeof r[k] !== 'string' || r[k].length > max)) return null;
+    for (const k of ['at', 'created', 'updated', 'firedAt', 'progress', 'minutes']) if (r[k] != null && (typeof r[k] !== 'number' || !Number.isFinite(r[k]) || r[k] < 0)) return null;
+    if (r.progress != null && r.progress > 100 || r.minutes != null && r.minutes > 1440) return null;
+    if (r.done != null && typeof r.done !== 'boolean') return null;
+    if (r.entries != null) {
+      if (!Array.isArray(r.entries) || r.entries.length > 100) return null;
+      for (const e of r.entries) {
+        if (!e || typeof e !== 'object' || Array.isArray(e) || (e.id != null && (typeof e.id !== 'string' || e.id.length > 120)) ||
+          (e.date != null && (typeof e.date !== 'string' || e.date.length > 40)) || (e.text != null && (typeof e.text !== 'string' || e.text.length > 600)) ||
+          (e.outcome != null && (typeof e.outcome !== 'string' || e.outcome.length > 600)) ||
+          (e.minutes != null && (typeof e.minutes !== 'number' || !Number.isFinite(e.minutes) || e.minutes < 0 || e.minutes > 1440)) ||
+          (e.progress != null && (typeof e.progress !== 'number' || !Number.isFinite(e.progress) || e.progress < 0 || e.progress > 100))) return null;
+      }
+    }
+    const x = safeRecord(r);
+    return x && jsonBytes(x) <= IMPORT_RECORD_MAX_BYTES ? x : null;
   }
   function absorb(records) {
     Object.keys(COLLECTIONS).forEach(k => { S[COLLECTIONS[k]] = []; });
@@ -2571,7 +2702,13 @@ const Productivity = (() => {
   }
   function exportRecords() { return Object.values(COLLECTIONS).flatMap(k => S[k]).map(safeRecord).filter(Boolean); }
   function importRecords(records) {
-    const rows = (records || []).map(safeRecord).filter(Boolean).map(r => ({ ...r, id: r.id || uid(r.kind), created: r.created || 1, updated: r.updated || r.created || 1 }));
+    if (!Array.isArray(records) || records.length > IMPORT_MAX_RECORDS || jsonBytes(records) > IMPORT_MAX_BYTES) return result(false, 'Backup records bahut bade ya zyada hain; import nahi hua.');
+    const rows = [];
+    for (const raw of records) {
+      const r = importedRecord(raw);
+      if (!r) return result(false, 'Backup me invalid ya bahut bada record mila; purana data preserve hai.');
+      rows.push({ ...r, id: r.id || uid(r.kind), created: r.created || 1, updated: r.updated || r.created || 1 });
+    }
     if (native() && N().recordsImport) { const r = JSON.parse(N().recordsImport(JSON.stringify({ records: rows }))); if (r.ok) { sync(); changed(); } return r; }
     rows.forEach(r => { if (r.kind === 'task') r.due = r.at || null; const a = list(r.kind), i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = r; else a.push(r); armWeb(r); }); changed(); return result(true, 'Records restore ho gaye');
   }
@@ -3200,8 +3337,7 @@ const App = (() => {
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },
-      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open()),
-      navItem('voice', 'Background live voice', 'Explicit Start · continue outside app · notification Stop', () => BackgroundVoice.open())));
+      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -3212,8 +3348,8 @@ const App = (() => {
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
-      swItem('sparkle', 'Jarvis (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.jarvis !== false, v => { S.settings.jarvis = v; })));
-    st.append(label('Jarvis'), h('div', { class: 'grp' },
+      swItem('sparkle', 'Adarsh (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
+    st.append(label('Adarsh'), h('div', { class: 'grp' },
       navItem('tasks', 'Tasks and Work', 'Drawer mein separate lists; Work sirf bade projects ke liye', () => show('tasks')),
       navItem('shield', 'AI access', 'Local read/edit, online context aur old chats ke alag controls', aiAccessSheet),
       navItem('code', 'Architecture (read-only)', 'Actual modules aur selected mode ka model plan; no code changes', architectureSheet),
@@ -3367,19 +3503,55 @@ const App = (() => {
     } });
   }
   function keysSummary() {
-    const st = window.AdarshKeys.status(); const ok = id => !!(st[id] && st[id].set);
-    const n = ['GROQ_API_KEY', 'GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'NVIDIA_API_KEY'].filter(ok).length
-      + (ok('CLOUDFLARE_API_TOKEN') && ok('CLOUDFLARE_ACCOUNT_ID') ? 1 : 0);
-    return n ? n + ' of 5 providers set' : 'No keys yet. Add at least one to get answers';
+    const K = window.AdarshKeys, st = K.status(); const ok = id => !!(st[id] && st[id].set);
+    /* a Cloudflare slot counts when it has a token and an Account ID (its own, or slot 1's) */
+    const slotOk = (g, n) => ok(K.slotId(g.base, n)) && (!g.idBase || ok(K.slotId(g.idBase, n)) || ok(g.idBase));
+    let providers = 0, keys = 0;
+    (K.groups || []).forEach(g => { const c = [1, 2, 3].filter(n => slotOk(g, n)).length; keys += c; if (c) providers++; });
+    return providers ? providers + ' of 5 providers · ' + keys + ' of 15 keys set' : 'No keys yet. Add at least one to get answers';
   }
   function keysSheet() {
     sheet({ title: 'API keys', tall: true, build(b, close) {
       const K = window.AdarshKeys, st = K.status();
-      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'));
-      K.providers.forEach(p => {
+      if (st._notice) toast(st._notice);
+      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'),
+        h('p', {}, 'Har provider me 3 keys daal sakte ho. Pehle key 1 chalti hai; uski limit khatam ho (429), credits chahiye (402), key reject ho ya server down ho, to key 2, phir key 3. Khaali slot skip hota hai.'));
+      const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+      const field = (id, label, plain) => {
+        const cur = st[id] || {};
+        return h('input', { type: plain ? 'text' : 'password', placeholder: cur.set ? label + ': saved (' + cur.hint + '). Paste to replace' : 'Paste ' + label, 'aria-label': label, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+      };
+      (K.groups || []).forEach(g => {
+        const anySet = [1, 2, 3].some(n => (st[K.slotId(g.base, n)] || {}).set);
+        const box = h('details', { class: 'keygrp', open: anySet || g.name === 'Groq' ? '' : null },
+          h('summary', { class: 'l' }, g.name + ' · ' + [1, 2, 3].filter(n => (st[K.slotId(g.base, n)] || {}).set).length + '/3 keys'),
+          h('p', { class: 'muted' }, g.url));
+        [1, 2, 3].forEach(n => {
+          const keyId = K.slotId(g.base, n), idId = g.idBase ? K.slotId(g.idBase, n) : null;
+          const keyIn = field(keyId, g.name + (g.idBase ? ' token ' : ' key ') + n, false);
+          const idIn = idId ? field(idId, g.name + ' Account ID ' + n, true) : null;
+          const isSet = (st[keyId] || {}).set || (idId && (st[idId] || {}).set);
+          box.append(h('label', { class: 'l' }, 'Key ' + n + (n === 1 ? ' (pehle yeh)' : ' (backup)')), keyIn, idIn,
+            h('div', { class: 'frow' },
+              h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => {
+                const v = keyIn.value.trim(), acc = idIn ? idIn.value.trim() : '';
+                if (!v && !acc) return toast('Paste a key first');
+                let r = { ok: true };
+                if (acc) r = K.save(idId, acc);
+                if (r && r.ok && v) r = K.save(keyId, v);
+                done(r, g.name + ' key ' + n + ' saved');
+              } } }, 'Save'),
+              isSet ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => {
+                let r = (st[keyId] || {}).set ? K.remove(keyId) : { ok: true };
+                if (r && r.ok && idId && (st[idId] || {}).set) r = K.remove(idId);
+                done(r, g.name + ' key ' + n + ' deleted');
+              } } }, 'Delete') : null));
+        });
+        b.append(box);
+      });
+      K.providers.filter(p => !p.group).forEach(p => {
         const cur = st[p.id] || {};
-        const inp = h('input', { type: p.plain ? 'text' : 'password', placeholder: cur.set ? 'Saved (' + cur.hint + '). Paste a new key to replace' : 'Paste ' + p.name + (p.plain ? '' : ' key'), 'aria-label': p.name + ' API key', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-        const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+        const inp = field(p.id, p.name, p.plain);
         b.append(h('label', { class: 'l' }, p.name + ' · ' + p.url), inp,
           h('div', { class: 'frow' },
             h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { const v = inp.value.trim(); if (!v) return toast('Paste a key first'); done(K.save(p.id, v), p.name + ' key saved'); } } }, 'Save'),
@@ -3441,19 +3613,35 @@ const App = (() => {
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.id === 'f-import' && t.files[0]) {
+      /* audit M8: bounded size, known version, typed + capped lists before anything replaces local data */
+      const MAX_IMPORT_BYTES = 8 * 1024 * 1024, CAPS = { chats: 500, memories: 2000, missions: 500 };
+      if (t.files[0].size > MAX_IMPORT_BYTES) { toast('Backup file bahut badi hai (8 MB max).'); t.value = ''; return; }
       t.files[0].text().then(txt => {
-        const d = JSON.parse(txt);
-        if (!d || typeof d !== 'object' || Array.isArray(d)) throw new Error('Invalid export');
+        if (txt.length > MAX_IMPORT_BYTES) return toast('Backup file bahut badi hai (8 MB max).');
+        let d;
+        try { d = JSON.parse(txt); } catch (err) { return toast('That file is not valid JSON'); }
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return toast('Yeh ADARSH backup file nahi hai.');
+        if (d.version !== undefined && d.version !== 1 && d.version !== 2) return toast('Backup version ' + String(d.version).slice(0, 12) + ' support nahi hai.');
+        if (d.records !== undefined && !Array.isArray(d.records)) return toast('Backup ke records galat format me hain.');
+        const isObj = x => !!x && typeof x === 'object' && !Array.isArray(x);
+        const lists = {};
+        for (const k of Object.keys(CAPS)) {
+          if (d[k] === undefined) continue;
+          if (!Array.isArray(d[k])) return toast('Backup me "' + k + '" galat format me hai.');
+          if (d[k].length > CAPS[k]) return toast('Backup me ' + k + ' bahut zyada hain (max ' + CAPS[k] + ').');
+          lists[k] = d[k].filter(isObj);
+        }
+        if (lists.chats) lists.chats = lists.chats.filter(c => typeof c.id === 'string' && c.id.length <= 200 && (c.messages === undefined || Array.isArray(c.messages)));
         const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
-        const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key] : []).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
+        const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key].slice(0, 2000) : []).filter(isObj).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
         confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
           try {
             const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
-            ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(d[k])) S[k] = d[k]; });
+            ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(lists[k])) S[k] = lists[k]; });
             S.cur = S.chats[0] ? S.chats[0].id : null; saveNow(); Chat.renderThread(); drawerList(); toast('Imported');
           } catch (e) { toast('Import fail: ' + e.message); }
         } });
-      }).catch(() => toast('That file is not valid JSON')); t.value = '';
+      }).catch(() => toast('Backup file padh nahi paya')); t.value = '';
     }
     if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
   });
@@ -3689,16 +3877,21 @@ const Voice = (() => {
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
     el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, 'VOICE · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, BackgroundVoice.supported() ? h('button', { class: 'chipbtn', on: { click: () => BackgroundVoice.open() } }, 'Outside app') : null), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
-  function open() {
+  /* opts.listen: coming back from the background session, so start listening right away */
+  function open(opts = {}) {
     if (BackgroundVoice.active()) return BackgroundVoice.open();
-    if (openFlag) return; session++; openFlag = true; build(); el.hidden = false; setState('idle');
-    caption('', STT.supported() ? 'Tap the orb and speak. Hindi, English or Hinglish.' : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
+    if (openFlag) return; session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.hidden = false; setState('idle');
+    caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
+    BackgroundVoice.arm();
+    if (opts.listen && STT.supported()) listen();
   }
-  function close() {
+  /* opts.keepBackground: the phone already moved this conversation to the background session */
+  function close(opts = {}) {
     if (!openFlag) return; openFlag = false; session++;
+    if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
@@ -3767,6 +3960,7 @@ const Voice = (() => {
     setState('thinking'); caption(text);
     const un = Bus.on('reply', ({ msg }) => collected.push(msg.reply));
     try { await Chat.submit(text, { voice: true }); } finally { un(); }   // voice: the engine answers short and speakable
+    if (openFlag) BackgroundVoice.arm();   // the background session must continue with this turn in its history
     if (!active(token)) return;
     if (!collected.length) { caption(text, 'Message send nahi hua. Chat mein source/connection check karo.'); setState('idle'); return; }
     const structured = collected.find(r => r.type === 'ask' || r.type === 'approve');
@@ -3822,7 +4016,7 @@ const Actions = (() => {
   const ctx = d => contexts.get(d);
   let hudEl = null, hudTimer = 0;
   function hud(text, busy) {
-    if (S.settings.jarvis === false) return;
+    if (S.settings.adarshActions === false) return;
     if (!hudEl) { hudEl = h('div', { class: 'hud', role: 'status', 'aria-live': 'polite' }, h('span', { class: 'hud-orb' }, h('i'), h('i'), h('i')), h('span', { class: 'hud-t' })); document.body.append(hudEl); }
     hudEl.querySelector('.hud-t').textContent = text || 'Kaam kar raha hoon…';
     hudEl.classList.toggle('busy', !!busy); hudEl.classList.add('on'); clearTimeout(hudTimer);
@@ -3903,7 +4097,7 @@ const Actions = (() => {
     contexts.set(d, c);
     // Older builds stored a circular context on the reply. Remove it before any persistence.
     delete d._ctx;
-    const wrap = h('div', { class: 'card act' }, h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'JARVIS'), h('b', {}, d.text || 'Kaam kar raha hoon')),
+    const wrap = h('div', { class: 'card act' }, h('div', { class: 'act-h' }, h('span', { class: 'act-badge' }, 'ADARSH'), h('b', {}, d.text || 'Kaam kar raha hoon')),
       h('div', { class: 'act-steps' }, (d.steps || []).map(s => stepRow(d, s))));
     const state = d.run && d.run.state;
     const need = (d.steps || []).some(s => ['message.draft', 'call.dial'].includes(s.action));
@@ -3950,7 +4144,17 @@ const Lock = (() => {
   }
   const verify = async (pin) => S.lock && (await derive(pin, S.lock.salt, S.lock.alg)) === S.lock.hash;
 
+  const LOCK_STATE_KEY = 'adarsh.lockout.v1';
   let activePad = null, fails = 0, until = 0, hiddenAt = 0;
+  function loadLockState() {
+    try {
+      const x = JSON.parse(localStorage.getItem(LOCK_STATE_KEY) || '{}');
+      fails = Number.isInteger(x.fails) && x.fails >= 0 && x.fails < 5 ? x.fails : 0;
+      until = Number.isFinite(x.until) && x.until > 0 ? x.until : 0;
+    } catch (e) { fails = 0; until = 0; }
+  }
+  function saveLockState() { try { localStorage.setItem(LOCK_STATE_KEY, JSON.stringify({ fails, until })); } catch (e) {} }
+  loadLockState();
   document.addEventListener('keydown', (e) => {
     if (!activePad) return;
     if (/^\d$/.test(e.key)) activePad.press(e.key); else if (e.key === 'Backspace') activePad.press('b');
@@ -3978,9 +4182,10 @@ const Lock = (() => {
     const msg = h('p', { class: 'lk-msg', role: 'status' }, 'Enter your PIN');
     const pad = pinPad(S.lock.len || 4, async (pin, p) => {
       if (Date.now() < until) { p.shake(); msg.textContent = 'Too many tries. Wait ' + Math.ceil((until - Date.now()) / 1000) + 's.'; return; }
-      if (await verify(pin)) { fails = 0; activePad = null; root.hidden = true; root.textContent = ''; Bus.emit('lock:unlocked'); return; }
+      if (await verify(pin)) { fails = 0; until = 0; saveLockState(); activePad = null; root.hidden = true; root.textContent = ''; Bus.emit('lock:unlocked'); return; }
       fails++; p.shake(); vibe(30);
       if (fails >= 5) { until = Date.now() + 30000; fails = 0; msg.textContent = 'Too many tries. Locked for 30 s.'; } else msg.textContent = 'Wrong PIN. ' + (5 - fails) + ' tries left.';
+      saveLockState();
     });
     activePad = pad;
     root.append(h('div', { class: 'mark' }, 'A'), h('h2', {}, 'ADARSH'), msg, pad.el,
@@ -4144,13 +4349,34 @@ const DemoBackend = (() => {
   return { send, missionAction, suggestions, ping: async () => ({ ok: true, label: 'Demo backend (no server)' }) };
 })();
 
-const connUrl = () => S.conn.url || (window.ADARSH_SAME_ORIGIN ? '/api/chat' : '');
+const allowedHttpHost = (host) => host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+const safeBackendUrl = (raw) => {
+  if (typeof raw !== 'string' || !raw.trim()) return '';
+  try {
+    const u = new URL(raw.trim(), location.href);
+    if (u.protocol === 'https:' || (u.protocol === 'http:' && allowedHttpHost(u.hostname))) return u.href;
+  } catch (e) { /* malformed configured URL */ }
+  return '';
+};
+const connUrl = () => S.conn.url ? safeBackendUrl(S.conn.url) : (window.ADARSH_SAME_ORIGIN ? '/api/chat' : '');
+const backendTokenAllowed = (url) => {
+  try {
+    const u = new URL(url, location.href);
+    return u.protocol === 'https:';
+  } catch (e) { return false; }
+};
+const backendHeaders = (url) => {
+  const headers = { 'Content-Type': 'application/json' };
+  if (S.conn.token && backendTokenAllowed(url)) headers.Authorization = 'Bearer ' + S.conn.token;
+  return headers;
+};
 
 const HttpBackend = {
   async send(req, o) {
-    const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+    const url = connUrl(); if (!url) throw new Error('Backend URL must use HTTPS (or localhost HTTP for development).');
+    const headers = backendHeaders(url);
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
+    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
@@ -4158,35 +4384,36 @@ const HttpBackend = {
   },
   async lessons(op) {
     try {
-      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
-      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ lesson: op }) });
+      const url = connUrl(); if (!url) return { ok: false, error: 'Backend URL must use HTTPS.' };
+      const r = await fetch(url, { method: 'POST', headers: backendHeaders(url), body: JSON.stringify({ lesson: op }) });
       const j = await r.json(); const x = Array.isArray(j) ? j[0] : (j.replies ? j.replies[0] : j);
       return (x && x.lessonsResult) || (x && x.ok !== undefined ? x : { ok: false, error: 'Backend ne lessons nahi diye.' });
     } catch (e) { return { ok: false, error: 'Lessons server tak nahi pahunche.' }; }
   },
   async tts(req, ms) {
-    const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
+    const url = connUrl(); if (!url) return { type: 'error', error: 'Backend URL must use HTTPS.' };
+    const headers = backendHeaders(url);
     const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms || 30000);
     try {
-      const r = await fetch(connUrl(), { method: 'POST', headers, signal: ctl.signal, body: JSON.stringify({ tts: req }) });
+      const r = await fetch(url, { method: 'POST', headers, signal: ctl.signal, body: JSON.stringify({ tts: req }) });
       if (!r.ok) return { type: 'error', error: 'HTTP ' + r.status };
       const j = await r.json(); return Array.isArray(j) ? j[0] : j;
     } finally { clearTimeout(t); }
   },
   async ping() {
     try {
-      const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
-      const r = await fetch(connUrl(), { method: 'POST', headers, body: JSON.stringify({ ping: true }) });
-      return r.ok ? { ok: true, label: 'Connected (' + new URL(connUrl(), location.href).hostname + ')' } : { ok: false, label: 'HTTP ' + r.status };
+      const url = connUrl(); if (!url) return { ok: false, label: 'Backend URL must use HTTPS (or localhost HTTP).' };
+      const r = await fetch(url, { method: 'POST', headers: backendHeaders(url), body: JSON.stringify({ ping: true }) });
+      return r.ok ? { ok: true, label: 'Connected (' + new URL(url, location.href).hostname + ')' } : { ok: false, label: 'HTTP ' + r.status };
     } catch (e) { return { ok: false, label: 'Cannot reach the server (' + (e && e.message ? e.message : 'network') + ')' }; }
   }
 };
 
 const Backend = (() => {
   const custom = () => window.ADARSH_BACKEND;
-  const impl = () => custom() || (connUrl() ? HttpBackend : DemoBackend);
+  const impl = () => custom() || (S.conn.url ? HttpBackend : (connUrl() ? HttpBackend : DemoBackend));
   return {
-    isDemo: () => !custom() && !connUrl(),
+    isDemo: () => !custom() && !S.conn.url && !connUrl(),
     isNative: () => !!(custom() && custom().native),
     /* natural voice from the engine; null when this backend has none (demo, custom without tts) */
     canTts() { const b = impl(); return !!(b && b.tts); },
@@ -4268,21 +4495,33 @@ const MobileUpdates = (() => {
 })();
 
 const BackgroundVoice = (() => {
-  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false;
+  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false, handedOff = false, notifHint = false;
   const N = () => window.AdarshNative;
   const supported = () => !!(N() && N().backgroundVoiceStart);
   const active = () => !!state.active || ['starting', 'permission_required'].includes(state.state);
+  /* States in which the user is not mid-sentence and no reply is being prepared or spoken. */
+  const QUIET = ['starting', 'listening', 'retrying'];
   function apply(value) {
     if (!value || typeof value !== 'object') return state;
     if (value.type === 'reply') return state;
     state = { ...value, message: value.message || value.error || '', state: value.state || (value.ok === false ? 'error' : value.active ? 'listening' : 'stopped') };
     if (redraw) redraw();
     Bus.emit('background:state', state);
+    if (handedOff && !document.hidden) setTimeout(maybeResume, 0);
     return state;
   }
   function call(method, ...args) {
     try { return apply(JSON.parse(N()[method](...args))); }
     catch (e) { return apply({ active: false, state: 'error', message: 'Background voice nahi chala. App dobara kholo aur permissions check karo.' }); }
+  }
+  function configFor(c) {
+    const access = Productivity.access();
+    return {
+      chatId: c ? c.id : uid('c'), mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
+      access, history: c && access.currentChat ? Chat.history(c) : [],
+      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' },
+      voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
+    };
   }
   function start() {
     if (!supported() || !Backend.isNative()) return toast('Outside-app voice ke liye embedded Android engine chahiye.');
@@ -4290,20 +4529,42 @@ const BackgroundVoice = (() => {
     if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
     if (Chat.isBusy()) return toast('Current answer complete hone do.');
     if ((S.settings.source || 'auto') !== 'auto') return toast('Background voice ko Auto source chahiye. Manual/Hybrid change nahi kiya; app mein answers paste karke use karo.');
-    const c = Chat.cur() || Chat.newChat(), access = Productivity.access();
-    const config = {
-      chatId: c.id, mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
-      access, history: access.currentChat ? Chat.history(c) : [],
-      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' },
-      voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
-    };
+    const config = configFor(Chat.cur() || Chat.newChat());
     Voice.close(); STT.stop(); TTS.stop();
     const out = call('backgroundVoiceStart', JSON.stringify(config));
     if (!out.ok && out.message) toast(out.message);
     return out;
   }
+  /* Standard-mode live voice keeps going after Back/Home: while the voice screen is open the phone holds a
+     ready config, and the app starts the 30-minute background session at the moment it leaves the screen. */
+  const canHandoff = () => supported() && !!N().backgroundVoiceArm && Backend.isNative() && Modes.current().id === 'standard' &&
+    (S.settings.source || 'auto') === 'auto' && $('#lock').hidden && !active();
+  function arm() {
+    if (!canHandoff()) return disarm();
+    try {
+      const r = JSON.parse(N().backgroundVoiceArm(JSON.stringify(configFor(Chat.cur()))));
+      if (r && r.armed && r.notifications === false && !notifHint) { notifHint = true; toast('App se bahar voice chalne ke liye notifications allow karo.'); }
+    } catch (e) {}
+  }
+  function disarm() { try { if (N() && N().backgroundVoiceArm) N().backgroundVoiceArm(''); } catch (e) {} }
+  /* Native started the session while the app was leaving: close the in-app screen without touching the session. */
+  window.__adarshVoiceHandoff = value => {
+    if (value && value.ok) { handedOff = true; Voice.close({ keepBackground: true }); }
+    apply(value);
+  };
+  /* Back in the app: when the session is quiet, end it and continue the same conversation on the voice screen. */
+  function maybeResume() {
+    if (!handedOff || document.hidden || !$('#lock').hidden) return;
+    if (active() && !QUIET.includes(state.state)) return;   // the user is speaking or a reply is on its way: wait for it
+    handedOff = false;
+    const wasActive = active();
+    if (wasActive) call('backgroundVoiceStop');
+    sync();
+    if (wasActive) setTimeout(() => Voice.open({ listen: true }), 500);   // give the service a moment to release the mic
+  }
   function stop(message) {
     if (!supported()) return;
+    handedOff = false;
     const was = active(); const out = call('backgroundVoiceStop');
     if (was && message) toast(message);
     return out;
@@ -4329,10 +4590,11 @@ const BackgroundVoice = (() => {
     const close = sheet({ title: 'Background live voice', tall: true, build(b) {
       const draw = () => {
         b.textContent = '';
-        b.append(h('p', {}, 'Start here, then use Home or another app. ADARSH keeps listening and speaking in this explicit session; the ongoing notification has Stop.'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
+        b.append(h('p', {}, 'Voice chat app ke bahar chal rahi hai. ADARSH sun raha hai aur bol raha hai; notification mein Stop hai.'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
           h('p', {}, 'Session mode: ' + (state.mode || Modes.current().name)));
-        b.append(h('button', { class: 'btn ' + (active() ? 'ghost' : 'pri'), on: { click: () => active() ? stop() : start() } }, active() ? 'Stop background voice' : 'Start background voice'));
-        b.append(h('p', { class: 'muted' }, 'Mic and notification permission required. Off by default; no boot restart. Up to 30 minutes per session. The mode and voice are captured at Start. Auto source only; other sources are not silently changed. Calls/messages and screen-only edits require reopening the app.'),
+        if (active()) b.append(h('button', { class: 'btn pri', on: { click: () => { close(); handedOff = false; call('backgroundVoiceStop'); sync(); setTimeout(() => Voice.open({ listen: true }), 500); } } }, 'App mein baat jaari rakho'),
+          h('button', { class: 'btn ghost', on: { click: () => stop() } }, 'Stop background voice'));
+        b.append(h('p', { class: 'muted' }, 'Standard mode mein live voice khula ho to Back ya Home dabane par ye apne aap shuru hota hai. Mic aur notification permission chahiye. Ek session max 30 minute. Auto source hi chalta hai. Calls/messages aur screen wale edits ke liye app kholna padta hai.'),
           h('p', { class: 'muted' }, 'Background sessions do not attach stored notes, tasks, memory or old chats as extra model context. Safe local commands can read allowed records on the phone. Current-chat history follows your sharing controls.'),
           h('p', { class: 'muted' }, 'Phone recognition may use the recognition provider online. AI/TTS use your existing configured providers. No raw recording is saved by ADARSH. Android battery restrictions and your installed recognizer can interrupt the session.'),
           h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Close controls'));
@@ -4346,11 +4608,11 @@ const BackgroundVoice = (() => {
   function init() {
     if (!supported()) return;
     call('backgroundVoiceStatus'); sync();
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('backgroundVoiceStatus'); sync(); } });
-    Bus.on('mode:changed', () => { if (active()) stop('Mode changed. Restart background voice in the selected mode.'); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('backgroundVoiceStatus'); sync(); maybeResume(); } });
+    Bus.on('mode:changed', () => { if (active()) stop('Mode changed. Restart background voice in the selected mode.'); if (Voice.isOpen) arm(); });
     Bus.on('lock:unlocked', sync);
   }
-  return { init, open, start, stop, sync, active, supported, status: () => state };
+  return { init, open, start, stop, sync, arm, disarm, active, supported, status: () => state };
 })();
 
 'use strict';
@@ -4370,6 +4632,7 @@ const BackgroundVoice = (() => {
 
   Backend.refresh();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Backend.refresh(); });
+  document.addEventListener('click', hapticTap, true);   // Settings > Haptics: small vibration on every tap
   if (window.__adarshDictation) STT.dict = window.__adarshDictation;
   try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || STT.dict || null; }).catch(() => {}); } catch (e) {}
   if (S.lock) Lock.lockNow();

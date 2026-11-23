@@ -354,10 +354,31 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
         if (actualVersion != expected.versionCode || info.versionName != expected.versionName) {
             throw IOException("APK version does not match update manifest")
         }
-        val installedCertificates = signingDigests(app.packageManager.getPackageInfo(app.packageName, flags))
+        val installedInfo = app.packageManager.getPackageInfo(app.packageName, flags)
+        val installedCertificates = signingDigests(installedInfo)
         val apkCertificates = signingDigests(info)
-        if (installedCertificates.isEmpty() || apkCertificates.intersect(installedCertificates).isEmpty()) {
-            throw IOException("APK signing certificate does not match installed app")
+        if (installedCertificates.isEmpty() || apkCertificates.isEmpty()) {
+            throw IOException("APK signing certificate is missing")
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            if (apkCertificates != installedCertificates) {
+                throw IOException("APK signing certificate does not exactly match installed app")
+            }
+        } else {
+            val installedCurrent = installedCertificates.singleOrNull()
+                ?: throw IOException("Installed app has an unsupported signer set")
+            val apkCurrent = apkCertificates.singleOrNull()
+                ?: throw IOException("Downloaded APK has an unsupported signer set")
+            val apkHistory = signingHistoryDigests(info)
+            if (installedCurrent !in apkHistory) {
+                throw IOException("APK signing history does not include installed app signer")
+            }
+            if (apkCurrent != OLD_CERTIFICATE_SHA256 && apkCurrent != NEW_CERTIFICATE_SHA256) {
+                throw IOException("APK uses an unpinned signing certificate")
+            }
+            if (installedCurrent == NEW_CERTIFICATE_SHA256 && apkCurrent != NEW_CERTIFICATE_SHA256) {
+                throw IOException("APK attempts to roll back to the old signing certificate")
+            }
         }
     }
 
@@ -369,6 +390,17 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
             @Suppress("DEPRECATION") info.signatures?.toList() ?: emptyList()
         }
         return signatures.map { sha256(it.toByteArray()) }.toSet()
+    }
+
+    private fun signingHistoryDigests(info: PackageInfo): Set<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return signingDigests(info)
+        val signing = info.signingInfo ?: return emptySet()
+        val history = if (signing.hasPastSigningCertificates()) {
+            signing.signingCertificateHistory.toList()
+        } else {
+            signing.apkContentsSigners.toList()
+        }
+        return history.map { sha256(it.toByteArray()) }.toSet()
     }
 
     private fun readCachedMetadata(): UpdateMetadata? {
@@ -559,6 +591,8 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
         const val MAX_MANIFEST_BYTES = 64 * 1024
         const val MAX_APK_BYTES = 150L * 1024L * 1024L
         const val MAX_NOTES_LENGTH = 8_192
+        const val OLD_CERTIFICATE_SHA256 = "2123909dc50f1ea3b8c6807192c44dde19249fc5d9d0e76ca164cefde844b068"
+        const val NEW_CERTIFICATE_SHA256 = "600b196ec2224730ea8d24e83e9f9411bd661329569598e07180cd6b596ea5af"
         val SAFE_TAG = Regex("[A-Za-z0-9._-]{1,80}")
         val SAFE_ASSET_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
         val SAFE_COMMIT = Regex("[0-9a-fA-F]{7,64}")

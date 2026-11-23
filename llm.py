@@ -7,6 +7,9 @@ tokens-per-minute limit. Before every call it reserves a slot in our own per-min
 (health.reserve_slot), so parallel requests are spaced out instead of fired together and 429s become rare.
 A real 429 is read properly (Retry-After, the provider's "retry in 34s", per-minute vs per-DAY).
 Every outcome feeds health.py so later calls skip bad models faster.
+Several API keys per provider (config.KEY_SLOTS): each model of the chain is tried with key 1, then key 2, then key 3
+(only the configured ones) before the chain moves to the next model. A key that hits its limit (429), needs credits
+(402), is rejected (401/403) or meets a server error (5xx / network) hands over to the next key at once.
 """
 import asyncio
 import re
@@ -156,7 +159,12 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
     rpm = config.rpm_limit(spec)
 
     prov = PROVIDERS[spec.provider]
-    headers = {"Authorization": f"Bearer {prov.api_key}"}
+    slot = spec.key_slot or ((prov.slots() or [1])[0])
+    api_key = prov.key(slot)
+    if not api_key:
+        raise _Skip(f"{config.slot_env(prov.api_key_env, slot)} not set", retry=False)
+    base_url = prov.url_for(slot)
+    headers = {"Authorization": f"Bearer {api_key}"}
     if spec.provider == "openrouter":
         headers["X-Title"] = "multi-model-ensemble"
 
@@ -184,7 +192,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         try:
             async with _sem(spec.provider):
                 r = await client.post(
-                    f"{prov.url}/chat/completions", json=payload, headers=headers, timeout=timeout
+                    f"{base_url}/chat/completions", json=payload, headers=headers, timeout=timeout
                 )
         except httpx.HTTPError as e:
             health.provider_error(spec.provider)
@@ -228,11 +236,11 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                 raise _Skip("rate limited (daily quota used up)", retry=False)
             raise _Skip("rate limited" + (f" (try again in {int(wait)}s)" if wait else ""), retry_in=wait)
         if code == 401:
-            health.cooldown_provider(spec.provider, 3600)
-            raise _Skip("auth failed (check the API key)", retry=False)
+            health.cooldown_key(spec, 3600)
+            raise _Skip(f"auth failed (check API key {slot})", retry=False)
         if code == 402:
-            health.cooldown_provider(spec.provider, 3600)
-            raise _Skip("credits required", retry=False)
+            health.cooldown_key(spec, 3600)
+            raise _Skip(f"credits required (key {slot})", retry=False)
         if code == 403:
             health.cooldown(spec, 3600)
             raise _Skip(f"forbidden: {_error_text(data, r)}", retry=False)
@@ -257,6 +265,19 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         raise _Skip(f"HTTP {code}")
 
 
+def expand_keys(chain: list) -> list:
+    """Each model once per configured API key, in slot order: [m(key1), m(key2), m(key3), next model...].
+    A model whose provider has no key at all stays in once, so the skip reason ("..._API_KEY not set") is reported."""
+    out = []
+    for c in chain:
+        if c.key_slot:
+            out.append(c)
+            continue
+        slots = PROVIDERS[c.provider].slots()
+        out += [config.keyed(c, n) for n in slots] if slots else [c]
+    return out
+
+
 def balance(chain: list) -> list:
     """Helper roles: models that already used QUOTA_BALANCE_AT of their daily quota go to the back of the chain
     (order kept otherwise). Critical calls (judge, repair, refiner...) keep their chain as written."""
@@ -279,14 +300,14 @@ async def chat(
     budget: float | None = None,
 ) -> str:
     """budget = most seconds this whole call may take (all models together). None = no limit."""
-    chain = balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks])
+    chain = expand_keys(balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks]))
     reasons: dict[str, str] = {}
     dead: set[str] = set()  # failed for a reason waiting will not fix: not tried again in round 2
     t_start = time.perf_counter()
     out_of_time = False
     for rnd in range(2):
         hints: list[float] = []
-        for cand in chain:
+        for i, cand in enumerate(chain):
             if cand.label in dead:
                 continue
             if budget and time.perf_counter() - t_start > budget:
@@ -295,7 +316,11 @@ async def chat(
                 break
             config.emit_call({"t": "try", "stage": health.stage(), "model": cand.label, "provider": cand.provider})
             try:
-                text = await _try_model(client, cand, messages, temperature, max_tokens, timeout, retries)
+                # another key of the same model comes next: do not retry a 5xx / network error on this key, switch
+                nxt = chain[i + 1] if i + 1 < len(chain) else None
+                same_next = nxt is not None and config.base_label(nxt.label) == config.base_label(cand.label)
+                text = await _try_model(client, cand, messages, temperature, max_tokens, timeout,
+                                        0 if same_next else retries)
             except _Skip as e:
                 reasons[cand.label] = str(e)
                 config.emit_call({"t": "fail", "stage": health.stage(), "model": cand.label,
