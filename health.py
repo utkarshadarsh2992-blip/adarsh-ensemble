@@ -12,6 +12,8 @@ import contextvars
 import datetime as dt
 import json
 import os
+import random
+import threading
 import time
 
 import config
@@ -171,13 +173,61 @@ def fail(spec: ModelSpec, base_seconds: float) -> None:
     cooldown(spec, min(base_seconds * 2 ** (n - 1), 3600))
 
 
-def rate_limited(spec: ModelSpec, wait: float | None) -> None:
+def rate_limited(spec: ModelSpec, wait: float | None, daily: bool = False) -> None:
+    """A real 429. `wait` = how long the provider said to wait (None if it did not say), `daily` = it is the
+    per-DAY quota, which waiting a minute will not fix."""
+    if daily:
+        secs = max(wait or 0.0, 3600.0)  # look again in an hour (one cheap call), not every few seconds
+        cooldown(spec, secs)
+        if spec.provider == "openrouter":
+            cooldown_provider("openrouter", secs)  # one daily cap for all :free models: every one of them is out
+        return
     if wait:
-        cooldown(spec, wait)
+        # small margin + jitter, so parallel callers do not all come back in the same second and fail together again
+        cooldown(spec, wait + 1.0 + random.random() * 2.0)
         if spec.provider == "openrouter" and wait > 600:
             cooldown_provider("openrouter", wait)  # daily cap hit: every :free model is out
     else:
         fail(spec, 30)
+
+
+# ------------------------------------------------------------------ our own rate limiter (before the call)
+# Free tiers say "30 requests/min, 8000 tokens/min". Reacting only AFTER a 429 wastes a call, puts the model in a long
+# cooldown, and a parallel panel fires 6 requests in the same second, so most of them fail. Instead every request first
+# reserves a time slot in a sliding 60 s window per quota key (see quota_key):
+#   slot is free now             -> send at once
+#   slot frees up within max_wait -> wait for it (parallel requests get spaced out instead of fired together)
+#   slot is further away          -> the caller moves on to the next model in its chain
+# Slots are handed out in order (never earlier than the previous one), so it is enough to check each new request
+# against the 60 s before it to keep EVERY 60 s window inside the limits.
+_WINDOW = 60.0
+_slots: dict[str, list[tuple[float, int]]] = {}  # key -> [(slot time, tokens)] in reservation order
+_slots_lock = threading.Lock()
+
+
+def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now: float | None = None) -> tuple[bool, float | None]:
+    """(True, seconds to wait before sending; 0.0 = now) or (False, seconds until a slot is free / None = never).
+    rpm / tpm = 0 means no cap of that kind."""
+    if not rpm and not tpm:
+        return True, 0.0
+    now = time.time() if now is None else now
+    with _slots_lock:
+        ev = _slots.setdefault(key, [])
+        ev[:] = [e for e in ev if e[0] > now - _WINDOW]  # what left the window can not matter any more
+        start = max(now, ev[-1][0]) if ev else now
+        # a slot can only open up at the moment an earlier request leaves the window (+1 ms for float rounding)
+        times = [start] + sorted({e[0] + _WINDOW + 0.001 for e in ev if e[0] + _WINDOW + 0.001 > start})
+        for t in times:
+            inside = [e for e in ev if t - _WINDOW < e[0] <= t]
+            if rpm and len(inside) >= rpm:
+                continue
+            if tpm and sum(e[1] for e in inside) + tokens > tpm:
+                continue
+            if t - now > max_wait:
+                return False, t - now
+            ev.append((t, tokens))
+            return True, t - now
+    return False, None
 
 
 # ------------------------------------------------------------------ trace (per request)
@@ -252,6 +302,8 @@ def reset(clear_usage: bool = False) -> None:
     _prov_cool.clear()
     _streak.clear()
     _perr.clear()
+    with _slots_lock:
+        _slots.clear()
     if clear_usage:
         _usage.clear()
         _usage.update(_fresh())
