@@ -36,6 +36,7 @@ def fake_models(monkeypatch):
 
     monkeypatch.setattr(pipeline, "chat", fake_chat)
     monkeypatch.setattr(verified, "chat", fake_chat)
+    monkeypatch.setattr(config, "CHAT_ENGINE", "verified")  # these tests cover the older 3-section engine (roles: test_roles.py)
     return calls
 
 

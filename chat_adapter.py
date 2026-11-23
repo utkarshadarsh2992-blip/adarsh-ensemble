@@ -94,8 +94,19 @@ def _audit_line(issue: dict, kind: str) -> str:
     return f"- {lead}{problem} (shayad sahi: {fix})"
 
 
+def _sources_block(res: dict) -> str:
+    """Web sources the answer actually cites ([S1]...), as clickable links under the answer."""
+    srcs = res.get("sources") or []
+    used = {int(n) for n in re.findall(r"\[S(\d+)", res.get("answer") or "")}
+    cited = [s for s in srcs if s.get("n") in used]
+    if not cited:
+        return ""
+    return "\n\n**Sources**\n" + "\n".join(f"[S{s['n']}] [{s['title']}]({s['url']})" if s.get("url") else f"[S{s['n']}] {s['title']}"
+                                           for s in cited)
+
+
 def _format_answer(res: dict) -> str:
-    text = res["answer"].strip()
+    text = res["answer"].strip() + _sources_block(res)
     notes = []
     ps = res.get("proofs_summary")
     if ps and ps.get("total"):
@@ -157,6 +168,7 @@ async def handle(body: dict) -> dict | list[dict]:
         depth=depth,
         debug=False,
         record=True,
+        mode=str(body.get("mode") or "standard"),
     )
 
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
@@ -168,6 +180,12 @@ async def handle(body: dict) -> dict | list[dict]:
     master = res.get("master")
     if master:
         steps = ["Manual · master answer (sirf tumhare answers se)"]
+    elif res.get("engine") == "roles":
+        steps = [f"Task: {res.get('task_type', 'general')} · mode {res.get('mode', 'standard')} · 11-role council"]
+        if res.get("sources"):
+            steps.append(f"Research: {len(res['sources'])} web sources padhe")
+        if res.get("confidence"):
+            steps.append(f"Confidence: {res['confidence']}")
     else:
         steps = [f"Task: {res.get('task_type', 'general')} · {res.get('style', 'solve')}"]
     if source != "auto":
@@ -195,7 +213,12 @@ async def handle(body: dict) -> dict | list[dict]:
     if audit.get("unsure"):
         items.append({"title": f"{audit.get('label', 'Audit')} ko shak hai, khud check karo",
                       "text": "\n".join(_audit_line(i, "unsure") for i in audit["unsure"])})
+    items += res.get("role_notes") or []
     items += res.get("falsifier_notes") or []
+    uncited = [s for s in res.get("sources") or [] if f"[S{s.get('n')}" not in (res.get("answer") or "")]
+    if uncited:
+        items.append({"title": f"Padhe gaye par jawab me use nahi hue ({len(uncited)})",
+                      "text": "\n".join(f"- {s['title']}: {s.get('url', '')}" for s in uncited)})
     if items:
         replies[0]["notes"] = {"title": "Kahan galat ho sakta hai", "items": items}
     if master:

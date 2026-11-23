@@ -62,7 +62,7 @@ PROVIDERS = {
 CORE_PROVIDERS = ("groq", "openrouter", "gemini")
 # Every env name a key screen / android_entry may set.
 SECRET_ENVS = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
-               "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
+               "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY", "TAVILY_API_KEY")
 
 
 @dataclass(frozen=True)
@@ -208,6 +208,27 @@ AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-fla
 MASTER_WRITER = use("mistral-large-4", "synthesizer", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"])
 MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "gpt-oss-120b", "nemotron-lightning"])
 
+# ROLES ENGINE (roles.py, the 11 role prompts in role_prompts.py). Same rules: all 3 core providers in every chain,
+# first fallback on another provider. The two "fast" drafters (theorist, empiricist) are both on Groq but different
+# families (gpt-oss vs qwen), so fast mode does not touch OpenRouter's 50/day quota for drafting.
+ARCHITECT = use("gemma-4-31b-g", "architect", ["gpt-oss-120b", "nemotron-super-vl", "gemini-3.1-flash-lite"])
+THEORIST = use("gpt-oss-120b", "theorist", ["gemini-3.8-flash", "nemotron-ultra", "qwen3.8-27b", "cf-gpt-oss-120b"])
+EMPIRICIST = use("qwen3.8-27b", "empiricist", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "laguna-xs-2.1"])
+# deep mode only: one domain specialist picked by the chat mode, plus the pattern finder (PANEL[-1])
+SPECIALISTS = {
+    "standard": use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", "mistral-large-4"]),
+    "verified": use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", "mistral-large-4"]),
+    "physics": use("nemotron-ultra", "logic_math", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", "glm-5-3-flash"]),
+    "math": use("nemotron-ultra", "logic_math", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", "glm-5-3-flash"]),
+    "business": use("ernie-5.5-flash", "business", ["gemma-4-26b-g", "gpt-oss-20b", "gemini-3.1-flash-lite", "ling-3.2-flash"]),
+    "coding": use("nemotron-ultra", "coder_edge", ["qwen3.8-27b", "gemini-3.8-flash", "particle-1", "laguna-xs-2.1"]),
+}
+SKEPTIC = use("gpt-oss-20b", "skeptic", ["gemini-3.1-flash-lite", "nemotron-lightning", "gemma-4-26b-g"])
+DEBATER = use("gpt-oss-120b", "debater", ["gemini-3.8-flash", "nemotron-ultra", "mistral-large-4"])
+METHOD_REVIEWER = use("qwen3.8-27b", "method_reviewer", ["gemini-3.5-flash-lite", "nemotron-ultra", "gpt-oss-120b"])
+EVIDENCE_REVIEWER = use("gpt-oss-120b", "evidence_reviewer", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "nemotron-ultra", "gemini-3.8-flash"])
+REFINER = use("gemini-3.8-flash", "refiner", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
+
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
 # images; the tts / live / translate / lyria / recraft / rerank models are not chat models.
 
@@ -227,6 +248,9 @@ def all_roles() -> list[tuple[str, ModelSpec]]:
     rows += [(f"falsifier{i + 1}", s) for i, s in enumerate(DEBATERS)]
     for name in ("CLASSIFIER", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "AUDITOR", "MASTER_WRITER", "MASTER_AUDITOR"):
         rows.append((name.lower(), globals()[name]))
+    for name in ("ARCHITECT", "THEORIST", "EMPIRICIST", "SKEPTIC", "DEBATER", "METHOD_REVIEWER", "EVIDENCE_REVIEWER", "REFINER"):
+        rows.append((f"roles:{name.lower()}", globals()[name]))
+    rows += [(f"roles:specialist:{m}", s) for m, s in SPECIALISTS.items()]
     return rows
 
 
@@ -311,9 +335,21 @@ FINAL_MAX_TOKENS = int(os.getenv("FINAL_MAX_TOKENS", "6000"))
 APP_API_KEY = os.getenv("APP_API_KEY", "")  # if set, clients must send X-API-Key or Authorization: Bearer <key>
 
 # ADARSH UI chat endpoint (/api/chat): how each chat message is answered
-CHAT_ENGINE = os.getenv("CHAT_ENGINE", "verified")  # verified | simple
+CHAT_ENGINE = os.getenv("CHAT_ENGINE", "roles")  # roles (11 role prompts) | verified (older 3-section engine) | simple
 CHAT_MODE = os.getenv("CHAT_MODE", "deep")  # deep | fast (fast = fewer models, much cheaper on free quota)
 CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+# Roles engine knobs
+ROLE_MAX_TOKENS = int(os.getenv("ROLE_MAX_TOKENS", "1800"))       # architect, skeptic, debater, reviewers (short output + thinking)
+REVIEW_ENABLED = os.getenv("REVIEW", "1") == "1"                    # methodology + evidence review + refiner after the judge
+DEBATE_ENABLED = os.getenv("DEBATE", "1") == "1"                    # debater runs only when drafts clash on a FACT
+# Research: web lookup before drafting (Wikipedia always, Tavily if TAVILY_API_KEY is set). RESEARCH=0 turns it off.
+RESEARCH_ENABLED = os.getenv("RESEARCH", "1") == "1"
+RESEARCH_TIMEOUT_S = float(os.getenv("RESEARCH_TIMEOUT_S", "8"))
+RESEARCH_PER_QUERY = int(os.getenv("RESEARCH_PER_QUERY", "2"))
+RESEARCH_CHARS = int(os.getenv("RESEARCH_CHARS", "900"))               # per source
+RESEARCH_MAX_SOURCES = int(os.getenv("RESEARCH_MAX_SOURCES", "5"))
+RESEARCH_TOTAL_CHARS = int(os.getenv("RESEARCH_TOTAL_CHARS", "3600"))  # all sources together (Groq: 8K tokens/min)
 
 # Daily quotas we guard locally (0 = no local cap; we still fail over on real 429s).
 OPENROUTER_RPD = int(os.getenv("OPENROUTER_RPD", "50"))  # set 1000 if you bought >= 10 credits

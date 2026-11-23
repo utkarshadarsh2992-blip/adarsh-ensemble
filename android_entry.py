@@ -10,7 +10,7 @@ import sys
 
 # keep in sync with config.SECRET_ENVS (not imported here: config must load after init())
 KEY_NAMES = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
-             "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
+             "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY", "TAVILY_API_KEY")
 _ready = False
 
 

@@ -60,3 +60,8 @@ Council page Manual me panel/falsifier/proofs hide karta hai aur Lessons section
 ## Mic (voice typing)
 Pehle mic ka button tha par WebView me Web Speech API nahi hota aur `RECORD_AUDIO` permission bhi nahi thi, isliye kuch nahi hota tha. Ab Android ka apna `SpeechRecognizer` bridge se chalta hai (`Dictation.kt`, `AdarshNative.speechStart/speechStop`). Pehli baar mic dabane par system permission dialog aata hai. Phone par speech service (Google) chahiye; na ho to "Voice typing failed" ka toast aata hai.
 **Nahi chala:** Kotlin compile aur asli phone par mic (sirf JS side Chromium me stub ke saath test hua).
+
+
+## 11-role engine
+
+APK me bhi default `roles` engine chalta hai (naye `.py` files apne aap pack hote hain). API keys screen me naya optional `Tavily web search` key hai; bina iske research sirf Wikipedia se hota hai. Android par Python code proofs band rehte hain, baaki sab roles chalte hain.

@@ -23,7 +23,7 @@ UI kisi aur jagah host ki ho to Connection URL = `https://<server>/api/chat`.
 ## Kya badla
 - `chat_adapter.py` (new): UI request -> `pipeline.run` -> text reply. Chat history ka chhota tail context ke liye jaata hai. `steps` me task type, models used, latency dikhte hain.
 - `main.py`: `/api/chat`, `/` (UI), CORS, Bearer auth (X-API-Key bhi). `/ask` jaisa tha waisa.
-- `config.py` / `.env.example`: `CHAT_ENGINE` (verified|simple), `CHAT_MODE` (deep|fast), `CORS_ORIGINS`.
+- `config.py` / `.env.example`: `CHAT_ENGINE` (roles|verified|simple, default roles), `CHAT_MODE` (deep|fast), `CORS_ORIGINS`.
 - `ui/src/js/07-backend.js`: same-origin `/api/chat` default; relative URL support.
 - Backend docs: `README-backend.md`. UI docs: `ui/ARCHITECTURE.md`.
 
@@ -32,6 +32,26 @@ UI kisi aur jagah host ki ho to Connection URL = `https://<server>/api/chat`.
 - Ensemble sirf text reply deta hai. UI ke `research / debate / ask / approve / mission` cards abhi backend se nahi aate; attachments ignore hote hain.
 - Voice, memory, tasks UI me hi (localStorage) rehte hain.
 
+
+## 11-role engine (default: `CHAT_ENGINE=roles`)
+
+Files: `role_prompts.py` (COMMON + har role ka prompt + mode hint, `adarsh-role-prompts.md` se), `roles.py` (flow), `research.py` (web lookup).
+
+| Step | Role | Fast | Deep |
+|---|---|---|---|
+| 1 | Architect: sawaal ko parts me todta hai, `SEARCH:` line me web queries deta hai | haan | haan |
+| 2 | Research: Wikipedia (bina key) + Tavily (agar `TAVILY_API_KEY`), sources `[S1]..[Sn]` | haan | haan |
+| 3 | Drafters: Theorist + Empiricist (+ mode specialist: physics/math/business/coding/verified) | 2 | 3 |
+| 4 | Claim stripper + Skeptic (+ Pattern Finder) saath me | haan | haan (+PF) |
+| 5 | Falsifiers (Skeptic ke shak leads ki tarah) | 2 | 3 |
+| 6 | Debater: sirf factual takraav ya BROKEN/WEAKENED claim par; Python proofs saath me | 1 round | 2 round tak |
+| 7 | Judge (mode ka format + `CONFIDENCE:` line, sirf diye gaye `[S#]` cite kar sakta hai) | haan | haan |
+| 8 | Reviewers: Methodology + Evidence | ek (task ke hisaab se) | dono |
+| 9 | Refiner: sirf high/medium galtiyan; section kho de to rewrite fenk diya jaata hai | zaroorat par | zaroorat par |
+
+Mode: UI ka mode (Standard/V/Physics/Math/Business/Coding) mode hint chunta hai; Standard me task type se (math, science->physics, coding, business, research->verified). Final jawab ke neeche cited sources ke links aate hain, council page par "11-role council" section me plan, queries, sources, Skeptic, debate, reviews aur refiner badlav dikhte hain. Galat `[S#]` cite hata diye jaate hain.
+
+Calls: fast ~11-13, deep ~15-17 model calls per sawaal (OpenRouter ki 50/din limit dhyan me rakho). Switches (0 = band): `RESEARCH`, `REVIEW`, `DEBATE`, `RESEARCH_TIMEOUT_S`, `ROLE_MAX_TOKENS`. Purana engine chahiye to `CHAT_ENGINE=verified`.
 
 ## Answer quality passes (verified engine)
 1. **Format repair.** The judge must write fixed section headings (`Direct Core Truth / Verified Mechanism / Trap Warning`,

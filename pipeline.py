@@ -27,6 +27,7 @@ import guard
 import master
 import health
 import prompts
+import roles
 import verified
 from llm import LLMError, chat
 
@@ -181,10 +182,12 @@ async def run(
     depth: str = "normal",  # simple | normal | detailed
     style: str = "auto",  # auto | solve | explain
     record: bool = False,  # keep every prompt/output and return out["council"] (see council.py)
+    mode: str = "standard",  # UI chat mode (standard | v | physics | math | business | coding): roles engine only
 ) -> dict:
     t0 = time.perf_counter()
     trace = health.start_trace(record)
-    rec = {"question": question, "deep": deep, "source": source, "depth": depth, "reply_lang": reply_lang} if record else None
+    rec = {"question": question, "deep": deep, "source": source, "depth": depth, "reply_lang": reply_lang,
+           "ui_mode": mode} if record else None
     lang = _language_hint(question, reply_lang)  # language only (falsifiers, debaters)
     lang_full = (lang + " " + prompts.DEPTH_HINTS.get(depth, "")).strip()  # + depth (drafters, judge, synthesizer)
     if config.LEARNER_PROFILE:  # + who the reader is (how to teach him); never goes to falsifiers / auditor
@@ -203,7 +206,7 @@ async def run(
     async with httpx.AsyncClient() as client:
         config.emit("Sawaal samajh raha hu")
         # [0] guard pasted answers + classify the question, concurrently
-        master_mode = source == "manual" and config.MASTER_ENABLED and bool(user_drafts) and engine == "verified"
+        master_mode = source == "manual" and config.MASTER_ENABLED and bool(user_drafts) and engine in ("verified", "roles")
         guard_report, task = await asyncio.gather(
             guard.scan(client, user_drafts) if (use_guard and user_drafts) else _noop(),
             _general() if master_mode else classify(client, question),  # master mode needs no task type
@@ -242,6 +245,18 @@ async def run(
                 answer, "general", user_drafts, {}, errors, [], t0, debug, 0, trace=trace, warnings=warnings,
                 guard_report=guard_report, letter_to_name=letter_to_name, engine="master", extras=extras,
                 style="master", rec=rec,
+            )
+
+        if engine == "roles":
+            # the 11-role flow writes its own drafts (Architect -> Theorist/Empiricist/... -> Judge -> Reviewers)
+            answer, extras, panel_drafts, letter_to_name = await roles.run_roles(
+                client, question, task, user_drafts, guard_report, lang, lang_full, deep, run_code, errors, mode=mode,
+            )
+            warnings += extras.get("warnings", [])
+            return _pack(
+                answer, task, user_drafts, panel_drafts, errors, [], t0, debug, 0,
+                trace=trace, warnings=warnings, guard_report=guard_report, letter_to_name=letter_to_name,
+                engine="roles", extras=extras, style=extras["style"], rec=rec,
             )
 
         if style not in ("solve", "explain"):
@@ -349,6 +364,9 @@ def _pack(
         out["audit"] = extras.get("audit")
         if extras.get("master"):
             out["master"] = extras["master"]
+        for k in ("sources", "confidence", "mode", "role_notes"):
+            if extras.get(k):
+                out[k] = extras[k]
     if rec is not None:
         out["council"] = council.build(
             question=rec["question"], trace=trace, user_drafts=user_drafts, panel_drafts=panel_drafts,
@@ -357,6 +375,8 @@ def _pack(
             setup={"task": task, "style": style, "engine": engine, "source": rec["source"],
                    "mode": "deep" if rec["deep"] else "fast", "depth": rec["depth"], "reply_lang": rec["reply_lang"],
                    "latency_s": out["latency_s"], "user_answers": len(user_drafts), "panel_answers": len(panel_drafts),
+                   "ui_mode": rec.get("ui_mode"), "role_mode": (extras or {}).get("mode"),
+                   "confidence": (extras or {}).get("confidence"),
                    "fallback": bool(fallback)},
         )
     if guard_report:

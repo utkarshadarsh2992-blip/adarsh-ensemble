@@ -124,11 +124,22 @@ def format_proofs(results: list[dict]) -> str:
 
 SOLVE_SECTIONS = ("Direct Core Truth", "Verified Mechanism", "Trap Warning")
 EXPLAIN_SECTIONS = ("Short answer", "Explanation", "Common mistake")
+# roles engine (roles.py): style "roles:<format>", same lists as role_prompts.FORMAT_SECTIONS
+ROLE_SECTIONS = {
+    "roles:standard": ("Short answer", "Explanation", "Common mistake", "CONFIDENCE:"),
+    "roles:coding": ("Solution", "How it works", "Edge cases and tests", "CONFIDENCE:"),
+}
+
+
+def sections_for(style: str) -> tuple:
+    if style in ROLE_SECTIONS:
+        return ROLE_SECTIONS[style]
+    return EXPLAIN_SECTIONS if style == "explain" else SOLVE_SECTIONS
 
 
 def missing_sections(answer: str, style: str) -> list[str]:
     low = re.sub(r"\s+", " ", answer.lower())
-    return [s for s in (EXPLAIN_SECTIONS if style == "explain" else SOLVE_SECTIONS) if s.lower() not in low]
+    return [s for s in sections_for(style) if s.lower() not in low]
 
 
 _TAG_RE = re.compile(r"\s*\[(?:PROVEN by code|REASONED|UNVERIFIED)\]", re.IGNORECASE)
@@ -142,9 +153,13 @@ _FRESH = re.compile(
 
 
 def freshness_warning(answer: str) -> list[str]:
-    if _FRESH.search(answer):
-        return ["Jawab me 'latest / current / as of' ke saath version ya saal hai. Engine ke paas internet nahi hai, "
-                "isliye ye purani yaad se ho sakta hai: pehle official site par check karo."]
+    for m in _FRESH.finditer(answer):
+        start = answer.rfind("\n", 0, m.start()) + 1
+        end = answer.find("\n", m.end())
+        if re.search(r"\[S\d+", answer[start : end if end != -1 else None]):
+            continue  # backed by a web source fetched for this question (roles engine research step)
+        return ["Jawab me 'latest / current / as of' ke saath version ya saal hai, bina kisi web source ke. "
+                "Ye model ki purani yaad se ho sakta hai: pehle official site par check karo."]
     return []
 
 

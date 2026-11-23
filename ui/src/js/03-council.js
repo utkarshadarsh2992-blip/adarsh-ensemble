@@ -130,7 +130,7 @@ const Council = (() => {
       stat('Fail / fallback', failed + ' / ' + fallbacks, 'model calls'),
       stat('Claims', cm ? String(nClaims) : '—', cm ? (cm.consensus || []).length + ' sahmati, ' + (cm.conflicts || []).length + ' takraav' : 'map nahi bana'),
       master ? stat('Lessons', String((ls.lessons_used || []).length), (ls.repeated || []).length + ' dohraye gaye') : stat('Falsifier', String(Object.keys(rec.falsifiers || {}).length), 'reports'),
-      stat(master ? 'Grounding' : 'Audit', au.enabled ? (au.ran ? (au.applied || []).length + ' sudhar' : 'chala nahi') : 'band', au.ran ? (au.unsure || []).length + ' shak' : ''));
+      stat(master ? 'Grounding' : (au.label || 'Audit'), au.enabled ? (au.ran ? (au.applied || []).length + ' sudhar' : 'chala nahi') : 'band', au.ran ? (au.unsure || []).length + ' shak' : ''));
     const modelsEl = h('div', { class: 'chips' }, Object.entries(used).map(([m, n]) => h('span', { class: 'chip' }, m + ' ×' + n)));
 
     /* ---- timeline (tap = jump) */
@@ -139,6 +139,7 @@ const Council = (() => {
     const nPanelOk = panelCalls.filter(c => c.ok !== false).length;
     const timeline = h('div', { class: 'tlist' },
       tl('setup', 'check', 'Sawaal samjha', (su.task || '') + ' · ' + (su.style || '')),
+      rec.roles ? tl('roles', 'check', '11-role council', (rec.roles.mode || '') + ' mode · ' + (rec.roles.sources || []).length + ' sources · confidence ' + (rec.roles.confidence || '—')) : null,
       tl('panel', 'check', master ? 'Tumhare paste kiye answers' : 'Panel ke drafts', master ? drafts.length + ' answers (panel nahi chala)' : nPanelOk + '/' + (panelCalls.length || drafts.length) + ' roles ne diye'),
       master ? null : tl('patterns', 'check', 'Patterns', (rec.patterns && rec.patterns.named) ? rec.patterns.named : 'koi naam nahi mila'),
       tl('claims', 'check', 'Claims map', cm ? nClaims + ' claims' : 'nahi bana'),
@@ -146,7 +147,7 @@ const Council = (() => {
       master ? null : tl('proofs', 'check', 'Code proofs', proofs.length ? proofs.length + ' checks' : (su.style === 'solve' ? 'Android par band' : 'is jawab me nahi')),
       tl('judge', 'check', master ? 'Master answer likha' : 'Judge', (one('judge') || {}).used || '—'),
       tl('repair', 'check', 'Format repair', (rec.repairs || []).length ? (rec.repairs || []).length + ' baar' : 'zaroorat nahi padi'),
-      tl('audit', 'check', master ? 'Grounding check' : 'Audit', au.ran ? (au.applied || []).length + ' sudhar, ' + (au.unsure || []).length + ' shak' : (au.enabled ? 'chala nahi' : 'band')),
+      tl('audit', 'check', master ? 'Grounding check' : (au.label || 'Audit'), au.ran ? (au.applied || []).length + ' sudhar, ' + (au.unsure || []).length + ' shak' : (au.enabled ? 'chala nahi' : 'band')),
       master ? tl('lessons', 'check', 'Lessons', (ls.lessons_used || []).length + ' lage, ' + (ls.learned || []).length + ' naye/majboot') : null,
       tl('prov', 'check', 'Kya aaya, kya gaya', 'draft se final tak'));
 
@@ -156,6 +157,32 @@ const Council = (() => {
       score, modelsEl,
       timeline);
 
+    /* ---- roles (11-role engine) */
+    if (rec.roles) {
+      const R = rec.roles, src = R.sources || [];
+      const linkEl = (x) => x.url ? h('a', { href: x.url, target: '_blank', rel: 'noopener' }, x.title || x.url) : h('span', {}, x.title || '');
+      const deb = R.debate || [], rf = R.refiner || {}, rv = R.reviews || {};
+      const revLine = (k, n) => { const r = rv[k]; return r ? row(n, r.ran ? (r.issues || []).length + ' galti/shak' : 'output padha nahi gaya') : row(n, 'is mode me nahi chala'); };
+      stack.append(sec('roles', '11-role council', 'Architect ne plan banaya, web se sources padhe, drafters ne likha, Skeptic/Falsifier/Debater ne todne ki koshish ki, Judge ne likha, Reviewers ne jaancha, Refiner ne sudhara.',
+        h('div', { class: 'ccard' }, row('Mode', R.mode || '—'), row('Format', R.format || '—'),
+          row('Confidence', R.confidence || '—')),
+        R.plan ? fold('Architect ka plan', md(R.plan), true) : null,
+        one('architect') ? callCard(one('architect')) : null,
+        h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Research'), pill(src.length + ' sources', src.length ? 'good' : 'mute')),
+          (R.queries || []).length ? row('Search', (R.queries || []).join(' · ')) : h('p', { class: 'muted' }, 'Architect ne search ki zaroorat nahi samjhi (ya research band hai).'),
+          src.length ? h('ol', {}, src.map(x => h('li', {}, '[S' + x.n + '] ', linkEl(x), x.via ? h('span', { class: 'muted' }, ' · ' + x.via) : null))) : null),
+        R.skeptic ? fold('Skeptic ke shak', md(R.skeptic)) : null,
+        one('skeptic') ? callCard(one('skeptic')) : null,
+        R.pattern ? fold('Pattern Finder', md(R.pattern)) : null,
+        h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Debate'), pill(deb.length ? deb.length + ' round' : 'skip', deb.length ? 'info' : 'mute')),
+          deb.length ? deb.map((t, i) => fold('Round ' + (i + 1), md(t))) : h('p', { class: 'muted' }, R.debate_skipped || 'Debate nahi chala.')),
+        byStage('debate:').map(c => callCard(c)),
+        h('div', { class: 'ccard' }, h('div', { class: 'ch' }, h('b', {}, 'Reviewers & Refiner')),
+          revLine('method', 'Methodology'), revLine('evidence', 'Evidence'),
+          row('Refiner', rf.changes ? (rf.changes.length + ' badlav' + ((rf.skipped || []).length ? ', ' + rf.skipped.length + ' chhode' : '')) : 'zaroorat nahi padi'),
+          (rf.changes || []).length ? h('ul', {}, rf.changes.map(x => h('li', {}, x))) : null,
+          (rf.skipped || []).length ? fold('Refiner ne ye nahi badla', h('ul', {}, rf.skipped.map(x => h('li', {}, x)))) : null)));
+    }
     /* ---- setup */
     stack.append(sec('setup', 'Sawaal ka setup', null,
       row('Task', su.task), row('Style', su.style === 'explain' ? 'explain (samjhana)' : 'solve (hal karna)'),
@@ -237,13 +264,14 @@ const Council = (() => {
     /* ---- audit */
     const key = (i) => (i.quote || '') + '|' + (i.fix || '');
     const applied = new Set((au.applied || []).map(key));
-    const auc = one('audit'), rev = one('revise');
+    const auc = one('audit'), rev = one('revise') || one('refine');
     const issueEl = (i) => h('div', { class: 'ccard' }, h('div', { class: 'ch' }, pill(i.confidence || 'low', i.confidence === 'high' ? 'bad' : i.confidence === 'medium' ? 'warn' : 'mute'),
       pill(applied.has(key(i)) ? 'sudhara gaya' : 'sirf shak, badla nahi', applied.has(key(i)) ? 'good' : 'mute')),
       i.quote ? row('Jawab me', '“' + i.quote + '”') : null, row('Galti', i.problem), row('Sahi', i.fix));
-    stack.append(sec('audit', master ? 'Grounding check: kya ye answers me hai?' : 'Audit: doosre model ne fact check kiya', master ? 'Doosre model ne sirf ye dekha ki har baat kisi paste kiye answer se milti hai ya nahi. Sach-jhooth nahi, sirf "source hai ya nahi".' : 'Judge se alag family ka model. High/medium confidence wali galtiyan rewrite se sudhaari gayin, low sirf shak ke roop me dikhi.',
+    stack.append(sec('audit', master ? 'Grounding check: kya ye answers me hai?' : (au.label === 'Reviewers' ? 'Reviewers + Refiner: final jawab ki jaanch' : 'Audit: doosre model ne fact check kiya'), master ? 'Doosre model ne sirf ye dekha ki har baat kisi paste kiye answer se milti hai ya nahi. Sach-jhooth nahi, sirf "source hai ya nahi".' : 'Judge se alag family ka model. High/medium confidence wali galtiyan rewrite se sudhaari gayin, low sirf shak ke roop me dikhi.',
       !au.enabled ? h('p', { class: 'muted' }, 'Audit band hai.') : null,
       auc ? callCard(auc) : null,
+      byStage('review:').map(c => callCard(c)),
       au.ran ? ((au.issues || []).length ? (au.issues || []).map(issueEl) : h('p', { class: 'muted' }, 'Koi galti nahi mili.')) : (au.enabled ? h('p', { class: 'warn' }, 'Audit chala nahi ya uska output padha nahi gaya.') : null),
       rev ? callCard(rev) : null,
       au.before ? fold('Sudhaar se pehle ka jawab', md(au.before)) : null,

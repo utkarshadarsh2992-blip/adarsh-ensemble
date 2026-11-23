@@ -70,6 +70,15 @@ ROLE_INFO = {
     "planner": ("Planner", "Ordered steps, dependencies, priorities, aur har step kaise check ho."),
     "pattern_finder": ("Pattern finder", "Pehchanta hai ki sawaal kis jaane-pehchaane pattern/theorem/classic galti jaisa hai, phir usi se solve."),
     "step_solver": ("Step solver", "Careful step-by-step solving."),
+    # roles engine (role_prompts.py)
+    "theorist": ("Theorist", "Bunyaadi niyam/definition se jawab derive karna, har term define, kab sahi aur kab tootta hai."),
+    "empiricist": ("Empiricist", "Kya dekha/napa ja sakta hai, kya sirf maana gaya hai, aur ek test ya sanity check jo koi bhi chala sake."),
+    "architect": ("Architect", "Solve karne se pehle jawab ka dhancha: hisse, kram, assumptions, sabse mushkil step."),
+    "skeptic": ("Skeptic", "Drafts ke 3 sabse kamzor point aur unhe check karne ka ek-ek tareeka."),
+    "debater": ("Debater", "Ulte paksh ka sabse mazboot roop (steelman), phir imaandari se jawab."),
+    "refiner": ("Refiner", "Sirf reviewers ki batayi galtiyan sudharna, baaki jawab waisa hi."),
+    "method_reviewer": ("Methodology reviewer", "Jawab KAISE nikla: tareeka, steps, units, signs, chhupi assumptions."),
+    "evidence_reviewer": ("Evidence reviewer", "Har claim ke peeche kya saboot hai: source, derived, common ya kuch nahi."),
     "judge": ("Judge", "Claims, falsifier reports aur proofs dekh kar final jawab likhna."),
     "synthesizer": ("Synthesizer", "Alag drafts ko ek best jawab me milana."),
 }

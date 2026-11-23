@@ -19,6 +19,11 @@ STAGE_TITLES = {
     "revise": "Reviser (sudhaar ka rewrite)",
     "synth": "Synthesizer",
     "single": "Akela model (panel fail hua)",
+    "architect": "Architect (jawab ka dhancha)",
+    "skeptic": "Skeptic (3 sabse kamzor point)",
+    "review:method": "Methodology reviewer (jawab kaise nikla)",
+    "review:evidence": "Evidence reviewer (har claim ka saboot)",
+    "refine": "Refiner (reviewers ke sudhaar)",
 }
 MAX_RECORD_CHARS = 350_000  # the phone keeps several of these; one huge record must not eat the storage
 _SENT = re.compile(r"(?<=[.!?।])\s+|\n+")
@@ -40,7 +45,7 @@ def stage_title(stage: str) -> str:
     if kind == "falsifier":
         return f"Falsifier {rest}"
     if kind == "debate":
-        return f"Debater ({rest})"
+        return f"Debater round {rest}" if rest.isdigit() else f"Debater ({rest})"
     if kind.startswith("repair"):
         return "Format repair " + kind.removeprefix("repair")
     return STAGE_TITLES.get(stage, stage)
@@ -150,6 +155,7 @@ def build(*, question, setup, trace, user_drafts, panel_drafts, letter_to_name, 
         "audit": audit,
         "provenance": provenance(final, all_drafts) if all_drafts else None,
         "lessons": (extras or {}).get("master"),
+        "roles": dbg.get("roles"),
         "guard": guard_report or {},
         "errors": errors,
         "warnings": warnings,
