@@ -56,3 +56,7 @@ Master answer par 👎 dabao to "Kya galat tha?" sheet khulti hai: ek line likho
 Lessons ka kaam phone par seedha file ka kaam hai (`AdarshNative.lessons`), isliye API key ya foreground service nahi chahiye. File: app ke private folder me `engine/lessons.json`.
 Council page Manual me panel/falsifier/proofs hide karta hai aur Lessons section dikhata hai. Takraav par `factual` / `choice` pill dikhti hai.
 **Nahi chala:** Kotlin `lessons()` bridge compile/device par test nahi hua (APK build yahan nahi ho sakta).
+
+## Mic (voice typing)
+Pehle mic ka button tha par WebView me Web Speech API nahi hota aur `RECORD_AUDIO` permission bhi nahi thi, isliye kuch nahi hota tha. Ab Android ka apna `SpeechRecognizer` bridge se chalta hai (`Dictation.kt`, `AdarshNative.speechStart/speechStop`). Pehli baar mic dabane par system permission dialog aata hai. Phone par speech service (Google) chahiye; na ho to "Voice typing failed" ka toast aata hai.
+**Nahi chala:** Kotlin compile aur asli phone par mic (sirf JS side Chromium me stub ke saath test hua).

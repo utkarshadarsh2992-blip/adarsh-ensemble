@@ -17,8 +17,9 @@
 
   Backend.refresh();
 
+  if (window.__adarshDictation) STT.dict = window.__adarshDictation;  // Android app: native SpeechRecognizer
   /* platform dictation (Chromium tabs / desktop app); Web Speech is the fallback inside STT */
-  try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || null; }).catch(() => {}); } catch (e) {}
+  try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || STT.dict || null; }).catch(() => {}); } catch (e) {}
 
   if (S.lock) Lock.lockNow();
 })();

@@ -24,6 +24,13 @@ class AdarshBridge(
     @JavascriptInterface
     fun lessons(opJson: String): String = Engine.lessons(opJson)
 
+    /** Voice typing (Android SpeechRecognizer; the WebView has no Web Speech API). Events come back via window.__adarshSpeech. */
+    @JavascriptInterface
+    fun speechStart(lang: String) = MainActivity.speechStart(lang)
+
+    @JavascriptInterface
+    fun speechStop() = MainActivity.speechStop()
+
     @JavascriptInterface
     fun keyStatus(): String {
         val o = JSONObject()

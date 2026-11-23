@@ -123,14 +123,14 @@ _reg("gemini-2.5-flash-lite", "gemini", "gemini-2.5-flash-lite")
 _reg("cf-gpt-oss-120b", "cloudflare", "@cf/openai/gpt-oss-120b")
 _reg("cf-gemma-4-26b", "cloudflare", "@cf/google/gemma-4-26b-a4b-it")
 
-# NVIDIA NIM. IDs are best guesses ("<maker>/<model>"); only z-ai/glm-5-3 is confirmed on build.nvidia.com.
+# NVIDIA NIM. mistralai/mistral-large-4-1t-a52b is confirmed on build.nvidia.com (Nov 2026). The other IDs are best guesses ("<maker>/<model>"); z-ai/glm-5-3 is confirmed.
 # Settings > API keys > Test connection lists the IDs that do not exist and suggests the closest real ones.
 _reg("mistral-large-4", "nvidia", "mistralai/mistral-large-4-1t-a52b")
 _reg("laguna-xs-2.1", "nvidia", "poolside/laguna-xs-2.1")
 _reg("glm-5-3-flash", "nvidia", "z-ai/glm-5-3-flash")
 
 # one more OpenRouter free model (ID unverified, same note as above)
-_reg("inkling-2-small", "openrouter", "inkling/inkling-2-small:free")
+_reg("inkling-2-small", "openrouter", "thinkingmachines/inkling-2-small:free")
 
 
 def use(label: str, role: str, fallbacks=(), extra: dict | None = None) -> ModelSpec:

@@ -20,6 +20,31 @@
     const p = pending[id]; if (p && p.onProgress && text) p.onProgress(text);
   };
 
+  /* Voice typing: Android's SpeechRecognizer behind the same interface STT uses for platform dictation
+     (onPartial / onFinal / onState / start / stop). The WebView itself has no Web Speech API. */
+  if (N.speechStart) {
+    const L = { partial: [], final: [], state: [] };
+    let startWait = null;
+    const on = (k, f) => { L[k].push(f); return () => { L[k] = L[k].filter(x => x !== f); }; };
+    window.__adarshSpeech = function (type, text) {
+      if (type === 'started') { if (startWait) { startWait.res(); startWait = null; } return; }
+      if (type === 'error') { if (startWait) { startWait.rej({ code: text }); startWait = null; } else L.state.forEach(f => f({ state: 'idle', reason: 'error' })); return; }
+      if (startWait) { startWait.res(); startWait = null; }
+      if (type === 'partial') L.partial.forEach(f => f({ text }));
+      else if (type === 'final') L.final.forEach(f => f({ text }));
+      else if (type === 'state') L.state.forEach(f => f({ state: 'idle', reason: text }));
+    };
+    window.__adarshDictation = {
+      onPartial: (f) => on('partial', f), onFinal: (f) => on('final', f), onState: (f) => on('state', f),
+      start: () => new Promise((res, rej) => {
+        startWait = { res, rej };
+        setTimeout(() => { if (startWait) { startWait.rej({ code: 'timeout' }); startWait = null; } }, 15000);  // permission dialog counts
+        try { N.speechStart((window.S && S.settings && S.settings.lang) || 'en-IN'); } catch (e) { startWait = null; rej({ code: 'unavailable' }); }
+      }),
+      stop: () => { try { N.speechStop(); } catch (e) {} return Promise.resolve(); }
+    };
+  }
+
   window.ADARSH_BACKEND = {
     send(req, o) {
       return new Promise((res, rej) => {

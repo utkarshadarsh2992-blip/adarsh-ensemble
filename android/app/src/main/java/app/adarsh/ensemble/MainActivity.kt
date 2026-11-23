@@ -31,6 +31,15 @@ class MainActivity : AppCompatActivity() {
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { /* the service still runs without it; only the notification is hidden */ }
 
+    private var micCallback: ((Boolean) -> Unit)? = null
+    private val micPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { ok -> micCallback?.invoke(ok); micCallback = null }
+    private val dictation by lazy { Dictation(this) }
+
+    /** Ask for the microphone (the system dialog) and report the answer. Used the first time voice typing starts. */
+    fun askMic(cb: (Boolean) -> Unit) { micCallback = cb; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -131,6 +140,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         destroyed = true
         if (current === this) current = null
+        dictation.destroy()
         web.removeJavascriptInterface("AdarshNative")
         web.destroy()
         super.onDestroy()
@@ -139,6 +149,20 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val HOST = "appassets.androidplatform.net"
         @Volatile var current: MainActivity? = null
+
+        fun speechStart(lang: String) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.start(lang) } } }
+        fun speechStop() { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.stop() } } }
+
+        /** Dictation -> page. */
+        fun speech(type: String, text: String) {
+            current?.let { a ->
+                a.runOnUiThread {
+                    if (!a.destroyed) a.web.evaluateJavascript(
+                        "window.__adarshSpeech&&window.__adarshSpeech(${JSONObject.quote(type)},${JSONObject.quote(text)})", null
+                    )
+                }
+            }
+        }
 
         /** Stage text ("Falsifiers galtiyan dhoondh rahe hain") shown under Thinking. Dropped if no screen is attached. */
         fun progress(id: String, msg: String) {
