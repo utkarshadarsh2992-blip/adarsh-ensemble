@@ -76,6 +76,18 @@ ADARSH_UI.send('Brief me on today')   // type as the user
 ```
 For real push you will want a WebSocket or SSE connection in your backend adapter that calls these.
 
+## 5b. Modes (v4)
+
+The composer has a Claude-style mode menu: Standard, V, Physics, Math, Business, Coding. The list lives in `src/js/03-modes.js`
+(`MODES`: id, name, icon, description, placeholder, starter prompts). Rename or edit there; nothing else changes.
+
+* The selected id is sent as `mode` on every request (`req.mode`, also in the HTTP body of `07-backend.js`). The UI does **not** rewrite the question,
+  so what a mode does is decided on your side. The Python backend ignores the key until you read it (`body.get("mode")` in `chat_adapter.handle`).
+* Each AI reply is tagged `uiMode` so the thread shows which mode answered. Retry uses the mode selected at that moment.
+* Maths: `$…$`, `$$…$$`, `\(…\)`, `\[…\]` are drawn by `01-math.js` (fractions, roots, scripts, Greek, accents). It is a light renderer, not full TeX.
+* Markdown now also draws tables, blockquotes, rules, and code blocks with a language label and Copy button.
+* Demo backend (no server): each mode answers with a sample so the layouts can be previewed.
+
 ## 6. State
 
 `localStorage['adarsh.ui.v3']`: chats, memories, tasks, missions, settings, abilities, lock (salted PBKDF2 hash), conn. Attachment data URLs and thumbnails are never saved. Treat this as a cache: move memories/tasks/missions to your server when the architecture exists.

@@ -56,19 +56,31 @@ const App = (() => {
     draw();
     const nav = h('nav', { class: 'd-nav pad' }, NAV.map(([id, ic, t]) => h('button', { 'data-nav': id, on: { click: () => show(id) } }, icon(ic), t,
       id === 'tasks' ? h('span', { class: 'badge', id: 'bg-tasks' }) : id === 'missions' ? h('span', { class: 'badge', id: 'bg-ms' }) : null)));
-    d.append(top, nav, h('div', { class: 'rule pad' }), h('div', { class: 'd-label pad' }, 'Recents'), h('div', { class: 'd-list pad', id: 'd-list' }),
-      h('div', { class: 'd-foot pad' }, h('button', { class: 'avatar', 'aria-label': 'Settings', on: { click: () => show('settings') } }, (S.settings.name || 'A')[0].toUpperCase()),
-        h('button', { class: 'fab', on: { click: () => { Chat.newChat(); show('chat'); Chat.renderThread(); } } }, icon('plus'), 'New chat')));
+    d.append(top, nav, h('div', { class: 'rule pad' }), h('div', { class: 'd-list pad', id: 'd-list' }),
+      h('div', { class: 'd-foot pad' },
+        h('button', { class: 'acct', 'aria-label': 'Settings', on: { click: () => show('settings') } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()),
+          h('span', { class: 'an' }, h('b', {}, S.settings.name || 'Adarsh'), h('small', {}, 'Settings'))),
+        h('button', { class: 'fab', on: { click: () => { Chat.newChat(); show('chat'); Chat.renderThread(); } } }, icon('plus', 's'), 'New chat')));
+    const sc = $('#scrim'); if (sc) sc.onclick = () => drawer(false);
   }
+  const bucket = (ts) => {
+    const t0 = new Date(); t0.setHours(0, 0, 0, 0); const day = 864e5, t = t0.getTime();
+    return ts >= t ? 'Today' : ts >= t - day ? 'Yesterday' : ts >= t - 7 * day ? 'Previous 7 days' : 'Earlier';
+  };
   function drawerList() {
     const list = $('#d-list'); if (!list) return; list.textContent = '';
     $$('#drawer [data-nav]').forEach(b => b.setAttribute('aria-current', String(b.dataset.nav === view)));
     const openT = S.tasks.filter(t => !t.done).length, liveM = S.missions.filter(m => m.status === 'running').length;
     const bt = $('#bg-tasks'), bm = $('#bg-ms'); if (bt) bt.textContent = openT || ''; if (bm) bm.textContent = liveM || '';
-    const cs = S.chats.filter(c => c.msgs.length && (!q || c.title.toLowerCase().includes(q.toLowerCase())));
-    if (!cs.length) list.append(h('div', { class: 'd-empty' }, q ? 'No chats match.' : 'No chats yet.'));
-    cs.forEach(c => list.append(h('div', { class: 'rc', role: 'button', tabindex: '0', 'aria-current': String(c.id === S.cur && view === 'chat'), on: { click: () => Chat.open(c.id), keydown: (e) => { if (e.key === 'Enter') Chat.open(c.id); } } },
-      icon('chat'), h('span', {}, c.title), h('button', { class: 'del', 'aria-label': 'Delete chat', on: { click: (e) => { e.stopPropagation(); Chat.remove(c.id); } } }, icon('trash', 's')))));
+    const cs = S.chats.filter(c => c.msgs.length && (!q || c.title.toLowerCase().includes(q.toLowerCase()))).sort((x, y) => (y.ts || 0) - (x.ts || 0));
+    if (!cs.length) { list.append(h('div', { class: 'd-empty' }, q ? 'No chats match.' : 'No chats yet. Start one with New chat.')); return; }
+    let lastGroup = '';
+    cs.forEach(c => {
+      const g = bucket(c.ts || 0);
+      if (g !== lastGroup) { list.append(h('div', { class: 'd-group' }, g)); lastGroup = g; }
+      list.append(h('div', { class: 'rc', role: 'button', tabindex: '0', 'aria-current': String(c.id === S.cur && view === 'chat'), on: { click: () => Chat.open(c.id), keydown: (e) => { if (e.key === 'Enter') Chat.open(c.id); } } },
+        h('span', {}, c.title), h('button', { class: 'del', 'aria-label': 'Delete chat', on: { click: (e) => { e.stopPropagation(); Chat.remove(c.id); } } }, icon('trash', 's'))));
+    });
   }
   /* run something in chat from anywhere */
   const ask = (text) => { show('chat'); Chat.submit(text); };
@@ -152,28 +164,30 @@ const App = (() => {
     icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), h('span', { class: 'sw' }));
   const navItem = (ic, title, sub, fn) => h('button', { class: 'item', on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
   BUILD.settings = (st, redraw) => {
+    const label = (t) => h('div', { class: 'glabel' }, t);
     st.append(h('button', { class: 'prof', on: { click: nameSheet } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()), h('span', { class: 't' }, h('b', {}, S.settings.name || 'Adarsh'), h('small', {}, 'Personal · private to this device')), icon('chev', 'chev')));
     const seg = (opts, get, set) => h('div', { class: 'seg' }, opts.map(([v, l]) => h('button', { 'aria-pressed': String(get() === v), on: { click: () => { set(v); save(); redraw(); } } }, l)));
-    st.append(h('div', { class: 'd-label', style: 'padding:0 4px' }, 'Color mode'),
+    st.append(label('Appearance'),
       h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
-      h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Chat font'), seg([['sans', 'Default'], ['serif', 'Serif']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
-    st.append(h('div', { class: 'grp' },
+      h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Reply font'), seg([['serif', 'Serif'], ['sans', 'Sans']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
+    st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet),
+      navItem('mic', 'Voice & language', (S.settings.speak ? 'Speaks replies' : 'Silent replies') + ' · ' + S.settings.lang, voiceSheet)));
+    st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply or reminder arrives', () => S.settings.notif, async (v) => { S.settings.notif = v; if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} } }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; })));
-    st.append(h('div', { class: 'grp' },
+    st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
       navItem('server', 'Connection', Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
-    st.append(h('div', { class: 'grp' },
+    st.append(label('Data'), h('div', { class: 'grp' },
       navItem('download', 'Export data', 'Chats, memory, tasks as JSON', exportSheet),
       navItem('upload', 'Import data', 'Restore from an export', () => $('#f-import').click()),
       navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Clear all chats?', text: 'This removes every chat on this device. Memory and tasks stay.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
-    st.append(h('div', { class: 'center muted' }, 'ADARSH UI v3 · frontend only'));
+    st.append(h('div', { class: 'center muted' }, 'ADARSH UI v4 · frontend only'));
   };
   function nameSheet() {
     sheet({ title: 'Your name', build(b, close) {

@@ -28,7 +28,16 @@ const IC = {
   thumbdn: 'M7 13V4H4v9zM7 13l4 8c2 0 3-1 3-3l-.5-3H19a2 2 0 0 0 2-2.3l-1-6A2 2 0 0 0 18 5H7',
   user: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21a8 8 0 0 1 16 0', server: 'M4 5h16v6H4zM4 13h16v6H4zM8 8h.01M8 16h.01',
   download: 'M12 4v11M7 11l5 5 5-5M5 20h14', upload: 'M12 16V5M7 9l5-5 5 5M5 20h14', target: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
-  search2: 'M3 12h4l3-8 4 16 3-8h4'
+  search2: 'M3 12h4l3-8 4 16 3-8h4',
+  /* mode icons + chat chrome */
+  sparkle: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM18.5 16l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z',
+  vee: 'M5 6l7 13 7-13',
+  atom: 'M12 10.5a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3M3 12A9 3.5 0 1 0 21 12A9 3.5 0 1 0 3 12M7.5 4.2A9 3.5 60 1 0 16.5 19.8A9 3.5 60 1 0 7.5 4.2M16.5 4.2A9 3.5 120 1 0 7.5 19.8A9 3.5 120 1 0 16.5 4.2',
+  sigma: 'M18 5H7l6 7-6 7h11',
+  trend: 'M4 19V5M4 19h16M8 15l4-4 3 3 5-6',
+  code: 'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',
+  caret: 'M6 9l6 6 6-6',
+  arrowdown: 'M12 5v14M6 13l6 6 6-6'
 };
 function icon(n, cls = '') {
   const s = document.createElementNS(SVGNS, 'svg');
@@ -70,7 +79,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], missions: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'sans', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30 },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, lang: 'hi-IN', rate: 1, haptics: true, notif: false, lockOnHide: true, lockAfter: 30 },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -78,7 +87,9 @@ function load() {
   try {
     const raw = localStorage.getItem(KEY); if (!raw) return;
     const d = JSON.parse(raw); const base = DEFAULTS();
-    Object.assign(S, base, d, { settings: { ...base.settings, ...(d.settings || {}) }, conn: { ...base.conn, ...(d.conn || {}) } });
+    const ds = d.settings || {};
+    /* v4 redesign: replies are serif by default. Data saved by an older build has no `ui4`, so its old default 'sans' is moved to 'serif' once. */
+    Object.assign(S, base, d, { settings: { ...base.settings, ...ds, ...(ds.ui4 ? {} : { font: 'serif' }), ui4: 1 }, conn: { ...base.conn, ...(d.conn || {}) } });
   } catch (e) { console.warn('load failed', e); }
 }
 let _st = 0;
@@ -136,12 +147,18 @@ function confirmSheet({ title, text, label = 'Confirm', danger = false, top = fa
 
 /* ---------- markdown-lite (safe: builds nodes, never innerHTML) ---------- */
 function inline(text) {
-  const out = []; const re = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
+  const out = [];
+  /* alternation order matters: code, then maths ($$x$$, \(x\), $x$), then bold, italic, links.
+     `$x$` follows the usual rule so prices stay prices: no space after the opening $, none before the closing $, and the closing $ is not followed by a digit. */
+  const re = /(`[^`]+`|\$\$[^$\n]+\$\$|\\\([^\n]*?\\\)|\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\d)|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
   let last = 0, m;
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(text.slice(last, m.index));
     const t = m[0];
     if (t[0] === '`') out.push(h('code', {}, t.slice(1, -1)));
+    else if (t.startsWith('$$')) out.push(Tex.span(t.slice(2, -2)));
+    else if (t.startsWith('\\(')) out.push(Tex.span(t.slice(2, -2)));
+    else if (t[0] === '$') out.push(Tex.span(t.slice(1, -1)));
     else if (t.startsWith('**')) out.push(h('strong', {}, t.slice(2, -2)));
     else if (t[0] === '*') out.push(h('em', {}, t.slice(1, -1)));
     else { const mm = /\[([^\]]+)\]\((.+)\)/.exec(t); out.push(h('a', { href: mm[2], target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1])); }
@@ -150,31 +167,76 @@ function inline(text) {
   if (last < text.length) out.push(text.slice(last));
   return out;
 }
+
+/* fenced code: language label + copy button */
+function codeBlock(lang, code) {
+  const btn = h('button', { class: 'cb-copy', 'aria-label': 'Copy code', on: { click: async () => {
+    try { await navigator.clipboard.writeText(code); btn.lastChild.textContent = 'Copied'; setTimeout(() => { btn.lastChild.textContent = 'Copy'; }, 1600); }
+    catch (e) { toast('Copy not available here'); }
+  } } }, icon('copy', 's'), h('span', {}, 'Copy'));
+  return h('div', { class: 'codeblock' }, h('div', { class: 'cb-head' }, h('span', { class: 'cb-lang' }, lang || 'code'), btn), h('pre', {}, h('code', {}, code)));
+}
+
+const TBL_ROW = /^\s*\|.*\|\s*$/;
+const TBL_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+const tblCells = (s) => s.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+const BLOCK_START = /^(```|#{1,4}\s|\s*([-*•]|\d+[.)])\s+|\s*>|\s*\$\$|\s*\\\[|\s*(-{3,}|\*{3,}|_{3,})\s*$)/;
+
 function md(src) {
   const root = h('div', { class: 'prose' }); const lines = String(src || '').replace(/\r/g, '').split('\n');
+  const tableAt = (k) => TBL_ROW.test(lines[k] || '') && TBL_SEP.test(lines[k + 1] || '');
   let i = 0;
   while (i < lines.length) {
     const ln = lines[i];
-    if (/^```/.test(ln)) {
+    const fence = /^```(\S*)/.exec(ln);
+    if (fence) {
       const buf = []; i++;
       while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]);
-      i++; root.appendChild(h('pre', {}, h('code', {}, buf.join('\n')))); continue;
+      i++; root.appendChild(codeBlock(fence[1], buf.join('\n'))); continue;
     }
-    if (/^#{1,4}\s/.test(ln)) { root.appendChild(h('h4', {}, inline(ln.replace(/^#+\s*/, '')))); i++; continue; }
+    const dm = /^\s*(\$\$|\\\[)/.exec(ln);                 /* display maths: $$ … $$ or \[ … \] */
+    if (dm) {
+      const close = dm[1] === '$$' ? '$$' : '\\]', rest = ln.slice(dm[0].length), k = rest.indexOf(close);
+      if (k >= 0 && !rest.slice(k + close.length).trim()) { root.appendChild(Tex.block(rest.slice(0, k))); i++; continue; }
+      if (k < 0) {
+        const buf = [rest]; i++;
+        while (i < lines.length && lines[i].indexOf(close) < 0) buf.push(lines[i++]);
+        if (i < lines.length) { buf.push(lines[i].slice(0, lines[i].indexOf(close))); i++; }
+        root.appendChild(Tex.block(buf.join('\n'))); continue;
+      }
+    }
+    const hm = /^(#{1,4})\s+(.*)$/.exec(ln);
+    if (hm) { root.appendChild(h(hm[1].length <= 2 ? 'h3' : 'h4', {}, inline(hm[2]))); i++; continue; }
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) { root.appendChild(h('hr')); i++; continue; }
+    if (/^\s*>/.test(ln)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+      const q = h('blockquote'); [...md(buf.join('\n')).childNodes].forEach(n => q.appendChild(n)); root.appendChild(q); continue;
+    }
+    if (tableAt(i)) {
+      const head = tblCells(ln), al = tblCells(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : 'left')); i += 2;
+      const rows = []; while (i < lines.length && TBL_ROW.test(lines[i])) rows.push(tblCells(lines[i++]));
+      const cell = (tag, c, k) => h(tag, { style: al[k] && al[k] !== 'left' ? 'text-align:' + al[k] : null }, inline(c || ''));
+      root.appendChild(h('div', { class: 'mdtable' }, h('table', { class: 'md' },
+        h('thead', {}, h('tr', {}, head.map((c, k) => cell('th', c, k)))), h('tbody', {}, rows.map(r => h('tr', {}, head.map((_, k) => cell('td', r[k], k))))))));
+      continue;
+    }
     if (/^\s*([-*•]|\d+[.)])\s+/.test(ln)) {
       const ord = /^\s*\d+[.)]/.test(ln); const list = h(ord ? 'ol' : 'ul');
       while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) { list.appendChild(h('li', {}, inline(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, '')))); i++; }
       root.appendChild(list); continue;
     }
     if (!ln.trim()) { i++; continue; }
-    const buf = [];
-    while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s|\s*([-*•]|\d+[.)])\s+)/.test(lines[i])) buf.push(lines[i++]);
+    const buf = [lines[i++]];                              /* first line is always taken, so the loop can never stall */
+    while (i < lines.length && lines[i].trim() && !BLOCK_START.test(lines[i]) && !tableAt(i)) buf.push(lines[i++]);
     const p = h('p'); buf.forEach((b, k) => { if (k) p.appendChild(document.createElement('br')); inline(b).forEach(n => p.append(n)); });
     root.appendChild(p);
   }
   return root;
 }
-const stripMd = (s) => String(s || '').replace(/```[\s\S]*?```/g, ' ').replace(/[*_`#>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
+const stripMd = (s) => String(s || '')
+  .replace(/```[\s\S]*?```/g, ' ').replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\d)/g, ' formula ')
+  .replace(/[*_`#>|]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\s+/g, ' ').trim();
 
 /* ---------- time ---------- */
 function fmtDue(ts) {

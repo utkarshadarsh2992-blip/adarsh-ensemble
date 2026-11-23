@@ -2,7 +2,7 @@
 /* 03-chat.js : chat screen, composer, send pipeline, side-effects of structured replies */
 
 const Chat = (() => {
-  let thread, col, ta, sendBtn, voiceBtn, micBtn, atts, titleEl, statusEl;
+  let thread, col, ta, sendBtn, voiceBtn, micBtn, atts, titleEl, statusEl, hdrEl, modeBtn, jump;
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
 
@@ -25,26 +25,46 @@ const Chat = (() => {
   function mount(root) {
     titleEl = h('h1', { class: 'wm' }, 'ADARSH');
     statusEl = h('span', { class: 'status' }, h('i'), h('span', {}, ''));
-    thread = h('div', { class: 'scroll thread pad' }, col = h('div', { class: 'col' }));
-    ta = h('textarea', { rows: 1, placeholder: 'Message Adarsh', 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
+    hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
+      ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); }));
+    thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
+    ta = h('textarea', { rows: 1, placeholder: Modes.current().placeholder, 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
     drawAtts();
     micBtn = h('button', { class: 'circ mic', 'aria-label': 'Dictate', on: { click: dictate } }, icon('mic'));
     sendBtn = h('button', { class: 'circ send', 'aria-label': 'Send', hidden: true, on: { click: () => (busy ? stop() : submit()) } }, icon('send'));
     voiceBtn = h('button', { class: 'circ voicebtn', 'aria-label': 'Voice mode', on: { click: () => Voice.open() } }, icon('voice'));
     const plus = h('button', { class: 'circ plus', 'aria-label': 'Add', on: { click: addSheet } }, icon('plus'));
-    root.append(
-      h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { style: 'text-align:center;min-width:0' }, titleEl, h('div', {}, statusEl)),
-        ibtn('plus', 'New chat', () => { newChat(); renderThread(); ta.focus(); })),
-      thread,
-      h('div', { class: 'dock pad' }, h('div', { class: 'box' }, atts, ta, h('div', { class: 'row' }, plus, h('span', { class: 'sp' }), micBtn, sendBtn, voiceBtn)),
+    modeBtn = h('button', { class: 'modebtn', 'aria-haspopup': 'menu', 'aria-expanded': 'false', on: { click: () => Modes.open(modeBtn) } });
+    drawMode();
+    jump = h('button', { class: 'jump', 'aria-label': 'Scroll to latest', on: { click: () => thread.scrollTo({ top: thread.scrollHeight, behavior: 'smooth' }) } }, icon('arrowdown', 's'));
+    root.append(hdrEl, thread,
+      h('div', { class: 'dock pad' }, jump,
+        h('div', { class: 'box' }, atts, ta, h('div', { class: 'row' }, plus, h('span', { class: 'sp' }), modeBtn, micBtn, sendBtn, voiceBtn)),
         h('p', { class: 'fine' }, 'Adarsh can make mistakes. Check important info.')));
     Bus.on('ask:answer', onAsk); Bus.on('approve:decide', onApprove);
     Bus.on('memory:undo', ({ msg }) => { const r = msg.reply; S.memories = S.memories.filter(m => m.id !== r.memId); r.gone = true; save(); });
     Bus.on('task:undo', ({ msg }) => { const r = msg.reply; S.tasks = S.tasks.filter(t => t.id !== r.taskId); r.gone = true; save(); });
     Bus.on('mission:action', onMission);
     Bus.on('backend:status', setStatus);
+    Bus.on('mode:changed', onMode);
     renderThread();
+  }
+  function drawMode() {
+    const m = Modes.current();
+    modeBtn.replaceChildren(icon(m.ic, 's'), h('span', { class: 'mn' }, m.name), icon('caret', 's'));
+    modeBtn.setAttribute('aria-label', 'Mode: ' + m.name + '. Change mode');
+    modeBtn.classList.toggle('on', m.id !== 'standard');
+    if (ta) ta.placeholder = m.placeholder;
+  }
+  function onMode() { drawMode(); const c = cur(); if (!c || !c.msgs.length) renderThread(); }
+  function onScroll() {
+    const away = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
+    jump.classList.toggle('show', away > 220); hdrEl.classList.toggle('scrolled', thread.scrollTop > 6);
+  }
+  function useStarter(st) {
+    ta.value = st.p; onInput();
+    if (st.send) submit(); else { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
   }
   function setStatus(s) {
     statusEl.className = 'status' + (s.demo ? ' demo' : ''); statusEl.lastChild.textContent = s.label;
@@ -54,12 +74,15 @@ const Chat = (() => {
   /* ---------- thread ---------- */
   function renderThread() {
     const c = cur(); col.textContent = '';
-    if (!c || !c.msgs.length) {
+    const has = !!(c && c.msgs.length);
+    titleEl.className = has ? '' : 'wm'; titleEl.textContent = has ? (c.title || 'New chat') : 'ADARSH';
+    if (!has) {
+      const m = Modes.current();
       col.className = 'col empty';
       col.append(h('div', { class: 'hello' }, h('div', { class: 'mark' }, 'A'), h('h2', {}, greeting() + ', ' + (S.settings.name || 'Adarsh')),
-        h('p', {}, 'What are we working on?'),
-        h('div', { class: 'chips', style: 'justify-content:center;margin-top:8px' },
-          ['Brief me on today', 'Research something', 'Add a task'].map(t => h('button', { class: 'chipbtn', on: { click: () => { ta.value = t === 'Research something' ? 'Research ' : t === 'Add a task' ? 'Remind me to ' : t; onInput(); if (t === 'Brief me on today') submit(); else ta.focus(); } } }, t)))));
+        m.hello ? h('p', {}, m.hello) : h('div', { class: 'modetag' }, icon(m.ic, 's'), m.name + ' mode'),
+        m.hello ? null : h('p', {}, m.desc),
+        h('div', { class: 'starters' }, m.starters.map(st => h('button', { class: 'starter', on: { click: () => useStarter(st) } }, icon(st.ic || m.ic, 's'), h('span', {}, st.t))))));
     } else {
       col.className = 'col';
       c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
@@ -99,7 +122,9 @@ const Chat = (() => {
     a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { try { await navigator.clipboard.writeText(m.reply.text || speechOf(m.reply)); toast('Copied'); } catch (e) { toast('Copy not available here'); } } } }, icon('copy', 's')));
     if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => TTS.speak(txt()) } }, icon('speaker', 's')));
     ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
-    if (isLast) a.append(h('button', { 'aria-label': 'Retry', on: { click: retry } }, icon('refresh', 's'), 'Retry'));
+    if (isLast) a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
+    const used = m.reply && m.reply.uiMode && m.reply.uiMode !== 'standard' ? Modes.get(m.reply.uiMode) : null;
+    if (used) a.append(h('span', { class: 'meta', title: 'Answered in ' + used.name + ' mode' }, icon(used.ic, 's'), used.name));
     return a;
   }
 
@@ -212,15 +237,16 @@ const Chat = (() => {
   }
   async function runBackend(c, { text, attachments = [], meta, source = 'auto', answers = [] }) {
     lastExtra = { source, answers };
+    const modeId = Modes.current().id;   // retry uses whatever mode is selected now
     busy = true; ctl = new AbortController(); const t0 = Date.now();
     const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
-      const res = await Backend.send({ chatId: c.id, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: histText().slice(0, -1), meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal' } },
         { signal: ctl.signal, onProgress: (s) => lv.push(s) });
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
-      arr.forEach((r, i) => { if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
+      arr.forEach((r, i) => { if (i === 0) { r.uiMode = modeId; r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length) r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; } deliver(c, r); });
     } catch (e) {
       if (ctl.signal.aborted) toast('Stopped');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }

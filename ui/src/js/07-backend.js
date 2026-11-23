@@ -16,6 +16,24 @@ const DemoBackend = (() => {
     if (m) { let hr = +m[1] % 12; if (/pm/i.test(m[3])) hr += 12; d.setHours(hr, +(m[2] || 0), 0, 0); hit = true; } else d.setHours(9, 0, 0, 0);
     return hit ? d.getTime() : null;
   }
+
+  /* DEMO ONLY: one sample answer per mode so the layout of maths, tables and code can be previewed without a server. */
+  const MODE_DEMO = {
+    v: ['**Short answer** *(demo reply)*', '', 'The claim holds in the usual case, with one limit.', '', '**What was checked**', '',
+      '- The definition and the exact figure were compared against two independent derivations.', '- One edge case changes the result, so the answer is conditional.', '',
+      '> In V mode your backend decides how answers are double-checked.'].join('\n'),
+    physics: ['**Escape velocity of Earth** *(demo reply)*', '', 'Set the kinetic energy at the surface equal to the work needed to reach infinity:', '',
+      '$$\\frac{1}{2} m v_e^2 = \\frac{G M m}{R}$$', '', 'so', '', '$$v_e = \\sqrt{\\frac{2GM}{R}} \\approx 11.2\\ \\text{km/s}$$', '',
+      '**Sanity check.** $GM/R$ has units $\\text{m}^2\\text{s}^{-2}$, so $v_e$ comes out in m/s. ✓', '',
+      '| Quantity | Value |', '|---|---|', '| $G$ | $6.67\\times10^{-11}\\ \\text{N m}^2\\text{kg}^{-2}$ |', '| $M$ | $5.97\\times10^{24}\\ \\text{kg}$ |', '| $R$ | $6.37\\times10^{6}\\ \\text{m}$ |'].join('\n'),
+    math: ['**Solve** $x^2 - 5x + 6 = 0$ *(demo reply)*', '', '1. Find two numbers with product $6$ and sum $-5$: they are $-2$ and $-3$.', '2. Write $(x-2)(x-3)=0$.',
+      '3. A product is zero when a factor is zero, so $x = 2$ or $x = 3$.', '', 'Check with the quadratic formula:', '',
+      '$$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a} = \\frac{5 \\pm 1}{2}$$'].join('\n'),
+    business: ['**Pricing comparison** *(demo reply)*', '', '| Plan | Price | Margin | Best for |', '|---|---:|---:|---|', '| Basic | $9 | 62% | Individuals |', '| Pro | $29 | 71% | Small teams |', '| Scale | $99 | 78% | Larger accounts |', '',
+      '**Read-out.** Margin rises with price, but only Pro has both a healthy margin and a low barrier to buy.', '', '- Test Pro at $24 and $34 before changing the list price.', '- Watch churn on Scale for two quarters.'].join('\n'),
+    coding: ['**Debounce a function** *(demo reply)*', '', '```js', 'function debounce(fn, wait = 300) {', '  let timer;', '  return (...args) => {', '    clearTimeout(timer);', '    timer = setTimeout(() => fn(...args), wait);', '  };', '}', '```', '',
+      'Call it from an input handler, for example `input.oninput = debounce(search, 250)`.', '', '**Edge case.** Each call resets the timer, so a user who keeps typing never triggers `search` until they pause.'].join('\n')
+  };
   async function steps(list, o) { for (const s of list) { o.onProgress(s); await wait(420, o.signal); } }
 
   async function send(req, o) {
@@ -86,6 +104,7 @@ const DemoBackend = (() => {
           { text: 'It works for everyone.', verdict: 'UNSUPPORTED_NO_VALID_EVIDENCE', checks: [] }],
         sources: [{ n: 1, title: 'Example journal article', url: 'https://example.org/a' }, { n: 2, title: 'Example review', url: 'https://example.org/b' }, { n: 3, title: 'Example trial', url: 'https://example.org/c' }], caveat: 'Demo data: nothing here was actually searched.' };
     }
+    if (MODE_DEMO[req.mode]) { await steps(['Reading the question', 'Working it out'], o); return { type: 'text', text: MODE_DEMO[req.mode] }; }
     await steps(['Thinking'], o);
     return { type: 'text', text: 'You said: “' + t + '”.\n\nThis is the **demo backend**, so I can only show how replies look. Try: *research…*, *debate…*, *remind me to… tomorrow 5pm*, *remember that…*, *plan my day*, *start a mission…*, *delete…* (permission card).' };
   }
@@ -103,7 +122,7 @@ const HttpBackend = {
   async send(req, o) {
     const headers = { 'Content-Type': 'application/json' }; if (S.conn.token) headers.Authorization = 'Bearer ' + S.conn.token;
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang }) });
+    const r = await fetch(connUrl(), { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
