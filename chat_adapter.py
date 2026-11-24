@@ -15,6 +15,7 @@ import httpx
 
 import config
 import health
+import learning
 import lessons
 import pipeline
 import app_context
@@ -97,7 +98,7 @@ def _bound_request(body: dict) -> dict:
     meta = _bound_meta(body.get("meta") or {})
     try:
         if len(json.dumps(meta, ensure_ascii=False)) > MAX_META_CHARS:
-            meta = {k: meta[k] for k in ("approval", "answer", "deep", "voice") if k in meta}
+            meta = {k: meta[k] for k in ("approval", "answer", "deep", "voice", "deeper") if k in meta}
     except (TypeError, ValueError):
         meta = {}
     bounded["meta"] = meta
@@ -156,8 +157,9 @@ async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "norma
 
 
 QUICK_SYSTEM = (
-    "You are Adarsh, a sharp, confident assistant. Answer the question directly in the first sentence, then add only what helps. "
-    "Be accurate: if you are not sure of a fact, say so briefly instead of guessing. No filler, no 'as an AI', no restating the question. "
+    "You are Adarsh, Utkarsh's personal mentor; address him as 'sir'. Answer the question directly, then build only "
+    "what helps him understand. Accuracy first: never invent facts, numbers, dates, quotes or names; if you are not sure, "
+    "say 'pakka nahi pata' and what to check. No filler, no 'as an AI', no restating the question. "
     "Use short paragraphs; use a list or code block only when it really helps."
 )
 QUICK_DEPTH = {
@@ -165,34 +167,54 @@ QUICK_DEPTH = {
     "normal": "Keep it compact: usually under 150 words.",
     "detailed": "Give a fuller explanation with steps or examples, but stay organised.",
 }
+SIMPLE_WORDS = "Use very short sentences and plain everyday words."
 QUICK_VOICE = (
-    "This will be read aloud. Plain spoken sentences only: no markdown, no lists, no code, no URLs, no emojis. "
-    "2 to 5 short sentences, conversational and confident."
+    "This will be read aloud. Plain spoken sentences only: no markdown, no lists, no code, no URLs, no emojis, no tags "
+    "in brackets. 2 to 5 short sentences, conversational and confident, built from first principles."
 )
 async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool, *,
-                       research: bool = True, deep: bool = False, web: bool = True) -> dict:
+                       research: bool = True, deep: bool = False, web: bool = True,
+                       std: str = "2.9", learn: dict | None = None, deeper: bool = False) -> dict:
     """Standard mode: Groq gpt-oss-120b only. It searches the web (Groq browser_search) and Wikipedia by itself
-    when that helps. Never falls back to another provider; a failure comes back as a clear text reply."""
-    system = QUICK_SYSTEM + " " + QUICK_DEPTH.get(depth, QUICK_DEPTH["normal"]) + " " + pipeline._language_hint(text, reply_lang)
+    when that helps. Never falls back to another provider; a failure comes back as a clear text reply.
+    std "2.9" = short core answer + 'Gehrai mein jao' button; "9.2" = one concept in full depth (learning.py).
+    Not voice: the answer carries a hidden check block (questions + new words), split off here."""
+    learn = learn or {"checks": True, "block": True, "known": []}
+    if voice:
+        system = QUICK_SYSTEM + " " + QUICK_DEPTH.get(depth, QUICK_DEPTH["normal"])
+    else:
+        system = QUICK_SYSTEM + " " + learning.MENTOR_STYLE + " " + learning.STD_STYLES[std]
+        if depth == "simple":
+            system += " " + SIMPLE_WORDS
+        if deeper:
+            system += " " + learning.DEEPER_NOTE
+    system += " " + pipeline._language_hint(text, reply_lang)
+    if learn.get("known"):
+        system += " " + learning.known_note(learn["known"])
     if research:
         system += " " + standard_agent.research_hint(web)
     if voice:
         system += " " + QUICK_VOICE
+    elif learn.get("block", True):
+        system += "\n" + learning.check_rules(std == "2.9", learn.get("checks", True))
     user = text + (extra or "")
+    long_answer = std == "9.2" and not voice
     trace = health.start_trace(False)
     health.set_stage("standard")
     try:
         out = await standard_agent.answer(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            tools=research, web=web, max_tokens=3000 if (depth == "detailed" or deep) else 1600,
-            effort="medium" if deep else "low", temperature=0.5, budget=90 if deep else 75,
+            tools=research, web=web,
+            max_tokens=3600 if long_answer else (3000 if (depth == "detailed" or deep) else 1800),
+            effort="medium" if (deep or long_answer) else "low", temperature=0.5,
+            budget=100 if long_answer else (90 if deep else 75),
         )
     except standard_agent.StandardError as e:
         return {"type": "text", "text": str(e), "uiMode": "standard", "steps": ["Standard · Groq only"]}
-    text_out = out["text"]
+    text_out, learned = learning.split_checks(out["text"], learn.get("known"))
     if not voice:
         text_out += standard_agent.sources_block(out["sources"])
-    steps = [f"Standard · Groq {out['used']} (sirf Groq)"]
+    steps = [f"Standard {std} · Groq {out['used']} (sirf Groq)"]
     if out["searches"]:
         steps.append(f"Web search x{out['searches']} (Groq built-in)")
     elif research and not web:
@@ -200,13 +222,17 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
     if out["wiki"]:
         steps.append("Wikipedia: " + ", ".join(q for q in out["wiki"] if q)[:160])
     steps.append(f"{out['secs']}s")
-    rep = {"type": "text", "text": text_out, "steps": steps}
+    rep = {"type": "text", "text": text_out, "steps": steps, "std": std}
+    if learned and not voice:
+        if not learn.get("checks", True):
+            learned["checks"] = []
+        rep["learn"] = learned
+    if std == "2.9" and not voice:
+        rep["deeper"] = {"q": text[:600]}
     calls = pipeline._compact_calls(trace)
     if calls:
         rep["calls"] = calls
     return rep
-
-
 def _audit_line(issue: dict, kind: str) -> str:
     quote = " ".join(str(issue.get("quote") or "").split())
     fix = " ".join(str(issue.get("fix") or "").split())
@@ -325,12 +351,14 @@ async def handle(body: dict) -> dict | list[dict]:
     private_context = private_context or "[Permitted relevant app records;" in extra
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
     extra = extra[:6000]
+    learn = learning.options(body)
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra
         q_text, q_extra, cut_note = _fit(text, extra)
         quick = await _quick_reply(q_text, q_extra, reply_lang, depth, bool(meta.get("voice")),
-                                   research=not has_records, deep=bool(meta.get("deep")), web=web_search)
+                                   research=not has_records, deep=bool(meta.get("deep")), web=web_search,
+                                   std=learning.std_style(body), learn=learn, deeper=bool(body.get("deeper")))
         if cut_note:
             quick["text"] += "\n\n" + cut_note
         if body.get("attachments"):
@@ -366,6 +394,7 @@ async def handle(body: dict) -> dict | list[dict]:
         mode=str(body.get("mode") or "standard"),
         web_research=not private_context,
         topics=topics,
+        learner_note=learning.known_note(learn["known"]),
     )
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
     if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:
@@ -439,6 +468,12 @@ async def handle(body: dict) -> dict | list[dict]:
     parts = res.get("parts") or []
     if len(parts) > 1:
         return _split_parts(replies[0], res, parts)
+    if learn["checks"] and not master and (res.get("answer") or "").strip():
+        # check questions + new words for this answer: one small Groq call, checked on the phone (learning.py)
+        learned = await learning.post_checks(text[:1500], res["answer"], learn["known"],
+                                             pipeline._language_hint(text, reply_lang))
+        if learned:
+            replies[0]["learn"] = learned
     return replies
 
 

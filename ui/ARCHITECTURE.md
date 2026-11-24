@@ -125,6 +125,18 @@ Tests: `pnpm install --frozen-lockfile && pnpm test` from `ui/` (pinned dev-only
 ## Reply field: `council` (optional)
 Backend may add `council` to the first text reply (see `council.py` for the shape). The UI then shows a "Thought for Ns" block instead of "Worked through N steps"; tapping it opens the full page (`js/03-council.js`). Live progress lines (`onProgress`) are stored as `thinkLines`. Only the newest 10 replies keep their `council`; it is left out of exports.
 
+## Learning seam (change 1.2: check questions, learned words, Standard 2.9 / 9.2)
+
+Request fields:
+* `learn: { known: ["word", …], checks: true|false }` on every typed request (`Learn.request()` in `js/03-learn.js`). `known` is the newest 150 learned words (max 1500 characters) so the AI never explains them again. `checks: false` means no check questions.
+* `reply.std: "2.9" | "9.2"` is the Standard style. `meta.deeper: true` (sent by the "Gehrai mein jao · 9.2" button) forces 9.2 for that one question and always goes to Standard.
+
+Reply fields (optional, on `text` replies):
+* `learn: { concept, heavy, checks: [mcq {q, options[], answer: index, why} | fill {q, answer, accept[], why}], words: [{w, m}] }`. The model writes it in a hidden block between `<<<ADARSH_CHECK` and `ADARSH_CHECK>>>`; `learning.split_checks()` strips the block and `learning.clean_checks()` forces this strict shape (max 5 questions, max 10 words, known words removed). Council modes get the block from one extra small `gpt-oss-20b` call (`learning.post_checks`, switch `CHECKS_POSTPASS=0` to turn it off).
+* `std: "2.9" | "9.2"` and, for 2.9 only, `deeper: { q }` (the question to ask again in 9.2; the UI marks it `used` after the tap).
+
+The UI checks answers on the phone (0 tokens): MCQ by index, fill-in by normalised text (Devanagari marks kept, numbers within 1 %, short contained phrases). Each answer is stored in `S.learnLog` (`{ts, concept, q, ok, mode}`), and reply words go into `S.vocab` (`{id, w, m, src, ts}`) as soon as the reply arrives. Both are exported and capped on import (vocab 5000, learnLog 3000). Settings > "Seekhna (learning)" has Standard style, Check questions and Seekhe shabd. Changing the style emits `std:changed`, not `mode:changed`, so background voice keeps running; background voice does not use `std`.
+
 
 ## Android update and outside-app voice seam
 

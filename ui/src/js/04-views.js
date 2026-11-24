@@ -159,9 +159,8 @@ const App = (() => {
     st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
-      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
-      navItem('book', 'Lessons', '', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
+    topics: list[dict] | None = None,  # sub-topic map of a big message (bigtask.py); roles engine answers each
+    learner_note: str = "",  # learned words the app sent (learning.known_note): never defined again
     st.append(label('Android'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
@@ -302,7 +301,7 @@ const App = (() => {
   }
   function replySummary() {
     const L = { auto: 'Auto language', hinglish: 'Hinglish', english: 'English', hindi: 'Hindi' }, D = { simple: 'Simple', normal: 'Normal', detailed: 'Detailed' };
-    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep council' : 'Fast council');
+    return Learn.styleName() + ' · ' + (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep council' : 'Fast council');
   }
   function replySheet() {
     sheet({ title: 'Reply style', build(b) {
@@ -310,12 +309,15 @@ const App = (() => {
         const seg = h('div', { class: 'seg' });
         opts.forEach(([v, label]) => seg.append(h('button', { 'aria-pressed': String((S.settings[key] || def) === v), on: { click: () => {
           S.settings[key] = v; save();
+          if (key === 'stdStyle') Bus.emit('std:changed', v);   /* composer shows "Standard 2.9 / 9.2" */
           [...seg.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
           seg.children[opts.findIndex(o => o[0] === v)].setAttribute('aria-pressed', 'true');
           if (view === 'settings') build('settings');
         } } }, label)));
         b.append(h('label', { class: 'l' }, title), seg, h('p', { class: 'muted' }, note));
       };
+      group('Standard style', 'stdStyle', '2.9', [['2.9', '2.9 · short first'], ['9.2', '9.2 · deep']],
+        '2.9: pehle chhota jawab, phir "Gehrai mein jao". 9.2: seedha poora gehra jawab, discoverer ke tareeke se. Dono mein ek jawab = ek concept.');
       group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
         'Auto: sawaal ki bhasha mein jawab.');
       group('Council', 'think', 'fast', [['fast', 'Fast'], ['deep', 'Deep']],
@@ -428,7 +430,7 @@ const App = (() => {
   function exportSheet() {
     sheet({ title: 'Export data', tall: true, build(b) {
       Productivity.sync();
-      const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
+      const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, vocab: S.vocab || [], learnLog: S.learnLog || [], settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
       const N = window.AdarshNative;
       window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'File save nahi hui'); };
@@ -443,7 +445,7 @@ const App = (() => {
     const t = e.target;
     if (t.id === 'f-import' && t.files[0]) {
       /* audit M8: bounded size, known version, typed + capped lists before anything replaces local data */
-      const MAX_IMPORT_BYTES = 8 * 1024 * 1024, CAPS = { chats: 500, memories: 2000, missions: 500 };
+      const MAX_IMPORT_BYTES = 8 * 1024 * 1024, CAPS = { chats: 500, memories: 2000, missions: 500, vocab: 5000, learnLog: 3000 };
       if (t.files[0].size > MAX_IMPORT_BYTES) { toast('Backup file bahut badi hai (8 MB max).'); t.value = ''; return; }
       t.files[0].text().then(txt => {
         if (txt.length > MAX_IMPORT_BYTES) return toast('Backup file bahut badi hai (8 MB max).');
@@ -463,10 +465,11 @@ const App = (() => {
         if (lists.chats) lists.chats = lists.chats.filter(c => typeof c.id === 'string' && c.id.length <= 200 && (c.messages === undefined || Array.isArray(c.messages)));
         const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
         const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key].slice(0, 2000) : []).filter(isObj).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
-        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
+        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory, missions and learned words replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
           try {
             const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
             ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(lists[k])) S[k] = lists[k]; });
+            Object.assign(S, Learn.cleanImport(lists));   /* learned words + check history, typed and capped */
             S.cur = S.chats[0] ? S.chats[0].id : null; saveNow(); Chat.renderThread(); drawerList(); toast('Imported');
           } catch (e) { toast('Import fail: ' + e.message); }
         } });
