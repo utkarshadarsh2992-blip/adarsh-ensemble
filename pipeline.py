@@ -29,7 +29,7 @@ import health
 import prompts
 import roles
 import verified
-from llm import LLMError, chat
+from llm import LLMError, chat, make_client
 
 
 def _language_hint(question: str, reply_lang: str = "auto") -> str:
@@ -204,7 +204,7 @@ async def run(
             label = _unique((a.get("source") or "").strip() or f"Answer {i + 1}", user_drafts)
             user_drafts[label] = a["text"].strip()
 
-    async with httpx.AsyncClient() as client:
+    async with make_client() as client:  # TCP keep-alive: see llm.make_client
         config.emit("Sawaal samajh raha hu")
         # [0] guard pasted answers + classify the question, concurrently
         master_mode = source == "manual" and config.MASTER_ENABLED and bool(user_drafts) and engine in ("verified", "roles")

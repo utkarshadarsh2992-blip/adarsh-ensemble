@@ -2,6 +2,7 @@
 
 Contract (llm._try_model / llm._think_retry):
   * the SAME model and key is asked once more with a bigger budget and lighter thinking;
+  * if that key has no tokens/min room left for the bigger request, the model's NEXT key starts with it;
   * if that is empty too, the model's other keys are skipped and the chain moves on, still provider-first;
   * Gemma (no effort setting) only gets the bigger budget; a Groq model never goes past its tokens/min limit.
 Also: the retired gemini-2.5-flash-lite is no longer in any chain. No test here reaches the network.
@@ -104,14 +105,29 @@ def test_groq_medium_effort_drops_to_low_and_stays_inside_tokens_per_minute():
     assert second["max_tokens"] == 1800 + 2048 <= room  # bigger, but never past Groq's 8K tokens/min
 
 
-def test_groq_retry_that_does_not_fit_this_minute_moves_to_the_next_model_not_the_next_key():
-    # 6000 tokens already reserved in Groq's 8K/min window: a bigger retry cannot run now. Keys 2/3 at the same
-    # 6000 budget would think themselves out too, so the chain goes on (here: Gemini, the next provider in the chain).
+def test_groq_retry_that_does_not_fit_this_minute_goes_to_key_2_with_the_bigger_lighter_request():
+    # 6000 tokens already reserved in key 1's 8K/min window: the bigger retry cannot run on key 1 now. Key 2 has its
+    # own window, so it starts with the bigger, lighter request (not the old 6000 / medium one, which would think
+    # itself out the same way). Key 2 empty too -> the model is done, key 3 is not burnt, the chain goes on.
     spec = config.use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "nemotron-ultra"])
     c = FakeClient({("openai/gpt-oss-120b", k("groq", s)): [EMPTY, EMPTY] for s in (1, 2, 3)})
     assert run(llm.chat(c, spec, Q, max_tokens=6000, retries=0)) == "ok"
     assert [(x["model"], x["key"]) for x in c.calls] == [("openai/gpt-oss-120b", k("groq", 1)),
+                                                         ("openai/gpt-oss-120b", k("groq", 2)),
                                                          ("gemini-3.5-flash-lite", k("gemini", 1))]
+    first, second = c.calls[0]["payload"], c.calls[1]["payload"]
+    room = int(config.tpm_limit(config.REGISTRY["gpt-oss-120b"]) * 0.9) - llm._est_tokens(Q)
+    assert first["max_tokens"] == 6000 and first["reasoning_effort"] == "medium"
+    assert second["max_tokens"] == room and second["reasoning_effort"] == "low"
+
+
+def test_groq_key_2_answers_after_key_1_had_no_room_for_the_bigger_retry():
+    spec = config.use("gpt-oss-20b", "judge", ["gemini-3.5-flash-lite", "nemotron-ultra"])
+    c = FakeClient({("openai/gpt-oss-20b", k("groq", 1)): [EMPTY], ("openai/gpt-oss-20b", k("groq", 2)): [answer("claims")]})
+    assert run(llm.chat(c, spec, Q, max_tokens=6000, retries=0)) == "claims"
+    assert [(x["model"], x["key"]) for x in c.calls] == [("openai/gpt-oss-20b", k("groq", 1)),
+                                                         ("openai/gpt-oss-20b", k("groq", 2))]
+    assert c.calls[1]["payload"]["reasoning_effort"] == "low" and c.calls[1]["payload"]["max_tokens"] > 6000
 
 
 def test_gemma_on_gemini_only_gets_the_bigger_budget_no_effort_param():

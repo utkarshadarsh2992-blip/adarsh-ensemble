@@ -423,8 +423,19 @@ FALSIFIER_MAX_TOKENS = int(os.getenv("FALSIFIER_MAX_TOKENS", "2500"))
 FINAL_MAX_TOKENS = int(os.getenv("FINAL_MAX_TOKENS", "6000"))
 # A thinking model can spend the whole max_tokens on thinking and return an empty answer (finish_reason "length").
 # llm.py then asks the SAME model and key once more with a bigger budget (2x, at least +2048, at most this, and inside
-# the model's tokens/min limit) and lighter thinking, before the chain moves on. 0 turns the retry off.
+# the model's tokens/min limit) and lighter thinking, before the chain moves on. If that key has no tokens/min room
+# left this minute, the bigger request goes to the model's next key (each key has its own window). 0 turns it off.
 THINK_RETRY_MAX_TOKENS = int(os.getenv("THINK_RETRY_MAX_TOKENS", "8192"))
+# Slow providers (queued free models, big NVIDIA models) send nothing on a plain request until the whole answer is
+# ready. Some phone networks drop such a silent connection: "network error: ReadError". These providers are asked
+# with stream=true instead, so tokens / keep-alive comments keep the connection busy; the answer is assembled in
+# llm.py and the rest of the app sees the same text. Comma list of provider names; "" = never stream.
+STREAM_PROVIDERS = frozenset(
+    p.strip() for p in os.getenv("LLM_STREAM_PROVIDERS", "openrouter,nvidia").split(",") if p.strip()
+)
+# TCP keep-alive probes after this many silent seconds on every model connection (llm.make_client): keeps the
+# phone's / carrier's NAT entry alive while a model is still queued or thinking. 0 = off.
+TCP_KEEPALIVE_S = int(os.getenv("TCP_KEEPALIVE_S", "15"))
 APP_API_KEY = os.getenv("APP_API_KEY", "")  # if set, clients must send X-API-Key or Authorization: Bearer <key>
 
 # ADARSH UI chat endpoint (/api/chat): how each chat message is answered

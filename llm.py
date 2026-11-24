@@ -13,9 +13,15 @@ Several API keys per provider (config.KEY_SLOTS): each model of the chain is tri
 Thinking models: when the whole max_tokens went into thinking (empty answer, finish_reason "length"), the SAME model
 and key is asked once more with a bigger budget and lighter thinking (see _think_retry). If that is empty too, the
 model's other keys are skipped (a token budget is not a key problem) and the chain moves to the next model.
+If the key has no tokens/min room for the bigger request, the model's next key starts with it (_Skip.boost).
+Network: slow providers (config.STREAM_PROVIDERS) are asked with stream=true so the connection never sits silent while
+the model is queued or thinking (some phone networks drop silent connections: httpx ReadError); _post_stream turns the
+events back into one normal response. make_client() adds TCP keep-alive probes for the same reason.
 """
 import asyncio
+import json
 import re
+import socket
 import time
 
 import httpx
@@ -40,12 +46,16 @@ class _Skip(Exception):
     retry=False: waiting will not fix it (empty answer, bad request, too big, daily quota...), so this call
                  does not come back to it in the second round.
     retry_in:    seconds after which it may work again (rate limit); lets chat() decide to wait for it.
-    whole_model: the failure belongs to the MODEL, not to this key (its other keys would fail the same way)."""
-    def __init__(self, reason: str, retry: bool = True, retry_in: float | None = None, whole_model: bool = False):
+    whole_model: the failure belongs to the MODEL, not to this key (its other keys would fail the same way).
+    boost:       (max_tokens, extra) for the model's NEXT key: this key ran out of tokens while thinking and had no
+                 tokens/min room left for the bigger, lighter retry; the next key has its own window."""
+    def __init__(self, reason: str, retry: bool = True, retry_in: float | None = None, whole_model: bool = False,
+                 boost: tuple | None = None):
         super().__init__(reason)
         self.retry = retry
         self.retry_in = retry_in
         self.whole_model = whole_model
+        self.boost = boost
 
 
 def _sem(provider: str) -> asyncio.Semaphore:
@@ -53,6 +63,94 @@ def _sem(provider: str) -> asyncio.Semaphore:
     if key not in _sems:
         _sems[key] = asyncio.Semaphore(_CONCURRENCY.get(provider, 4))
     return _sems[key]
+
+
+def _keepalive_options() -> list[tuple[int, int, int]]:
+    """TCP keep-alive socket options (only those this OS accepts). A probe every few silent seconds keeps the phone's /
+    carrier's NAT entry for the connection alive while a model is still queued or thinking."""
+    idle = config.TCP_KEEPALIVE_S
+    if idle <= 0 or not hasattr(socket, "SO_KEEPALIVE"):
+        return []
+    wanted = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+    for name, value in (("TCP_KEEPIDLE", idle), ("TCP_KEEPINTVL", max(5, idle // 2)), ("TCP_KEEPCNT", 6)):
+        if hasattr(socket, name):
+            wanted.append((socket.IPPROTO_TCP, getattr(socket, name), value))
+    if not hasattr(socket, "TCP_KEEPIDLE") and hasattr(socket, "TCP_KEEPALIVE"):  # macOS name of the idle time
+        wanted.append((socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, idle))
+    ok = []
+    try:  # an option the OS refuses would make EVERY connect fail inside httpx: test each one first
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            for opt in wanted:
+                try:
+                    probe.setsockopt(*opt)
+                    ok.append(opt)
+                except OSError:
+                    pass
+    except OSError:
+        return []
+    return ok
+
+
+def make_client(**kwargs) -> httpx.AsyncClient:
+    """HTTP client for model calls: TCP keep-alive on every connection, and one quick retry when the CONNECT fails
+    (httpx never re-sends a request that already went out). Same defaults as httpx.AsyncClient() otherwise."""
+    transport = httpx.AsyncHTTPTransport(socket_options=_keepalive_options() or None, retries=1)
+    return httpx.AsyncClient(transport=transport, **kwargs)
+
+
+_NOT_COPIED = {"content-encoding", "content-length", "transfer-encoding", "content-type"}
+
+
+async def _post_stream(client, url: str, payload: dict, headers: dict, timeout: float):
+    """POST with stream=true, then hand back ONE normal response, as if stream had been false.
+
+    The answer text is the joined content deltas (thinking deltas are dropped, like a plain call drops them);
+    finish_reason, usage and an error event are kept. A non-200 or a server that ignored stream=true and sent JSON
+    is returned as it came. A stream that just stops (no finish_reason, no [DONE]) is a broken connection, not a
+    short answer: it raises like any other network error. `timeout` still bounds every silent gap; the whole
+    stream may take at most 2x timeout."""
+    deadline = time.monotonic() + max(2 * timeout, 60.0)
+    async with client.stream("POST", url, json={**payload, "stream": True}, headers=headers, timeout=timeout) as r:
+        if r.status_code != 200 or "text/event-stream" not in r.headers.get("content-type", ""):
+            await r.aread()
+            return r
+        parts, finish, usage, err, done = [], None, None, None, False
+        async for line in r.aiter_lines():
+            if time.monotonic() > deadline:
+                raise httpx.ReadTimeout("answer still streaming at the deadline")
+            if not line.startswith("data:"):
+                continue  # blank separators and ": keep-alive" comments
+            chunk = line[5:].strip()
+            if chunk == "[DONE]":
+                done = True
+                break
+            try:
+                event = json.loads(chunk)
+            except ValueError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            if event.get("error"):
+                err = event["error"]
+            if isinstance(event.get("usage"), dict):
+                usage = event["usage"]
+            for choice in event.get("choices") or []:
+                if not isinstance(choice, dict):
+                    continue
+                delta = choice.get("delta") or choice.get("message") or {}
+                piece = delta.get("content") if isinstance(delta, dict) else None
+                if isinstance(piece, str):
+                    parts.append(piece)
+                if choice.get("finish_reason"):
+                    finish = choice["finish_reason"]
+        kept = [(k, v) for k, v in r.headers.items() if k.lower() not in _NOT_COPIED]
+    if err is not None and (finish in (None, "error") or not parts):
+        body = {"error": err}  # handled like OpenRouter's error-inside-a-200
+    elif finish is None and not done:
+        raise httpx.RemoteProtocolError("stream ended before the answer was complete")
+    else:
+        body = {"choices": [{"message": {"content": "".join(parts)}, "finish_reason": finish}], "usage": usage or {}}
+    return httpx.Response(200, headers=kept, json=body)
 
 
 def _est_tokens(messages: list[dict]) -> int:
@@ -177,11 +275,15 @@ def _think_retry(spec, extra: dict, max_tokens: int | None, est: int, tpm: int, 
     return bigger, lighter
 
 
-async def _try_model(client, spec, messages, temperature, max_tokens, timeout, retries) -> str:
-    """Return the answer text, or raise _Skip(reason)."""
+async def _try_model(client, spec, messages, temperature, max_tokens, timeout, retries, boost=None) -> str:
+    """Return the answer text, or raise _Skip(reason).
+    boost = (max_tokens, extra) handed over by this model's previous key (see _Skip.boost): start with that bigger,
+    lighter request; it already IS the thinking retry, so an empty answer is not retried again here."""
     ok, why = health.available(spec)
     if not ok:
         raise _Skip(why)
+    if boost:
+        max_tokens = boost[0]
     tpm = config.tpm_limit(spec)
     need = _est_tokens(messages) + (max_tokens or 0)
     if tpm and need > tpm * 0.9:
@@ -199,7 +301,11 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         headers["X-Title"] = "multi-model-ensemble"
 
     extra, msgs = dict(spec.extra), messages
-    attempts, recovered, think_retried = 0, False, False
+    if boost:
+        extra = dict(boost[1])
+    attempts, recovered, think_retried = 0, False, bool(boost)
+    url = f"{base_url}/chat/completions"
+    stream = spec.provider in config.STREAM_PROVIDERS and hasattr(client, "stream")
     while True:
         attempts += 1
         payload = {"model": spec.model, "messages": msgs, **extra}
@@ -211,10 +317,10 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         if rpm or tpm:  # our own per-minute window: wait for a free slot or let the chain move on
             got, wait = health.reserve_slot(health.quota_key(spec), rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S)
             if not got:
-                if think_retried:  # the first try used this minute's tokens: the bigger retry cannot run now, and
-                    health.fail(spec, 15)  # keys 2/3 at the old small budget would only run out the same way
-                    raise _Skip("empty answer (ran out of tokens while thinking; no tokens/min room for a bigger retry)",
-                                retry=False, whole_model=True)
+                if think_retried:  # this key's minute is used up: the bigger, lighter request goes to the model's
+                    health.fail(spec, 15)  # next key (own tokens/min window); after the last key, the next model
+                    raise _Skip("empty answer (ran out of tokens while thinking; no tokens/min room on this key for "
+                                "a bigger retry, next key tries it)", retry=False, boost=(max_tokens, extra))
                 raise _Skip("own rate window full" + (f" (free in {int(wait)}s)" if wait else ""), retry_in=wait)
             if wait > 0:
                 await asyncio.sleep(wait)
@@ -223,18 +329,21 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                     raise _Skip(why)
 
         health.note_request(spec)
+        sent = time.perf_counter()
         try:
             async with _sem(spec.provider):
-                r = await client.post(
-                    f"{base_url}/chat/completions", json=payload, headers=headers, timeout=timeout
-                )
+                sent = time.perf_counter()  # the error text shows how long the connection lived, not the queue
+                if stream:
+                    r = await _post_stream(client, url, payload, headers, timeout)
+                else:
+                    r = await client.post(url, json=payload, headers=headers, timeout=timeout)
         except httpx.HTTPError as e:
             health.provider_error(spec.provider, slot)
             if attempts <= retries and health.available(spec)[0]:
                 await asyncio.sleep(1.0 * attempts)
                 continue
             health.fail(spec, 30)
-            raise _Skip(f"network error: {type(e).__name__}")
+            raise _Skip(f"network error: {type(e).__name__} after {time.perf_counter() - sent:.0f}s")
 
         data = _json(r)
         code = r.status_code
@@ -352,6 +461,7 @@ async def chat(
     chain = expand_keys(balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks]))
     reasons: dict[str, str] = {}
     dead: set[str] = set()  # failed for a reason waiting will not fix: not tried again in round 2
+    boosts: dict[str, tuple] = {}  # model -> bigger/lighter request its next key starts with (_Skip.boost)
     t_start = time.perf_counter()
     out_of_time = False
     for rnd in range(2):
@@ -369,7 +479,7 @@ async def chat(
                 nxt = chain[i + 1] if i + 1 < len(chain) else None
                 same_next = nxt is not None and config.base_label(nxt.label) == config.base_label(cand.label)
                 text = await _try_model(client, cand, messages, temperature, max_tokens, timeout,
-                                        0 if same_next else retries)
+                                        0 if same_next else retries, boosts.get(config.base_label(cand.label)))
             except _Skip as e:
                 reasons[cand.label] = str(e)
                 config.emit_call({"t": "fail", "stage": health.stage(), "model": cand.label,
@@ -379,6 +489,8 @@ async def chat(
                     if e.whole_model:  # key 2 / key 3 of this model would run out of tokens the same way
                         dead.update(c.label for c in chain
                                     if config.base_label(c.label) == config.base_label(cand.label))
+                    elif e.boost:
+                        boosts[config.base_label(cand.label)] = e.boost
                 elif e.retry_in is not None:
                     hints.append(e.retry_in)
                 continue
