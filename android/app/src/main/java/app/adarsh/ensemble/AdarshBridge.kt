@@ -32,11 +32,18 @@ class AdarshBridge(
     }
     @JavascriptInterface
     fun cancel(id: String) { if (ok()) Engine.cancel(id) }
+    /** Startup animation (07-splash.js): dark system bars while it is on screen, the normal ones after it. */
+    @JavascriptInterface
+    fun bootBars(dark: Boolean) { if (ok()) MainActivity.bootBars(dark) }
 
     @JavascriptInterface
     fun updateStatus(): String = if (ok()) MainActivity.updateStatus() else denied
     @JavascriptInterface
     fun updateCheck(force: Boolean): String = if (ok()) MainActivity.updateCheck(force) else denied
+    @JavascriptInterface
+    fun updateNotify(value: String): String = if (ok()) MainActivity.updateNotify(value) else denied
+    @JavascriptInterface
+    fun launchTarget(): String = if (ok()) MainActivity.launchTarget() else ""
     @JavascriptInterface
     fun updateDownload(): String = if (ok()) MainActivity.updateDownload() else denied
     @JavascriptInterface

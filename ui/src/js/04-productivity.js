@@ -4,7 +4,10 @@ const Productivity = (() => {
   const COLLECTIONS = { task: 'tasks', reminder: 'reminders', alarm: 'alarms', timer: 'timers', note: 'notes', work: 'work' };
   const ACCESS = { localRead: true, localEdit: true, personalOnline: false, oldChats: false, currentChat: true, architecture: true };
   const BLOCKED = new Set(['note.clear', 'dnd.set', 'panel.open']);
-  const SETTINGS = new Set(['name', 'theme', 'font', 'rate', 'lang', 'voiceName', 'voiceEngine', 'voiceReplies', 'speak', 'haptics']);
+  /* Everything changeable by command. Never: API keys, deleting chats, PIN/password/lock, AI access itself. */
+  const BOOL_SETTINGS = ['speak', 'voiceReplies', 'haptics', 'webSearch', 'bootAnim', 'notif', 'updateNotify', 'calls'];
+  const SETTINGS = new Set(['name', 'theme', 'font', 'rate', 'lang', 'voiceName', 'voiceEngine', 'mode', 'source', 'replyLang', 'depth', 'think', ...BOOL_SETTINGS]);
+  const SETTING_NAMES = { webSearch: 'Web search', bootAnim: 'Startup animation', notif: 'Reply notifications', updateNotify: 'Update notification', calls: 'Model calls', haptics: 'Haptics', speak: 'Speak replies', voiceReplies: 'Voice replies', mode: 'Mode', source: 'Answer source', replyLang: 'Reply language', depth: 'Depth', think: 'Council', theme: 'Theme', font: 'Font', lang: 'Voice language', voiceEngine: 'Voice engine', voiceName: 'Voice', rate: 'Voice speed', name: 'Name' };
   const timers = new Map();
   const N = () => window.AdarshNative;
   const native = () => !!(N() && N().recordsList && N().runActions);
@@ -120,17 +123,28 @@ const Productivity = (() => {
   }
   function setting(a) {
     if (!SETTINGS.has(a.key)) return result(false, 'Sir, ye setting AI change nahi kar sakta.');
-    const allowed = { theme: ['system', 'light', 'dark'], font: ['serif', 'sans'], lang: ['hi-IN', 'en-IN', 'en-US'], voiceEngine: ['auto', 'natural', 'device'] };
+    const allowed = { theme: ['system', 'light', 'dark'], font: ['serif', 'sans'], lang: ['hi-IN', 'en-IN', 'en-US'], voiceEngine: ['auto', 'natural', 'device'],
+      mode: Modes.list().map(m => m.id), source: ['auto', 'manual', 'hybrid'], replyLang: ['auto', 'hinglish', 'english', 'hindi'], depth: ['simple', 'normal', 'detailed'], think: ['fast', 'deep'] };
     let v = a.value;
     if (allowed[a.key] && !allowed[a.key].includes(v)) return result(false, 'Setting ki value valid nahi hai.');
     if (a.key === 'rate' && (typeof v !== 'number' || !Number.isFinite(v) || v < 0.7 || v > 1.4)) return result(false, 'Voice speed 0.7 se 1.4 tak honi chahiye.');
     if (a.key === 'voiceName' && !VOICES.some(x => x[0] === v)) return result(false, 'Ye natural voice available nahi hai.');
-    if (['speak', 'voiceReplies', 'haptics'].includes(a.key) && typeof v !== 'boolean') return result(false, 'On/off value chahiye.');
+    if (BOOL_SETTINGS.includes(a.key) && typeof v !== 'boolean') return result(false, 'On/off value chahiye.');
     if (a.key === 'name') { v = text(v, 60); if (!v) return result(false, 'Naam chahiye.'); }
-    S.settings[a.key] = v;
+    const label = SETTING_NAMES[a.key] || a.key;
+    const shown = typeof v === 'boolean' ? (v ? 'on' : 'off') : (a.key === 'mode' ? Modes.get(v).name : String(v));
+    if (a.key === 'mode') { Modes.set(v); changed(); return result(true, label + ': ' + shown); }
+    if (a.key === 'source' && v !== (S.settings.source || 'auto') && BackgroundVoice.active()) BackgroundVoice.stop('Answer source changed. Restart background voice explicitly.');
+    if (a.key === 'updateNotify') { MobileUpdates.setNotify(v); changed(); return result(true, label + ': ' + shown); }
+    if (a.key === 'notif' && N() && N().setNotify) {
+      let r = ''; try { r = N().setNotify(v); } catch (e) {}
+      if (v && r === 'denied') { S.settings.notif = false; changed(); return result(false, 'Notification permission blocked hai. Phone Settings > Apps > Adarsh > Notifications mein allow karo.'); }
+    }
+    S.settings[a.key] = a.key === 'calls' ? (v ? 1 : 0) : v;
     if (a.key === 'theme' || a.key === 'font') App.applyTheme();
+    if (a.key === 'calls') Bus.emit('calls:changed');
     changed();
-    return result(true, 'Setting update: ' + a.key + ' = ' + String(v));
+    return result(true, label + ': ' + shown);
   }
   async function run(step, confirmed = false, manual = false, mode = 'standard') {
     const action = String(step.action || ''), a = step.args || {};

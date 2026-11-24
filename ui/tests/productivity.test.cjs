@@ -774,3 +774,36 @@ test('background personal-context provenance remains excluded after online shari
   assert.equal(app.Chat.history(c).length, 0);
   assert.equal(c.msgs.every(m => m.personalContext === true), true);
 });
+test('live voice screen arms the outside-app handoff in any selected mode and disarms on close', async t => {
+  const arms = [];
+  const app = makeHarness({ native: true, nativeOverrides: {
+    backgroundVoiceStatus: () => '{"active":false,"state":"stopped"}', backgroundVoicePeek: () => '[]',
+    backgroundVoiceStart: () => '{"ok":true}', backgroundVoiceStop: () => '{"ok":true,"active":false}', backgroundVoiceAck: () => '{"ok":true}',
+    backgroundVoiceArm: raw => { arms.push(raw); return JSON.stringify({ ok: true, armed: !!raw, notifications: true }); }
+  } }); t.after(() => app.close());
+  app.S.lock = null; app.S.settings.source = 'auto';
+  app.Modes.set('physics'); app.Voice.open();
+  const cfg = arms.filter(Boolean).map(r => JSON.parse(r)).at(-1);
+  assert.ok(cfg, 'voice screen must hand a ready config to the phone');
+  assert.equal(cfg.mode, 'physics'); assert.equal(cfg.source, 'auto');
+  app.Voice.close(); assert.equal(arms.at(-1), '');
+  app.S.settings.source = 'manual'; app.Voice.open(); assert.equal(arms.at(-1), '');
+});
+test('AI can change app settings on command but never API keys, chats or the PIN', async t => {
+  const { spawnSync } = require('node:child_process');
+  const app = makeHarness({ route: async req => {
+    const root = path.resolve(UI, '..');
+    const result = spawnSync('python3', ['-c', 'import json,sys; from actions.plan import plan; print(json.dumps(plan(sys.argv[1])))', req.text], { cwd: root, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  } }); t.after(() => app.close());
+  await app.Chat.submit('web search off karo'); assert.equal(app.S.settings.webSearch, false);
+  await app.Chat.submit('startup animation band kar do'); assert.equal(app.S.settings.bootAnim, false);
+  await app.Chat.submit('council deep karo aur depth detailed karo'); assert.equal(app.S.settings.think, 'deep'); assert.equal(app.S.settings.depth, 'detailed');
+  await app.Chat.submit('model calls dikhao'); assert.equal(app.S.settings.calls, 1);
+  await app.Chat.submit('physics mode on karo'); assert.equal(app.Modes.current().id, 'physics');
+  await app.Chat.submit('standard mode pe jao'); assert.equal(app.Modes.current().id, 'standard');
+  const chats = app.S.chats.length, lock = app.S.settings.lockOnHide;
+  await app.Chat.submit('sare chats delete karo'); await app.Chat.submit('api key change karo'); await app.Chat.submit('lock on hide off karo');
+  assert.ok(app.S.chats.length >= chats); assert.equal(app.S.settings.lockOnHide, lock);
+});

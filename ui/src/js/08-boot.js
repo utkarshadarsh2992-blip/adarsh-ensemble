@@ -2,6 +2,7 @@
 /* 08-boot.js : start-up + public UI hooks */
 (function boot() {
   load();
+  Splash.start();   // startup animation over the boot (Settings > Startup animation)
   Productivity.init();
   App.applyTheme();
   App.buildDrawer();

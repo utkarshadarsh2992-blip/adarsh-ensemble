@@ -109,7 +109,7 @@ def _parse_settings(t: str) -> dict | None:
         "voice engine": "voiceEngine", "engine": "voiceEngine", "voiceEngine": "voiceEngine",
         "voice replies": "voiceReplies", "voiceReplies": "voiceReplies", "speak": "speak",
         "haptics": "haptics", "name": "name", "theme": "theme", "font": "font",
-        "rate": "rate", "speed": "rate", "lang": "lang", "language": "lang",
+        "voice rate": "rate", "voice speed": "rate", "rate": "rate", "lang": "lang", "language": "lang",
     }
     for alias, key in sorted(aliases.items(), key=lambda item: -len(item[0])):
         m = re.search(rf"\b{re.escape(alias)}\b\s*(?:ko|is|=|:)?\s*(?:set|change|update|karo|kar do)?\s+(.+)$", t, re.I)
@@ -120,6 +120,50 @@ def _parse_settings(t: str) -> dict | None:
     return None
 
 
+_ON = r"(?:on|chalu|enable|enabled|start|dikhao|dikha do|show|lagao|activate)"
+_OFF = r"(?:off|band|bnd|disable|disabled|stop|chhupao|chupao|hide|hatao|hata do|hata|mat dikhao|deactivate)"
+_DO = r"(?:karo|kar do|kr do|krdo|kardo|kar|kr|do|de do|please|ji|na)"
+_MODE_WORDS = {"standard": "standard", "normal": "standard", "verified": "v", "v": "v", "physics": "physics",
+               "math": "math", "maths": "math", "business": "business", "coding": "coding", "code": "coding"}
+_SWITCHES = (   # (pattern naming the feature, settings key); first match wins, so specific names come first
+    (r"update\s*(?:wala|ka|ki)?\s*notifications?|update\s*alerts?|auto\s*update\s*notifications?", "updateNotify"),
+    (r"(?:built-?in\s*)?web\s*search|internet\s*search|online\s*search", "webSearch"),
+    (r"(?:startup|start-up|opening|boot|intro)\s*animation|animation", "bootAnim"),
+    (r"model\s*calls?(?:\s*(?:panel|toggle|list))?", "calls"),
+    (r"(?:reply|jawab|answer)?\s*notifications?", "notif"),
+    (r"haptics?|vibration|vibrate", "haptics"),
+    (r"voice\s*replies|bol\s*ke\s*jawab", "voiceReplies"),
+)
+def _is_question(t: str) -> bool:
+    low = re.sub(r"\s+", " ", (t or "").lower()).strip()
+    return bool(re.search(r"\b(?:kya|kaise|kyu|kyun|why|what|how|kaun|kaunsa|which|explain|samjhao|batao|baare)\b", low)) and not re.search(rf"\b{_DO}\s*$", low)
+def _parse_app_setting(t: str) -> dict | None:
+    """Plain commands for the app's own switches and choices ("web search off karo", "physics mode on karo",
+    "council deep karo"). Questions about a setting ("physics mode kya hai") are not commands."""
+    low = re.sub(r"\s+", " ", (t or "").lower()).strip()
+    if _is_question(low): return None
+    for pat, key in _SWITCHES:
+        m = re.search(rf"\b(?:{pat})\b", low)
+        if not m: continue
+        rest = low[m.end():] + " " + low[:m.start()]
+        on = re.search(rf"\b{_ON}\b", rest); off = re.search(rf"\b{_OFF}\b", rest)
+        if on and not off: return _step("settings.update", key=key, value="on")
+        if off and not on: return _step("settings.update", key=key, value="off")
+        return None
+    words = "|".join(sorted(_MODE_WORDS, key=len, reverse=True))
+    verb = rf"(?:{_ON}|{_DO}|switch|select|set|change|badlo|mein jao|me jao|pe jao|par jao|chalao|use)"
+    m = re.search(rf"\b({words})\s+mode\b.*\b{verb}\b", low) or re.search(rf"\bmode\b\s*(?:ko)?\s*({words})\b.*\b{verb}\b", low)
+    if m and not (m.group(1) == "v" and "v mode" not in low):
+        return _step("settings.update", key="mode", value=_MODE_WORDS[m.group(1)])
+    m = re.search(r"\b(?:answer\s+)?source\b\s*(?:ko)?\s*(auto|manual|hybrid)\b|\b(auto|manual|hybrid)\s+source\b", low)
+    if m: return _step("settings.update", key="source", value=m.group(1) or m.group(2))
+    m = re.search(r"\b(?:reply|answer|jawab)\s*(?:ki|ka)?\s*(?:language|lang|bhasha)\b\s*(?:ko)?\s*(auto|hinglish|english|hindi)\b", low)
+    if m: return _step("settings.update", key="replyLang", value=m.group(1))
+    m = re.search(r"\bdepth\b\s*(?:ko)?\s*(simple|normal|detailed|detail)\b|\b(simple|normal|detailed)\s+depth\b", low)
+    if m: return _step("settings.update", key="depth", value=m.group(1) or m.group(2))
+    m = re.search(r"\bcouncil\b\s*(?:ko)?\s*(fast|deep|quick)\b|\b(fast|deep)\s+council\b", low)
+    if m: return _step("settings.update", key="think", value=m.group(1) or m.group(2))
+    return None
 def one(text: str, now: int) -> dict | None:
     """One clause -> one raw step. Validation and safety decisions happen in schema/plan."""
     raw = (text or "").strip()
@@ -132,8 +176,15 @@ def one(text: str, now: int) -> dict | None:
         return _blocked("I cannot change my own code or implementation from a command.")
 
     # Explicitly prohibited operations are recognized before generic commands.
-    if re.search(r"\b(?:pin|passcode|password|security|lock)\b", padded) and re.search(r"\b(?:set|change|reset|remove|disable|enable|badal|banao)\b", padded):
+    if re.search(r"\b(?:pin|passcode|password|security|lock)\b", padded) and re.search(r"\b(?:set|change|reset|remove|disable|enable|badal|banao|on|off|band|chalu|hatao)\b", padded):
         return _blocked("PIN/security changes are blocked; use the phone's security settings directly.")
+    # API keys are never read or changed by the assistant (Settings > API keys only).
+    if re.search(r"\b(?:api\s*keys?|apikey|api)\b", padded) and re.search(r"\b(?:set|change|update|save|add|delete|remove|reset|badal|badlo|daal|dalo|hata|mita|dikhao|show|batao)\b", padded):
+        return _blocked("API keys AI nahi chhoota; Settings > API keys mein khud badliye.")
+    if re.search(r"\b(?:clear|delete|remove|hata|mita|saaf|erase)\b", padded) and re.search(r"\b(?:chat|chats|conversation|history)\b", padded):
+        return _blocked("chat delete sirf aap khud kar sakte hain; AI chats delete nahi karta.")
+    app_setting = _parse_app_setting(source)
+    if app_setting: return app_setting
     if re.search(r"\b(?:clear|delete|remove|hata|mita|saaf|erase)\b", padded):
         if re.search(r"\b(?:note|notes)\b", padded): return _step("note.clear")
         if re.search(r"\b(?:task|tasks|todo|to-do)\b", padded): return _step("task.delete", query=_ref(t, r"\b(?:delete|remove|hata|mita|clear|task|tasks|todo|to-?do)\b"))
@@ -303,12 +354,13 @@ def one(text: str, now: int) -> dict | None:
     if re.search(r"\b(?:settings?|preference|preferences)\b", padded):
         if re.search(r"\b(?:open|kholo|launch)\b", padded):
             return _step("app.open", app="settings")
-        if re.search(r"\b(?:pin|password|security|access|permission|dnd|do not disturb|panel|mode|source)\b", padded):
-            return _blocked("PIN, security, access, DND, panel, mode, and source settings are blocked.")
+        if re.search(r"\b(?:pin|password|security|access|permission|dnd|do not disturb|panel|api|keys?)\b", padded):
+            return _blocked("PIN/password, API keys, AI access, DND and panels stay manual in Settings.")
         setting = _parse_settings(source)
         if setting: return setting
-        return _clarify("Safe setting batao: theme, font, voice rate, language, voice engine, name, speak, ya haptics.")
-    setting = _parse_settings(source) if re.search(r"\b(?:theme|font|rate|speed|lang|language|voice|engine|speak|haptics|name)\b", padded) else None
+        return _clarify("Kaunsi setting, Sir? Jaise theme, font, voice, mode, web search, animation, notification, depth ya council.")
+    # Questions ("what is the speed of light", "mera name kya hai") are for the model, not setting commands.
+    setting = _parse_settings(source) if re.search(r"\b(?:theme|font|rate|speed|lang|language|voice|engine|speak|haptics|name)\b", padded) and not _is_question(t) else None
     if setting: return setting
 
     # Scheduled reminders/alarms: list and edit before add.

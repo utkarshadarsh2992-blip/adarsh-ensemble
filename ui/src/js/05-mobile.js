@@ -41,12 +41,23 @@ const MobileUpdates = (() => {
     } });
   }
   window.__adarshUpdate = apply;
+  /* Automatic update notice (Android job, every few hours with internet). The phone keeps the switch. */
+  function notifyOn() { return S.settings.updateNotify !== false; }
+  function setNotify(on) {
+    S.settings.updateNotify = !!on; save();
+    try { if (native().updateNotify) native().updateNotify(on ? 'on' : 'off'); } catch (e) {}
+    return !!on;
+  }
+  /* Tapping "Naya update available" opens this screen (warm start: native call; cold start: launchTarget). */
+  window.__adarshOpen = target => { if (target === 'updates' && $('#lock').hidden) open(); };
   function init() {
     if (!supported()) return;
+    try { if (native().updateNotify) { const r = JSON.parse(native().updateNotify('')); if (r && typeof r.on === 'boolean') S.settings.updateNotify = r.on; } } catch (e) {}
+    try { if (native().launchTarget && native().launchTarget() === 'updates') setTimeout(() => window.__adarshOpen('updates'), 0); } catch (e) {}
     call('updateStatus'); check(false);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { call('updateStatus'); check(false); } });
   }
-  return { init, open, check, supported, status: () => state };
+  return { init, open, check, supported, notifyOn, setNotify, status: () => state };
 })();
 
 const BackgroundVoice = (() => {
@@ -90,9 +101,10 @@ const BackgroundVoice = (() => {
     if (!out.ok && out.message) toast(out.message);
     return out;
   }
-  /* Standard-mode live voice keeps going after Back/Home: while the voice screen is open the phone holds a
+  /* Live voice (any mode) keeps going after Back/Home/screen off: while the voice screen is open the phone holds a
      ready config, and the app starts the 30-minute background session at the moment it leaves the screen. */
-  const canHandoff = () => supported() && !!N().backgroundVoiceArm && Backend.isNative() && Modes.current().id === 'standard' &&
+  /* Any selected mode can continue outside the app (the session keeps that mode; phone actions stay Standard-only). */
+  const canHandoff = () => supported() && !!N().backgroundVoiceArm && Backend.isNative() &&
     (S.settings.source || 'auto') === 'auto' && $('#lock').hidden && !active();
   function arm() {
     if (!canHandoff()) return disarm();

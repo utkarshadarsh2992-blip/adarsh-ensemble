@@ -1,0 +1,11 @@
+<resources>
+    <!-- Android 12+: the system splash uses the startup animation's dark ground and the bare "A" (288 dp, like
+         .boot-logo in ui/src/css/boot.css), so system splash -> loading view -> web animation is one picture. -->
+    <style name="Theme.Adarsh" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/adarsh_boot</item>
+        <item name="android:statusBarColor">@color/adarsh_bg</item>
+        <item name="android:navigationBarColor">@color/adarsh_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/adarsh_boot</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+    </style>
+</resources>

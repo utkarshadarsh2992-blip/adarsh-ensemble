@@ -258,7 +258,9 @@ def local_response(body: dict) -> dict | list[dict] | None:
     if not act:
         return None
     mode = str(body.get("mode") or "standard")
-    if mode != "standard":
+    steps0 = act.get("steps") or []
+    settings_only = act.get("type") == "actions" and steps0 and all(s.get("action") == "settings.update" for s in steps0)
+    if mode != "standard" and not settings_only:   # app settings (e.g. "standard mode mein jao") work from every mode
         return {"type": "text", "text": "Ye in-app command Standard mode mein chalta hai. Sir, aap khud Standard select karo; maine mode change nahi kiya.", "uiMode": mode, "origin": "local-rule"}
     if act.get("type") == "actions":
         steps = act.get("steps") or []

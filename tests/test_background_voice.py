@@ -12,7 +12,7 @@ def source(name: str) -> str:
 def test_service_exposes_explicit_api_and_foreground_contract():
     service = source("BackgroundVoiceService.kt")
     for signature in (
-        "fun start(activity: MainActivity, configJson: String): JSONObject",
+        "fun start(activity: MainActivity, configJson: String, handoff: Boolean = false): JSONObject",
         "fun stop(context: Context): JSONObject",
         "fun status(): JSONObject",
         "fun peek(context: Context): JSONArray",

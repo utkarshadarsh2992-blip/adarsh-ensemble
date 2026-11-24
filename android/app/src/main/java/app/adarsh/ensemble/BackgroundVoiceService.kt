@@ -723,15 +723,20 @@ class BackgroundVoiceService : Service() {
             else -> "Background voice is inactive"
         }
 
-        fun start(activity: MainActivity, configJson: String): JSONObject {
-            if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+        /**
+         * handoff = true: the live voice screen is moving to the background (Home, Recents, Back, screen off or
+         * another app). The screen may already be pausing (still visible), and missing notification permission only
+         * hides the ongoing notice (Android still lists the service in Task Manager), so neither blocks the session.
+         */
+        fun start(activity: MainActivity, configJson: String, handoff: Boolean = false): JSONObject {
+            if (!activity.lifecycle.currentState.isAtLeast(if (handoff) Lifecycle.State.STARTED else Lifecycle.State.RESUMED)) {
                 return response(false, false, "error", "Background voice start requires a resumed app screen", "Background voice start requires a resumed app screen")
             }
             if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 return response(false, false, "error", "Microphone permission is required", "Microphone permission is required")
             }
             val nm = activity.getSystemService(NotificationManager::class.java)
-            if (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED || !nm.areNotificationsEnabled()) {
+            if (!handoff && (Build.VERSION.SDK_INT >= 33 && activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED || !nm.areNotificationsEnabled())) {
                 return response(false, false, "error", "Enable notifications before starting background voice", "Enable notifications before starting background voice")
             }
             if (live?.active == true) {

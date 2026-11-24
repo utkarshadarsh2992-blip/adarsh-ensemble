@@ -113,7 +113,30 @@ RISK.update({
     "app.open": SAFE, "web.search": SAFE, "phone.status": SAFE, "calendar.add": SAFE,
     "voice.open": SAFE, "torch.set": SAFE, "message.draft": CONFIRM, "call.dial": CONFIRM,
 })
-_ALLOWED_SETTINGS = {"name", "theme", "font", "rate", "lang", "voiceName", "voiceEngine", "voiceReplies", "speak", "haptics"}
+# Everything the user can change by command. Never here (and never will be): API keys, deleting chats,
+# PIN/password/lock and the AI-access permissions themselves; those stay manual in Settings.
+_BOOL_SETTINGS = {"speak", "voiceReplies", "haptics", "webSearch", "bootAnim", "notif", "updateNotify", "calls"}
+_ENUM_SETTINGS = {
+    "voiceEngine": {"auto", "natural", "device"}, "theme": {"system", "light", "dark"},
+    "font": {"serif", "sans"}, "lang": {"hi-IN", "en-IN", "en-US"},
+    "mode": {"standard", "v", "physics", "math", "business", "coding"},
+    "source": {"auto", "manual", "hybrid"},
+    "replyLang": {"auto", "hinglish", "english", "hindi"},
+    "depth": {"simple", "normal", "detailed"},
+    "think": {"fast", "deep"},
+}
+_ENUM_ALIASES = {
+    "voiceEngine": {"system": "device", "phone": "device", "automatic": "auto"},
+    "theme": {"auto": "system"}, "font": {"sans-serif": "sans", "sans serif": "sans"},
+    "lang": {"hindi": "hi-IN", "hinglish": "hi-IN", "english": "en-IN", "hi-in": "hi-IN", "en-in": "en-IN", "en-us": "en-US"},
+    "mode": {"verified": "v", "maths": "math", "code": "coding", "normal": "standard"},
+    "source": {"automatic": "auto"},
+    "replyLang": {"automatic": "auto"},
+    "depth": {"detail": "detailed", "short": "simple", "easy": "simple"},
+    "think": {"quick": "fast"},
+}
+_BLOCKED_SETTINGS = {"lockOnHide", "lockAfter", "pin", "password", "aiAccess", "apiKeys", "keys"}
+_ALLOWED_SETTINGS = {"name", "rate", "voiceName"} | _BOOL_SETTINGS | set(_ENUM_SETTINGS)
 
 
 def _future(at: Any, now: int, max_days: int = 400) -> int:
@@ -258,6 +281,7 @@ def check(action: str, args: dict, now: int | None = None) -> dict:
         pass
     elif action == "settings.update":
         a["key"] = _str(a, "key", 30, required=True)
+        if a["key"] in _BLOCKED_SETTINGS: raise Denied("API keys, PIN/password and AI access stay manual in Settings")
         if a["key"] not in _ALLOWED_SETTINGS: raise Denied("that setting is not editable by voice")
         if "value" not in a or isinstance(a["value"], (dict, list)):
             raise Bad("setting value is required")
@@ -265,7 +289,7 @@ def check(action: str, args: dict, now: int | None = None) -> dict:
         if isinstance(value, str): value = value.strip()[:MAX_TEXT]
         key = a["key"]
         low = value.lower() if isinstance(value, str) else value
-        if key in {"speak", "voiceReplies", "haptics"}:
+        if key in _BOOL_SETTINGS:
             if isinstance(value, bool): pass
             elif isinstance(low, str) and low in {"on", "true", "yes", "haan", "chalu"}: value = True
             elif isinstance(low, str) and low in {"off", "false", "no", "nahi", "band"}: value = False
@@ -275,14 +299,9 @@ def check(action: str, args: dict, now: int | None = None) -> dict:
             try: value = float(value)
             except (TypeError, ValueError): raise Bad("voice speed needs a number")
             if not math.isfinite(value) or not 0.7 <= value <= 1.4: raise Bad("voice speed must be 0.7 to 1.4")
-        elif key in {"theme", "font", "lang", "voiceEngine"}:
-            aliases = {"voiceEngine": {"system": "device", "phone": "device", "automatic": "auto"},
-                       "theme": {"auto": "system"}, "font": {"sans-serif": "sans", "sans serif": "sans"},
-                       "lang": {"hindi": "hi-IN", "hinglish": "hi-IN", "english": "en-IN", "hi-in": "hi-IN", "en-in": "en-IN", "en-us": "en-US"}}
-            value = aliases.get(key, {}).get(low, low)
-            enums = {"voiceEngine": {"auto", "natural", "device"}, "theme": {"system", "light", "dark"},
-                     "font": {"serif", "sans"}, "lang": {"hi-IN", "en-IN", "en-US"}}
-            if value not in enums[key]: raise Bad("unsupported setting value")
+        elif key in _ENUM_SETTINGS:
+            value = _ENUM_ALIASES.get(key, {}).get(low, low)
+            if value not in _ENUM_SETTINGS[key]: raise Bad("unsupported setting value")
         elif key == "voiceName":
             voices = {v.lower(): v for v in ("Kore", "Orus", "Charon", "Sulafat", "Achird", "Iapetus", "Aoede", "Puck", "Gacrux", "Sadaltager")}
             if low not in voices: raise Bad("unknown natural voice")

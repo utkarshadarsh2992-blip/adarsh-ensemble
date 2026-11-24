@@ -165,7 +165,8 @@ const App = (() => {
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },
-      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open())));
+      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open()),
+      MobileUpdates.supported() ? swItem('bell', 'Update notification', 'Naya version aate hi khud notification aayega · install aapki approval se', () => MobileUpdates.notifyOn(), v => { MobileUpdates.setNotify(v); toast(v ? 'Update notification on' : 'Update notification off'); }) : null));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -176,6 +177,8 @@ const App = (() => {
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
       swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
+      swItem('bolt', 'Startup animation', 'App khulte waqt ~2.5 second ka tech intro. Tap karke skip ho jata hai', () => S.settings.bootAnim !== false, v => { S.settings.bootAnim = v; if (v) Splash.replay(); else toast('Startup animation off'); }),
+      navItem('atom', 'Startup animation dekho', 'Abhi ek baar preview chalao', () => Splash.replay()),
       swItem('sparkle', 'Adarsh (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
     st.append(label('Adarsh'), h('div', { class: 'grp' },
       navItem('tasks', 'Tasks and Work', 'Drawer mein separate lists; Work sirf bade projects ke liye', () => show('tasks')),
@@ -211,7 +214,7 @@ const App = (() => {
         ['architecture', 'Read-only architecture', 'App modules/model chains ka safe reference; source editing nahi']
       ];
       b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
-      b.append(h('p', {}, 'AI delete/clear, PIN/security, DND aur sensitive settings nahi badal sakta. Ye toggles AI khud On nahi kar sakta. Jo mode aap select karte ho wahi answer deta hai.'));
+      b.append(h('p', {}, 'Bolne par AI app ki settings badal sakta hai (theme, mode, voice, web search, animation, notifications, depth, council...). Teen cheezein kabhi nahi: API keys, chat delete aur PIN/password. Ye access toggles bhi AI khud On nahi kar sakta. Mode sirf aapke kehne par badalta hai.'));
     } });
   }
   function architectureSheet() {
@@ -339,19 +342,25 @@ const App = (() => {
     return providers ? providers + ' of 5 providers · ' + keys + ' of 15 keys set' : 'No keys yet. Add at least one to get answers';
   }
   function keysSheet() {
-    sheet({ title: 'API keys', tall: true, build(b, close) {
+    // Save / Delete keep the sheet open: it redraws in place (same open groups, same scroll), so several keys can be
+    // saved one after another without going back each time.
+    sheet({ title: 'API keys', tall: true, build(b) { render(true); function render(first) {
       const K = window.AdarshKeys, st = K.status();
-      if (st._notice) toast(st._notice);
+      if (first && st._notice) toast(st._notice);
+      const keepOpen = new Set([...b.querySelectorAll('details.keygrp')].filter(d => d.open).map(d => d.getAttribute('data-g')));
+      const scrollers = [b, b.parentElement].filter(Boolean).map(el => [el, el.scrollTop]);
+      b.textContent = '';
       b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'),
         h('p', {}, 'Har provider me 3 keys daal sakte ho. Pehle key 1 chalti hai; uski limit khatam ho (429), credits chahiye (402), key reject ho ya server down ho, to key 2, phir key 3. Khaali slot skip hota hai.'));
-      const done = (r, msg) => { if (r && r.ok) { toast(msg); close(); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
+      const done = (r, msg) => { if (r && r.ok) { toast(msg); render(false); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
       const field = (id, label, plain) => {
         const cur = st[id] || {};
         return h('input', { type: plain ? 'text' : 'password', placeholder: cur.set ? label + ': saved (' + cur.hint + '). Paste to replace' : 'Paste ' + label, 'aria-label': label, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
       };
       (K.groups || []).forEach(g => {
         const anySet = [1, 2, 3].some(n => (st[K.slotId(g.base, n)] || {}).set);
-        const box = h('details', { class: 'keygrp', open: anySet || g.name === 'Groq' ? '' : null },
+        const open = first ? (anySet || g.name === 'Groq') : keepOpen.has(g.name);
+        const box = h('details', { class: 'keygrp', 'data-g': g.name, open: open ? '' : null },
           h('summary', { class: 'l' }, g.name + ' · ' + [1, 2, 3].filter(n => (st[K.slotId(g.base, n)] || {}).set).length + '/3 keys'),
           h('p', { class: 'muted' }, g.url));
         [1, 2, 3].forEach(n => {
@@ -391,7 +400,8 @@ const App = (() => {
         try { const r = await window.ADARSH_BACKEND.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); }
         catch (e) { res.textContent = 'Test failed: ' + e.message; }
       } } }, 'Test connection'), res);
-    } });
+      scrollers.forEach(([el, y]) => { el.scrollTop = y; });
+    } } });
   }
   /* Android: there is no server to point at. Show what the on-device engine is really doing. */
   function engineSheet() {

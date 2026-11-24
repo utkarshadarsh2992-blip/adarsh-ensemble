@@ -71,6 +71,8 @@ class MainActivity : AppCompatActivity() {
     // resumed, which Android requires for a microphone foreground service.
     @Volatile private var handoffConfig: String? = null
     private var handoffNotifAsked = false
+    // True while one of our own system screens (permission dialog, file picker, save dialog) is in front.
+    @Volatile private var awaitingResult = false
     // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private val filePicker = registerForActivityResult(
@@ -98,9 +100,21 @@ class MainActivity : AppCompatActivity() {
         js("window.__adarshSaved&&window.__adarshSaved(${if (uri == null) "null" else ok.toString()})")
     }
     private fun js(code: String) { if (!destroyed) web.evaluateJavascript(code, null) }
+    private var bootBarsOn = false
+    /** Startup animation: the status and navigation bars take its dark ground (#05070B) while it plays, then the
+     *  theme colours again. The page asks for both (AdarshNative.bootBars); a cold start begins dark. */
+    private fun setBootBars(dark: Boolean) {
+        if (destroyed || dark == bootBarsOn) return
+        bootBarsOn = dark
+        val c = getColor(if (dark) R.color.adarsh_boot else R.color.adarsh_bg)
+        window.statusBarColor = c
+        window.navigationBarColor = c
+    }
 
     /** Ask for the microphone (the system dialog) and report the answer. Used the first time voice typing starts. */
-    fun askMic(cb: (Boolean) -> Unit) { micCallback = cb; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
+    /** The notification permission dialog pauses the screen; awaitingResult keeps that pause from a voice handoff. */
+    fun askNotifications() { awaitingResult = true; notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+    fun askMic(cb: (Boolean) -> Unit) { micCallback = cb; awaitingResult = true; micPermission.launch(Manifest.permission.RECORD_AUDIO) }
 
     private fun backgroundPermissionResult(token: Int, granted: Boolean, denied: String) {
         if (destroyed || token != backgroundGeneration || pendingBackground?.token != token) return
@@ -126,7 +140,7 @@ class MainActivity : AppCompatActivity() {
             } else if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 backgroundAwaitingPermission = true
                 backgroundNotificationToken = pending.token
-                notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                askNotifications()
                 waiting
             } else {
                 pendingBackground = null
@@ -148,15 +162,20 @@ class MainActivity : AppCompatActivity() {
         return granted && nm?.areNotificationsEnabled() == true
     }
 
-    /** Called on Back and Home while the screen is still resumed. True when the background session was started. */
+    /**
+     * Called on Back and Home (still resumed) and from onPause for every other way of leaving the screen: power
+     * button / screen off, tapping another app's notification, an app the assistant opened. A pause caused by our
+     * own system pickers or permission dialogs (awaitingResult) never hands off. True when the session started.
+     */
     private fun handoffToBackground(): Boolean {
         val cfg = handoffConfig ?: return false
-        if (destroyed || !resumed || pendingBackground != null || BackgroundVoiceService.status().optBoolean("active")) return false
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED || !notificationsReady()) return false
+        if (destroyed || !resumed || awaitingResult || backgroundAwaitingPermission || micCallback != null) return false
+        if (pendingBackground != null || BackgroundVoiceService.status().optBoolean("active")) return false
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
         handoffConfig = null
         backgroundGeneration++
         dictation.destroy(); speaker?.stopAll(silent = true); neural?.stop()
-        val out = BackgroundVoiceService.start(this, cfg)
+        val out = BackgroundVoiceService.start(this, cfg, handoff = true)
         out.put("handoff", true)
         js("window.__adarshVoiceHandoff&&window.__adarshVoiceHandoff($out)")
         return out.optBoolean("ok")
@@ -171,6 +190,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        if (savedInstanceState == null) {
+            setBootBars(true)   // the startup animation follows; the page turns the bars back (fallback below)
+            window.decorView.postDelayed({ setBootBars(false) }, 9000)
+        }
         web = findViewById(R.id.web)
         loading = findViewById(R.id.loading)
         error = findViewById(R.id.error)
@@ -226,6 +249,7 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, e: WebResourceError) {
                 if (request.isForMainFrame) {
                     findViewById<TextView>(R.id.errorText).text = getString(R.string.load_failed)
+                    setBootBars(false)
                     loading.visibility = View.GONE
                     error.visibility = View.VISIBLE
                 }
@@ -240,7 +264,7 @@ class MainActivity : AppCompatActivity() {
                 val type = if (types.size == 1 && types[0].startsWith("image/")) types[0] else "*/*"
                 val i = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type)
                 if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                return try { filePicker.launch(Intent.createChooser(i, null)); true } catch (_: ActivityNotFoundException) {
+                return try { awaitingResult = true; filePicker.launch(Intent.createChooser(i, null)); true } catch (_: ActivityNotFoundException) {
                     fileCallback = null; cb.onReceiveValue(null); false
                 }
             }
@@ -249,6 +273,8 @@ class MainActivity : AppCompatActivity() {
         speaker = Speaker(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
         actions = ActionRunner(this)
         neural = VoiceManager(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
+        launchTarget = intent?.getStringExtra(UpdateCheckJob.EXTRA_OPEN)
+        UpdateCheckJob.schedule(this)
         updater = UpdateManager(this) { value -> runOnUiThread { js("window.__adarshUpdate&&window.__adarshUpdate($value)") } }
         web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
 
@@ -264,7 +290,7 @@ class MainActivity : AppCompatActivity() {
 
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        ) askNotifications()
 
         current = this
         if (savedInstanceState == null) load() else web.restoreState(savedInstanceState)
@@ -289,9 +315,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** Notification taps (e.g. "Naya update available") ask the page to open a screen. */
+    private var launchTarget: String? = null
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val target = intent.getStringExtra(UpdateCheckJob.EXTRA_OPEN) ?: return
+        if (target == UpdateCheckJob.OPEN_UPDATES) js("window.__adarshOpen&&window.__adarshOpen('updates')")
+    }
     override fun onResume() {
         super.onResume()
         resumed = true
+        awaitingResult = false   // our own permission dialog / picker has closed
         getSystemService(NotificationManager::class.java)?.cancel(REPLY_ID)
         web.onResume()
         flush()   // answers that arrived while the app was in the background
@@ -299,6 +334,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        // Screen off / another app: keep the live voice chat going (no-op unless the voice screen armed a config).
+        if (!isChangingConfigurations) handoffToBackground()
         resumed = false
         // Runtime permission dialogs can pause the activity before BNR capture starts; that pending
         // permission path is left alone. Active BNR capture/transcription is foreground-only.
@@ -339,10 +376,23 @@ class MainActivity : AppCompatActivity() {
         private fun ui(f: (MainActivity) -> Unit) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) f(a) } } }
 
         // These are user UI controls, not AI action capabilities. Never included in the action allowlist.
+        fun isOnScreen(): Boolean = current?.let { it.resumed && !it.destroyed } == true
+        /** Read once by the page at boot; a cold start from the update notification opens App updates. */
+        fun launchTarget(): String = onMain { val a = current!!; val t = a.launchTarget ?: ""; a.launchTarget = null; t }
+        /** "" reads the switch; "on"/"off" changes it. Turning it on asks for notification permission once. */
+        fun updateNotify(value: String): String = onMain {
+            val a = current!!
+            if (value == "on" || value == "off") UpdateCheckJob.setEnabled(a, value == "on")
+            val on = UpdateCheckJob.enabled(a)
+            if (value == "on" && Build.VERSION.SDK_INT >= 33 &&
+                a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) a.askNotifications()
+            JSONObject().put("ok", true).put("on", on).put("notifications", a.notificationsReady()).toString()
+        }
         fun updateStatus(): String = onMain { current!!.updater!!.status().toString() }
         fun updateCheck(force: Boolean): String = onMain { current!!.updater!!.check(force).toString() }
         fun updateDownload(): String = onMain { current!!.updater!!.download().toString() }
         fun updateInstall(): String = onMain { current!!.updater!!.install().toString() }
+        fun bootBars(dark: Boolean) = ui { a -> a.setBootBars(dark) }
         fun backgroundVoiceStatus(): String = onMain {
             if (current!!.pendingBackground != null) JSONObject().put("ok", true).put("active", false).put("state", "permission_required")
                 .put("message", "Voice start is waiting for permissions. Stay in the app or tap Stop to cancel.").toString()
@@ -370,7 +420,7 @@ class MainActivity : AppCompatActivity() {
             if (armed && !notif && Build.VERSION.SDK_INT >= 33 && a.resumed && !a.handoffNotifAsked &&
                 a.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 a.handoffNotifAsked = true
-                a.notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                a.askNotifications()
             }
             JSONObject().put("ok", true).put("armed", armed).put("notifications", notif).toString()
         }
@@ -602,7 +652,7 @@ class MainActivity : AppCompatActivity() {
         }
         fun saveFile(name: String, text: String) = ui { a ->
             a.pendingSave = text
-            try { a.saver.launch(name) } catch (_: Exception) { a.pendingSave = null; a.js("window.__adarshSaved&&window.__adarshSaved(false)") }
+            try { a.awaitingResult = true; a.saver.launch(name) } catch (_: Exception) { a.pendingSave = null; a.js("window.__adarshSaved&&window.__adarshSaved(false)") }
         }
 
         // ---- reply notifications: the WebView has no Notification API, so the app posts them itself
@@ -612,7 +662,7 @@ class MainActivity : AppCompatActivity() {
             prefs(c).edit().putBoolean("notify", on).apply()
             if (!on) return "off"
             if (Build.VERSION.SDK_INT >= 33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ui { it.notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                ui { it.askNotifications() }
                 return "asked"
             }
             return if (c.getSystemService(NotificationManager::class.java).areNotificationsEnabled()) "granted" else "denied"

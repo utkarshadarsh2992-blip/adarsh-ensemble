@@ -12,8 +12,30 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/productivity.css">
+<link rel="stylesheet" href="css/boot.css">
 </head>
 <body>
+<!-- Startup animation (css/boot.css, js/07-splash.js). First paint, so the chat never flashes before it. -->
+<div class="boot" id="boot" aria-hidden="true">
+  <div class="boot-floor"><i></i></div>
+  <div class="boot-scan"></div>
+  <span class="boot-c tl"></span><span class="boot-c tr"></span><span class="boot-c bl"></span><span class="boot-c br"></span>
+  <div class="boot-tag l">ADARSH // CORE</div><div class="boot-tag r" id="boot-clock">--:--:--</div>
+  <div class="boot-glow"></div>
+  <div class="boot-ring"><svg class="boot-hud" viewBox="0 0 200 200">
+    <circle class="h0" cx="100" cy="100" r="97"/><circle class="h1" cx="100" cy="100" r="90"/>
+    <circle class="h2" cx="100" cy="100" r="80"/><circle class="h3" cx="100" cy="100" r="68"/><circle class="h4" cx="100" cy="100" r="68"/>
+  </svg></div>
+  <svg class="boot-logo" viewBox="0 0 108 108"><path class="fill" fill-rule="evenodd" d="M54,28 L74,80 L65,80 L61,69 L47,69 L43,80 L34,80 Z M54,44 L49.5,60 L58.5,60 Z"/><path class="edge" pathLength="100" d="M54,28 L74,80 L65,80 L61,69 L47,69 L43,80 L34,80 Z M54,44 L49.5,60 L58.5,60 Z"/></svg>
+  <div class="boot-info">
+    <div class="boot-name" id="boot-name">ADARSH</div>
+    <div class="boot-sub">AI ENSEMBLE · NEURAL CORE</div>
+    <div class="boot-log" id="boot-log"></div>
+    <div class="boot-bar"><i id="boot-fill"></i></div>
+    <div class="boot-foot"><span id="boot-state">BOOTING</span><b id="boot-pct">0%</b></div>
+  </div>
+  <div class="boot-skip">TAP TO SKIP</div>
+</div>
 <div class="phone" id="phone">
   <section class="view on" id="v-chat"></section>
   <section class="view" id="v-today"></section>
@@ -52,6 +74,7 @@
 <script src="js/06-lock.js"></script>
 <script src="js/07-backend.js"></script>
 <script src="js/05-mobile.js"></script>
+<script src="js/07-splash.js"></script>
 <script src="js/08-boot.js"></script>
 </body>
 </html>

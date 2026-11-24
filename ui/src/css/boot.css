@@ -1,0 +1,128 @@
+/* =====================================================================================
+   ADARSH UI : boot.css   (startup animation, driven by js/07-splash.js)
+   A dark "tech HUD" intro over the app on a cold start: spinning rings, a moving grid floor, a scan line,
+   the name decoding letter by letter, a short boot log and a progress bar, then a zoom-and-fade into the app.
+   The layer is static markup in index.html, so it is the very first paint and continues the Android splash
+   (same dark ground, same "A" at the same size). Only transform / opacity are animated (cheap in the WebView).
+   Settings > Alerts and feel > Startup animation turns it off. A tap skips it. Reduced motion = a short fade.
+   ===================================================================================== */
+.boot{position:fixed;inset:0;z-index:1000;overflow:hidden;background:#05070B;color:#DCE7EF;font-family:var(--mono);
+  -webkit-user-select:none;user-select:none;touch-action:none;
+  --bc:#49D9FF;--bc2:rgba(73,217,255,.32);--bc3:rgba(73,217,255,.13);--ba:#FF8A5B;--bm:#6B8092;--ok:#59F2B4;
+  --hud:min(66vw,270px,36vh);
+  /* fail-safe: even if the script never runs, the layer can not stay over the app */
+  animation:boot-failsafe .35s linear 6s forwards}
+@keyframes boot-failsafe{to{opacity:0;visibility:hidden;pointer-events:none}}
+@keyframes boot-fade{to{opacity:1}}
+
+/* dot field (upper half) + vignette */
+.boot::before{content:'';position:absolute;inset:0;opacity:0;pointer-events:none;
+  background-image:radial-gradient(rgba(73,217,255,.17) 1px,transparent 1.3px);background-size:22px 22px;
+  -webkit-mask-image:radial-gradient(ellipse 75% 55% at 50% 38%,#000,transparent 78%);mask-image:radial-gradient(ellipse 75% 55% at 50% 38%,#000,transparent 78%)}
+.boot::after{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 90% 70% at 50% 46%,transparent 48%,rgba(0,0,0,.72))}
+.boot.go::before{animation:boot-fade 1s ease .2s forwards}
+
+/* perspective grid floor that keeps moving towards the viewer */
+.boot-floor{position:absolute;left:-60%;right:-60%;bottom:-8%;height:56%;overflow:hidden;opacity:0;pointer-events:none;
+  transform:perspective(300px) rotateX(64deg);transform-origin:50% 100%;
+  -webkit-mask-image:linear-gradient(to top,#000,rgba(0,0,0,.55) 45%,transparent 92%);mask-image:linear-gradient(to top,#000,rgba(0,0,0,.55) 45%,transparent 92%)}
+.boot-floor i{position:absolute;left:0;right:0;top:-44px;bottom:0;
+  background-image:linear-gradient(rgba(73,217,255,.26) 1px,transparent 1px),linear-gradient(90deg,rgba(73,217,255,.26) 1px,transparent 1px);background-size:44px 44px}
+.boot.go .boot-floor{animation:boot-fade .8s ease .1s forwards}
+.boot.go .boot-floor i{animation:boot-floor .7s linear infinite}
+@keyframes boot-floor{to{transform:translateY(44px)}}
+
+/* one scan line sweeping down the screen */
+.boot-scan{position:absolute;left:0;right:0;top:-90px;height:90px;opacity:0;pointer-events:none;
+  background:linear-gradient(to bottom,transparent,rgba(73,217,255,.06) 60%,rgba(73,217,255,.36) 96%,rgba(255,255,255,.75) 99%,transparent)}
+.boot.go .boot-scan{animation:boot-scan 1.25s cubic-bezier(.45,0,.25,1) .12s 1 forwards}
+@keyframes boot-scan{0%{opacity:1;transform:translateY(0)}85%{opacity:1}100%{opacity:0;transform:translateY(calc(100vh + 90px))}}
+
+/* HUD frame: corner brackets + tags */
+.boot-c{position:absolute;width:22px;height:22px;border:0 solid var(--bc2);opacity:0}
+.boot-c.tl{top:calc(14px + env(safe-area-inset-top,0px));left:14px;border-top-width:1.5px;border-left-width:1.5px}
+.boot-c.tr{top:calc(14px + env(safe-area-inset-top,0px));right:14px;border-top-width:1.5px;border-right-width:1.5px}
+.boot-c.bl{bottom:calc(14px + env(safe-area-inset-bottom,0px));left:14px;border-bottom-width:1.5px;border-left-width:1.5px}
+.boot-c.br{bottom:calc(14px + env(safe-area-inset-bottom,0px));right:14px;border-bottom-width:1.5px;border-right-width:1.5px}
+.boot.go .boot-c{animation:boot-corner .5s cubic-bezier(.2,.8,.2,1) .15s forwards}
+@keyframes boot-corner{from{opacity:0;transform:scale(1.9)}to{opacity:1;transform:none}}
+.boot-tag{position:absolute;top:calc(19px + env(safe-area-inset-top,0px));font-size:9.5px;letter-spacing:.22em;color:var(--bm);opacity:0;white-space:nowrap}
+.boot-tag.l{left:46px}
+.boot-tag.r{right:46px;font-variant-numeric:tabular-nums}
+.boot.go .boot-tag{animation:boot-fade .4s ease .35s forwards}
+
+/* glow, rings and the "A" (all centred on the screen, like the Android splash icon) */
+.boot-glow{position:absolute;left:50%;top:50%;width:calc(var(--hud) * 1.3);height:calc(var(--hud) * 1.3);
+  margin:calc(var(--hud) * -.65) 0 0 calc(var(--hud) * -.65);border-radius:50%;opacity:0;pointer-events:none;
+  background:radial-gradient(circle,rgba(73,217,255,.22),rgba(73,217,255,.06) 42%,transparent 68%)}
+.boot-glow::after{content:'';position:absolute;inset:0;border-radius:50%;opacity:0;transition:opacity .35s ease;
+  background:radial-gradient(circle,rgba(255,138,91,.30),rgba(255,138,91,.08) 42%,transparent 68%)}
+.boot.go .boot-glow{animation:boot-fade .6s ease .15s forwards,boot-breathe 1.6s ease-in-out .75s infinite alternate}
+@keyframes boot-breathe{from{transform:scale(1)}to{transform:scale(1.08)}}
+.boot.ready .boot-glow::after{opacity:1}
+
+.boot-ring{position:absolute;left:50%;top:50%;width:var(--hud);height:var(--hud);margin:calc(var(--hud) / -2) 0 0 calc(var(--hud) / -2);
+  opacity:0;transform:scale(1.35)}
+.boot.go .boot-ring{opacity:1;transform:none;transition:opacity .45s ease .08s,transform .8s cubic-bezier(.2,.8,.2,1) .05s}
+.boot-hud{display:block;width:100%;height:100%;overflow:visible}
+.boot-hud circle{fill:none;transform-box:fill-box;transform-origin:center}
+.boot-hud .h0{stroke:var(--bc3);stroke-width:1}
+.boot-hud .h1{stroke:var(--bc2);stroke-width:5;stroke-dasharray:.8 4.4}
+.boot-hud .h2{stroke:var(--bc);stroke-width:1.6;stroke-dasharray:70 22 14 22 110 30 40 30 60 104;transition:stroke .3s ease}
+.boot-hud .h3{stroke:var(--bc2);stroke-width:1;stroke-dasharray:428;stroke-dashoffset:428}
+.boot-hud .h4{stroke:var(--ba);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:26 402}
+.boot.go .boot-hud .h1{animation:boot-spin 14s linear infinite}
+.boot.go .boot-hud .h2{animation:boot-spin-r 5s linear infinite}
+.boot.go .boot-hud .h3{animation:boot-dash 1s ease-out .2s forwards}
+.boot.go .boot-hud .h4{animation:boot-spin 1.4s linear infinite}
+@keyframes boot-spin{to{transform:rotate(360deg)}}
+@keyframes boot-spin-r{to{transform:rotate(-360deg)}}
+@keyframes boot-dash{to{stroke-dashoffset:0}}
+.boot.ready .boot-hud .h2{stroke:var(--ba)}
+.boot.ready .boot-ring{animation:boot-pulse .45s ease-out}
+@keyframes boot-pulse{40%{transform:scale(1.05)}100%{transform:none}}
+
+/* 288 px box = the Android 12+ splash icon size, so the hand-over from the system splash does not jump */
+.boot-logo{position:absolute;left:50%;top:50%;width:288px;height:288px;margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%}
+.boot-logo .fill{fill:#EDEDED}
+.boot-logo .edge{fill:none;stroke:var(--bc);stroke-width:1;stroke-linejoin:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0}
+.boot.go .boot-logo{transform:scale(var(--ls,.62));transition:transform .75s cubic-bezier(.2,.8,.2,1) .05s}
+.boot.go .boot-logo .edge{animation:boot-draw .9s ease-out .25s forwards}
+@keyframes boot-draw{0%{opacity:1}100%{opacity:1;stroke-dashoffset:0}}
+
+/* name, sub-title, boot log, progress */
+.boot-info{position:absolute;left:50%;top:calc(50% + var(--hud) / 2 + 14px);width:min(80vw,320px);transform:translateX(-50%);
+  display:flex;flex-direction:column;align-items:center}
+.boot-name{font-size:25px;font-weight:500;letter-spacing:.46em;padding-left:.46em;color:#F3F8FB;white-space:nowrap;opacity:0;
+  text-shadow:0 0 14px rgba(73,217,255,.55)}
+.boot-name span{display:inline-block;width:1ch;text-align:center}
+.boot.go .boot-name{opacity:1;transition:opacity .2s ease .15s}
+.boot.ready .boot-name{text-shadow:0 0 16px rgba(255,138,91,.6)}
+.boot-sub{margin-top:4px;font-size:9.5px;letter-spacing:.34em;padding-left:.34em;color:var(--bm);white-space:nowrap;opacity:0}
+.boot.go .boot-sub{animation:boot-fade .5s ease .55s forwards}
+.boot-log{margin-top:16px;width:100%;min-height:8.75em;font-size:10.5px;line-height:1.75;color:#93A8B8}
+.boot-ln{display:flex;gap:8px;white-space:nowrap;animation:boot-in .22s ease-out both}
+@keyframes boot-in{from{opacity:0;transform:translateX(-6px)}}
+.boot-ln .k{flex:none;width:4.4em;color:var(--bc)}
+.boot-ln .v{flex:1;min-width:0;overflow:hidden}
+.boot-ln .v::after{content:' ................................................................';color:rgba(147,168,184,.32)}
+.boot-ln b{flex:none;font-weight:500;color:var(--ok)}
+.boot-ln b.boot-hot{color:var(--ba)}
+.boot-bar{margin-top:10px;width:100%;height:2px;border-radius:2px;overflow:hidden;background:rgba(73,217,255,.14)}
+.boot-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--bc),var(--ba));transform:scaleX(0);transform-origin:0 50%;box-shadow:0 0 10px var(--bc)}
+.boot-foot{margin-top:7px;width:100%;display:flex;justify-content:space-between;font-size:9.5px;letter-spacing:.2em;color:var(--bm)}
+.boot-foot b{font-weight:500;color:#DCE7EF;font-variant-numeric:tabular-nums}
+.boot.ready .boot-foot span{color:var(--ba)}
+.boot-skip{position:absolute;left:0;right:0;bottom:calc(22px + env(safe-area-inset-bottom,0px));text-align:center;font-size:9.5px;letter-spacing:.3em;color:rgba(220,231,239,.3);opacity:0}
+.boot.go .boot-skip{animation:boot-fade .5s ease .9s forwards}
+
+/* hand-over: the HUD zooms past the viewer while the layer fades into the app */
+.boot.out{opacity:0;pointer-events:none;transition:opacity .42s ease .06s}
+.boot.out .boot-ring{transform:scale(1.7);transition:transform .5s cubic-bezier(.5,0,.2,1)}
+.boot.out .boot-logo{transform:scale(calc(var(--ls,.62) * 2.3));transition:transform .5s cubic-bezier(.5,0,.2,1)}
+.boot.out .boot-info{opacity:0;transform:translate(-50%,10px);transition:opacity .25s ease,transform .3s ease}
+.boot.out.skip{transition-duration:.22s;transition-delay:0s}
+.boot.calm.out .boot-logo,.boot.calm.out .boot-ring{transform:none}
+/* short screens (old 16:9 phones): a smaller HUD and tighter log so everything fits; the skip hint steps aside */
+@media (max-height:700px){.boot{--hud:min(66vw,270px,30vh)}.boot-info{top:calc(50% + var(--hud) / 2 + 8px)}
+  .boot-log{margin-top:12px;line-height:1.6;min-height:8em}.boot-skip{display:none}}

@@ -79,6 +79,7 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
             val now = System.currentTimeMillis()
             val last = preferences.getLong(KEY_LAST_CHECK, 0L)
             if (!force && now >= last && now - last < CHECK_INTERVAL_MS) {
+                readCachedMetadata()?.let { metadata = it }   // the background check (UpdateCheckJob) may have found one
                 setStateForMetadataLocked()
                 message = if (metadata == null) "Checked recently" else "Using cached update check"
                 return statusLocked()
@@ -573,7 +574,7 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
 
     private enum class RequestKind { API, RELEASE_ASSET }
 
-    private companion object {
+    companion object {
         const val PREFS = "adarsh_updates"
         const val KEY_LAST_CHECK = "last_check_ms"
         const val KEY_METADATA = "verified_manifest"

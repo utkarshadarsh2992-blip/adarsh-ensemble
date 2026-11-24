@@ -74,6 +74,7 @@ const Chat = (() => {
     Bus.on('task:undo', ({ msg }) => { const r = msg.reply; S.tasks = S.tasks.filter(t => t.id !== r.taskId); r.gone = true; save(); });
     Bus.on('mission:action', onMission);
     Bus.on('backend:status', setStatus);
+    Bus.on('calls:changed', () => { drawCalls(); renderThread(); });
     Bus.on('mode:changed', onMode);
     renderThread(); drawCalls();
   }
@@ -452,7 +453,9 @@ const Chat = (() => {
         if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
         if (r.origin === 'local-rule' || ['blocked', 'clarification'].includes(r.type)) { const last = [...c.msgs].reverse().find(m => m.role === 'user' && m.text === text); if (last) last.localOnly = true; }
         if (personal) r.personalContext = true;
-        if (r.type === 'actions' && r.origin === 'local-rule' && modeId === 'standard') await Actions.execute(r, false);
+        // App-setting commands ("standard mode pe jao", "web search off karo") work from every mode; other actions stay Standard-only.
+        const settingsOnly = r.type === 'actions' && (r.steps || []).length && r.steps.every(st => st.action === 'settings.update');
+        if (r.type === 'actions' && r.origin === 'local-rule' && (modeId === 'standard' || settingsOnly)) await Actions.execute(r, false);
         deliver(c, r);
       }
     } catch (e) {
