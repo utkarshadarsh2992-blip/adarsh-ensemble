@@ -184,6 +184,7 @@ async def run(
     record: bool = False,  # keep every prompt/output and return out["council"] (see council.py)
     mode: str = "standard",  # UI chat mode (standard | v | physics | math | business | coding): roles engine only
     web_research: bool = True,  # no web queries from permitted private app/chat context
+    topics: list[dict] | None = None,  # sub-topic map of a big message (bigtask.py); roles engine answers each
 ) -> dict:
     t0 = time.perf_counter()
     trace = health.start_trace(record)
@@ -252,6 +253,7 @@ async def run(
             # the 11-role flow writes its own drafts (Architect -> Theorist/Empiricist/... -> Judge -> Reviewers)
             answer, extras, panel_drafts, letter_to_name = await roles.run_roles(
                 client, question, task, user_drafts, guard_report, lang, lang_full, deep, run_code, errors, mode=mode, web_research=web_research,
+                topics=topics,
             )
             warnings += extras.get("warnings", [])
             return _pack(
@@ -386,7 +388,7 @@ def _pack(
         out["audit"] = extras.get("audit")
         if extras.get("master"):
             out["master"] = extras["master"]
-        for k in ("sources", "confidence", "mode", "role_notes", "quota", "combo"):
+        for k in ("sources", "confidence", "mode", "role_notes", "quota", "combo", "parts", "topics"):
             if extras.get(k):
                 out[k] = extras[k]
     if rec is not None:

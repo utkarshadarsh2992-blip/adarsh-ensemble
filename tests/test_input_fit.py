@@ -4,6 +4,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ["USAGE_FILE"] = os.path.join(os.path.dirname(__file__), ".usage-test.json")
 import chat_adapter  # noqa: E402
 import config  # noqa: E402
 import pipeline  # noqa: E402

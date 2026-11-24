@@ -231,3 +231,42 @@ test('a request that ends without a final call list does not leave rows running'
   assert.doesNotMatch(panel, /chal rahe|chal raha…/);
   assert.match(panel, /ruk gaya/);
 });
+
+test('long council answer: Part 1/N appears live, the final list replaces it without duplicates', async t => {
+  let reply;
+  const app = mount({ nativeMethods: { send: (id, json) => { reply = id; } } });
+  t.after(() => app.close());
+  const part = ev => '\u0001part ' + JSON.stringify(ev);
+  const done = app.Chat.submit('bahut lamba sawaal');
+  await settle(10);
+  app.window.__adarshProgress(reply, part({ n: 1, of: 2, text: '**Part 1/2**\n## 1. Newton laws\nlive one' }));
+  await settle(10);
+  const thread = () => text(app.document.querySelector('.thread'));
+  assert.match(thread(), /live one/);
+  assert.equal(app.Chat.isBusy(), true, 'still working on Part 2');
+  app.window.__adarshResult(reply, JSON.stringify([
+    { type: 'text', text: '**Part 1/2**\n## 1. Newton laws\nchecked one', part: { n: 1, of: 2 }, steps: ['x'] },
+    { type: 'text', text: '**Part 2/2**\n## 2. Friction\nchecked two', part: { n: 2, of: 2 } }
+  ]), null);
+  await done;
+  await settle(10);
+  assert.doesNotMatch(thread(), /live one/);
+  assert.match(thread(), /checked one/);
+  assert.match(thread(), /checked two/);
+  assert.equal((thread().match(/Part 1\/2/g) || []).length, 1);
+});
+
+test('Stop during a long answer keeps the parts that already arrived', async t => {
+  let reply;
+  const app = mount({ nativeMethods: { send: (id, json) => { reply = id; }, cancel: () => {} } });
+  t.after(() => app.close());
+  const done = app.Chat.submit('bahut lamba sawaal');
+  await settle(10);
+  app.window.__adarshProgress(reply, '\u0001part ' + JSON.stringify({ n: 1, of: 3, text: '**Part 1/3**\nfirst part text' }));
+  await settle(10);
+  await click(app.document, 'Stop');
+  await done;
+  await settle(10);
+  assert.match(text(app.document.querySelector('.thread')), /first part text/);
+  assert.equal(app.Chat.isBusy(), false);
+});

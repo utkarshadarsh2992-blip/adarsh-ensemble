@@ -2380,6 +2380,7 @@ const Chat = (() => {
     busy = true; ctl = new AbortController(); const t0 = Date.now();
     const lv = Council.live(); const steps = lv.steps; thinkEl = lv.el;
     callRows = []; drawCalls();
+    const liveParts = [];  // Part k/N messages shown while the council still writes the next part
     sendBtn.replaceChildren(icon('stop')); sendBtn.setAttribute('aria-label', 'Stop'); onInput(); renderThread();
     Bus.emit('busy', true);
     try {
@@ -2387,6 +2388,15 @@ const Chat = (() => {
       const personal = Productivity.modelContext(text, c.id);
       const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on' } },
         { signal: ctl.signal, onProgress: (s) => {
+          if (typeof s === 'string' && s.startsWith('\u0001part ')) {  // finished Part k/N (see config.emit_part)
+            try {
+              const ev = JSON.parse(s.slice(s.indexOf('{')));
+              const r = normReply({ type: 'text', text: String(ev.text || ''), part: { n: ev.n, of: ev.of }, live: true });
+              r.uiMode = modeId;
+              deliver(c, r); liveParts.push(c.msgs[c.msgs.length - 1]); renderThread(); save();
+            } catch (e) { /* ignore */ }
+            return;
+          }
           if (typeof s === 'string' && s.charCodeAt(0) === 1) {  // structured model-call event (see config.emit_call)
             try { onCallEvent(JSON.parse(s.slice(s.indexOf('{')))); } catch (e) { /* ignore */ }
             return;
@@ -2395,6 +2405,8 @@ const Chat = (() => {
         } });
       if (!Backend.isDemo() && Backend.markUp) Backend.markUp();
       const arr = (Array.isArray(res) ? res : [res]).filter(Boolean).map(normReply);
+      // the final list carries every part again (checked, with steps / sources / notes): it replaces the live copies
+      for (const m of liveParts) { const i = c.msgs.indexOf(m); if (i >= 0) c.msgs.splice(i, 1); }
       if (arr[0] && Array.isArray(arr[0].calls) && arr[0].calls.length) {  // final list from the engine (also for the HTTP backend, which sends no live events)
         callRows = arr[0].calls.map(c => ({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails || [] }));
         drawCalls();

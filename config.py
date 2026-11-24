@@ -365,6 +365,18 @@ def emit(msg: str) -> None:
 
 
 CALL_TAG = "\u0001call "  # marks a structured model-call line inside the plain progress text
+PART_TAG = "\u0001part "  # one finished answer part {"n", "of", "text"}: the chat shows it at once (big answers)
+
+
+def emit_part(event: dict) -> None:
+    """A finished Part k/N of a long council answer, sent while the next part is still being written."""
+    cb = PROGRESS.get()
+    if not cb:
+        return
+    try:
+        cb(PART_TAG + json.dumps(event, ensure_ascii=False))
+    except Exception:
+        pass
 
 
 def emit_call(event: dict) -> None:

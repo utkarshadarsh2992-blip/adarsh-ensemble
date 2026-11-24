@@ -22,6 +22,7 @@ import re
 import string
 import time
 
+import bigtask
 import config
 import health
 import mode_plans
@@ -75,13 +76,41 @@ async def _call(client, stage, spec, messages, errors, *, max_tokens=None, tempe
     return out
 
 
+async def _judge_parts(client, spec, judge_sys, judge_user, groups, topics, errors, *, first=1, total=None):
+    """Write a long answer as Part k/N: one Judge call per group of sub-topics, one after another (rate-limit
+    friendly, small pause between parts). Each finished part goes to the chat at once (config.emit_part)."""
+    total = total or len(groups)
+    out: list[str] = []
+    for k, group in enumerate(groups, first):
+        names = "; ".join(f"{i}. {topics[i - 1]['title']}" for i in group)
+        last = k == total
+        rule = (f"\n\n[LONG ANSWER IN {total} PARTS] Write ONLY Part {k}/{total}, covering these sub-topics: {names}. "
+                f"Start with the line '**Part {k}/{total}**'. Give each sub-topic its own heading '## <number>. <title>'. "
+                "Do not write the other sub-topics: they are separate parts. "
+                + ("This is the last part: end with the overall sections the format asks for and the CONFIDENCE line."
+                   if last else "Not the last part: no closing summary and no CONFIDENCE line here."))
+        if k > first:
+            await asyncio.sleep(bigtask.PART_GAP_S)
+        text = await _call(client, f"judge:part{k}", spec, _m(judge_sys, judge_user + rule), errors,
+                           max_tokens=config.FINAL_MAX_TOKENS, temperature=0.2,
+                           emit_start=f"Judge: Part {k}/{total} likh raha hai")
+        if text is None:
+            text = f"**Part {k}/{total}**\n\n*Is part ka jawab nahi aa paya ({names}). Dobara try karke yeh topics maangiye.*"
+        elif not text.lstrip().startswith(f"**Part {k}/{total}**"):
+            text = f"**Part {k}/{total}**\n\n" + text
+        out.append(text)
+        config.emit_part({"n": k, "of": total, "text": text})
+    return out
+
+
 def _title(stage: str) -> str:
     kind, _, rest = stage.partition(":")
     if kind == "panel":
         return prompts.ROLE_INFO.get(rest, (rest,))[0]
     return {"architect": "Architect", "skeptic": "Skeptic", "refine": "Refiner", "judge": "Judge",
             "review": {"method": "Methodology reviewer", "evidence": "Evidence reviewer"}.get(rest, "Reviewer"),
-            "debate": f"Debater {rest}", "falsifier": f"Falsifier {rest}"}.get(kind, stage)
+            "debate": f"Debater {rest}", "falsifier": f"Falsifier {rest}"}.get(kind, stage) + (
+        f" {rest.replace('part', 'Part ')}" if kind == "judge" and rest else "")
 
 
 def _drafter_system(role: str, spec_role: str, mode: str, hint: str, has_sources: bool) -> str:
@@ -197,8 +226,10 @@ def strip_bad_cites(answer: str, sources: list[dict]) -> str:
 # ------------------------------------------------------------------ entry point
 
 async def run_roles(client, question, task, user_drafts, guard_report, lang, lang_full, deep, run_code, errors, *,
-                    mode="standard", web_research=True):
-    """Returns (answer, extras, panel_drafts, letter_to_name)."""
+                    mode="standard", web_research=True, topics=None):
+    """Returns (answer, extras, panel_drafts, letter_to_name).
+    topics = sub-topic map of a big message (bigtask.decompose): the Judge answers every sub-topic under its own
+    heading; 4+ sub-topics are written as Part 1/N, 2/N ... (one Judge call each, sent to the chat as they finish)."""
     mode = resolve_mode(mode, task)
     fmt = "coding" if mode == "coding" else "standard"
     style = f"roles:{fmt}"
@@ -400,8 +431,17 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         RP.tag("reports", "## Executable proofs (Python sandbox)\n" + proofs_text) if proofs_text else "",
     ] if p)
     judge_msgs = _m(judge_sys, judge_user)
-    answer = await _call(client, "judge", mp.spec("judge"), judge_msgs, errors,
-                         max_tokens=config.FINAL_MAX_TOKENS, temperature=0.2, emit_start="Judge: ek final jawab likh raha hai")
+    groups = bigtask.plan_parts(topics)
+    parts: list[str] = []
+    if groups:  # big answer: one Judge call per part, each part delivered as soon as it is written
+        parts = await _judge_parts(client, mp.spec("judge"), judge_sys, judge_user, groups, topics, errors)
+        failed = [p for p in parts if p.split("\n\n", 1)[-1].startswith("*Is part ka jawab nahi")]
+        answer = "\n\n".join(parts) if len(failed) < len(parts) else None
+        if failed and answer:
+            warnings.append(f"{len(failed)} part(s) ka jawab nahi aa paya; unke topics dobara maangiye.")
+    else:
+        answer = await _call(client, "judge", mp.spec("judge"), judge_msgs, errors,
+                             max_tokens=config.FINAL_MAX_TOKENS, temperature=0.2, emit_start="Judge: ek final jawab likh raha hai")
     judge_raw = answer
     repair_log: list[dict] = []
     audit_texts: dict = {}
@@ -412,28 +452,44 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     if answer is None:
         answer = max(anon.values(), key=len) if anon else "Abhi koi model jawab nahi de paya. Thodi der baad dobara try karo."
         warnings.append("Judge fail hua: sabse lamba draft dikhaya gaya (bina jaanch ke).")
+        parts = []
+    elif parts:
+        parts = [verified.lint_answer(p, proofs, style)[0] for p in parts]  # tag honesty per part
+        answer = "\n\n".join(parts)
+        _, lint = verified.lint_answer(answer, proofs, style)  # section check on the whole answer
     else:
         answer, lint, repairs = await verified.enforce_format(client, judge_msgs, answer, proofs, style, errors, repair_log)
+        if topics:  # coverage check: a sub-topic the Judge skipped (or lost to the token limit) gets its own part
+            missing = bigtask.missing_topics(answer, list(range(1, len(topics) + 1)))
+            if missing:
+                config.emit_part({"n": 1, "of": 2, "text": "**Part 1/2**\n\n" + answer})
+                extra = await _judge_parts(client, mp.spec("judge"), judge_sys, judge_user, [missing], topics, errors,
+                                           first=2, total=2)
+                if extra and extra[0] and not extra[0].startswith("**Part 2/2**\n\n*Is part"):
+                    parts = ["**Part 1/2**\n\n" + answer, verified.lint_answer(extra[0], proofs, style)[0]]
+                    answer = "\n\n".join(parts)
 
-        # [G] Reviewers
-        if review_on and not verified.missing_sections(answer, style):
+    if answer is not None and (parts or judge_raw is not None):
+        # [G] Reviewers (a parted answer: reviewed once as a whole, problems shown as notes; no rewrite of parts)
+        if review_on and (parts or not verified.missing_sections(answer, style)):
             wanted = pol.reviewers_deep if deep else pol.reviewers_fast
             want_method, want_evidence = "method" in wanted, "evidence" in wanted
             config.emit("Reviewers: tareeka aur saboot jaanch rahe hain")
+            review_text = _cut(answer, 14000) if parts else answer  # a very long parted answer: first 14k chars
             material = "\n\n".join(p for p in [RP.tag("sources", src_text) if has_src else "",
                                                RP.tag("claims", compact_text)] if p)
             jobs = []
             if want_method:
                 jobs.append(_call(client, "review:method", mp.spec("method"),
                                   _m(RP.system_for("method_reviewer", mode, writer_hint=lang, extra=chk.get("method", "")),
-                                     f"Question:\n{question}\n\n{RP.tag('draft', answer)}"
+                                     f"Question:\n{question}\n\n{RP.tag('draft', review_text)}"
                                      + (f"\n\n{RP.tag('reports', 'Code proofs: ' + json.dumps(verified_summary(proofs)))}" if proofs else "")),
                                   errors, temperature=0.1))
             if want_evidence:
                 jobs.append(_call(client, "review:evidence", mp.spec("evidence"),
                                   _m(RP.system_for("evidence_reviewer", mode, writer_hint=lang, sources=has_src,
                                                    extra=chk.get("evidence", "")),
-                                     f"Question:\n{question}\n\n{RP.tag('draft', answer)}\n\nMaterial the answer was built from:\n{material}"),
+                                     f"Question:\n{question}\n\n{RP.tag('draft', review_text)}\n\nMaterial the answer was built from:\n{material}"),
                                   errors, temperature=0.1))
             outs = await asyncio.gather(*jobs)
             it = iter(outs)
@@ -452,7 +508,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
                         else "Reviewers: koi galti nahi mili")
 
             # [H] Refiner
-            if actionable:
+            if actionable and not parts:  # parts already reached the chat: problems become notes, no rewrite
                 crit = "\n".join(f"{n}. [{i['by']}] \"{i['quote']}\" | problem: {i['problem']} | fix: {i['fix']}"
                                  for n, i in enumerate(actionable, 1))
                 crit_block = RP.tag("critiques", crit)
@@ -484,6 +540,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
 
     if has_src:
         answer = strip_bad_cites(answer, sources)
+        parts = [strip_bad_cites(p, sources) for p in parts]
     confidence = parse_confidence(answer)
     if pol.low_conf_warn and confidence == "low":
         warnings.append(f"{mp.title} mode: is jawab ki CONFIDENCE low hai. Isko pakka fact mat maano; sources khud check karo.")
@@ -509,6 +566,8 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
         "sources": sources,
         "quota": quota,
         "combo": combo,
+        "parts": parts,
+        "topics": [t["title"] for t in topics or []],
         "debug": {
             "claims_map": claim_map,
             "falsification": reports,
