@@ -1,7 +1,7 @@
 """Async client for OpenAI-compatible chat endpoints, with fail-over chains.
 
-chat(client, spec, messages) tries `spec`, then each label in spec.fallbacks, and returns the
-first good answer. A candidate is SKIPPED (no HTTP call) when its key is missing, it is cooling
+chat(client, spec, messages) tries the primary provider's models and keys before another provider,
+preserving each provider's model order from spec.fallbacks. A candidate is SKIPPED when its key is missing, it is cooling
 down after a 429/error, its local daily quota is used up, or the request would not fit its
 tokens-per-minute limit. Before every call it reserves a slot in our own per-minute window
 (health.reserve_slot), so parallel requests are spaced out instead of fired together and 429s become rare.
@@ -195,7 +195,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                     f"{base_url}/chat/completions", json=payload, headers=headers, timeout=timeout
                 )
         except httpx.HTTPError as e:
-            health.provider_error(spec.provider)
+            health.provider_error(spec.provider, slot)
             if attempts <= retries and health.available(spec)[0]:
                 await asyncio.sleep(1.0 * attempts)
                 continue
@@ -257,7 +257,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
             raise _Skip(f"bad request: {_error_text(data, r)}", retry=False)
         # 408 / 5xx / anything else
         if code in (408, 502, 503, 504):
-            health.provider_error(spec.provider)
+            health.provider_error(spec.provider, slot)
         if attempts <= retries and health.available(spec)[0]:
             await asyncio.sleep(1.5 * attempts)
             continue
@@ -279,13 +279,16 @@ def expand_keys(chain: list) -> list:
 
 
 def balance(chain: list) -> list:
-    """Helper roles: models that already used QUOTA_BALANCE_AT of their daily quota go to the back of the chain
-    (order kept otherwise). Critical calls (judge, repair, refiner...) keep their chain as written."""
-    at = config.QUOTA_BALANCE_AT
-    if not at or health.critical():
-        return chain
-    heavy = [c for c in chain if health.capped(c) and health.used_frac(c) >= at]
-    return chain if not heavy or len(heavy) == len(chain) else [c for c in chain if c not in heavy] + heavy
+    """Stable provider-first chain, with no proactive cross-provider quota balancing.
+
+    Keep the primary provider first, then providers in their original first-occurrence order.
+    Within each provider preserve the role's model order. expand_keys then tries all configured
+    keys of each model. Known-unavailable candidates remain skippable by the existing health guards.
+    """
+    groups: dict[str, list] = {}
+    for candidate in chain:
+        groups.setdefault(candidate.provider, []).append(candidate)
+    return [candidate for group in groups.values() for candidate in group]
 
 
 async def chat(

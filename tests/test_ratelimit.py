@@ -158,7 +158,8 @@ def test_rate_info_prefers_retry_after_header():
 def test_429_with_retry_after_cools_the_model_and_the_chain_moves_on():
     c = Client({"openai/gpt-oss-120b": Resp(429, {"error": {"message": "x"}}, headers={"retry-after": "7"})})
     out = run(llm.chat(c, config.AUDITOR, SMALL, retries=0))
-    assert out == "ok" and c.calls == ["openai/gpt-oss-120b", "gemini-3.5-flash-lite"]
+    # Exhaust the Groq models already in this role's chain before contacting Gemini.
+    assert out == "ok" and c.calls == ["openai/gpt-oss-120b", config.REGISTRY["qwen3.8-27b"].model]
     assert health.snapshot()["cooling_down"]["gpt-oss-120b"] >= 7
 
 
@@ -212,10 +213,10 @@ def test_own_window_spreads_calls_and_the_chain_moves_on_when_full(monkeypatch):
     assert c.calls == ["gemini-3.5-flash-lite", "gemini-3.5-flash-lite", "nvidia/nemotron-3.5-lightning:free"]
 
 
-def test_network_error_skips_to_the_next_model():
+def test_network_error_tries_the_next_same_provider_model_first():
     c = Client({"openai/gpt-oss-120b": httpx.ConnectError("boom")})
     assert run(llm.chat(c, config.AUDITOR, SMALL, retries=0)) == "ok"
-    assert c.calls[:2] == ["openai/gpt-oss-120b", "gemini-3.5-flash-lite"]
+    assert c.calls[:2] == ["openai/gpt-oss-120b", config.REGISTRY["qwen3.8-27b"].model]
 
 
 def test_auditor_plan_still_follows_the_rules():

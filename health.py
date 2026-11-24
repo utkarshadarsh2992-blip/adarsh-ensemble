@@ -30,7 +30,7 @@ _cool: dict[str, float] = {}       # model label -> unix time until which it is 
 _prov_cool: dict[str, float] = {}  # provider -> unix time (network circuit breaker: the whole server is skipped)
 _key_cool: dict[str, float] = {}   # key slot ("groq", "groq#2", ...) -> unix time (401 / 402 / daily cap of ONE key)
 _streak: dict[str, int] = {}       # consecutive failures per model label
-_perr: dict[str, list[float]] = {}  # provider -> timestamps of recent network-level failures
+_perr: dict[str, dict[int, list[float]]] = {}  # provider -> key slot -> recent network failure timestamps
 _trace: contextvars.ContextVar = contextvars.ContextVar("trace", default=None)
 _rec: contextvars.ContextVar = contextvars.ContextVar("trace_record", default=False)
 _stage: contextvars.ContextVar = contextvars.ContextVar("stage", default="")
@@ -265,7 +265,8 @@ def note_request(spec: ModelSpec) -> None:
 
 def success(spec: ModelSpec, tokens: int) -> None:
     _streak[spec.label] = 0
-    _perr.pop(spec.provider, None)
+    with _usage_lock:
+        _perr.pop(spec.provider, None)
     if tokens:
         with _usage_lock:
             _roll()
@@ -288,17 +289,27 @@ def cooldown_key(spec: ModelSpec, seconds: float) -> None:
     _key_cool[kid] = time.time() + min(seconds, 86400)
 
 
-def provider_error(provider: str) -> None:
-    """Network-level failure (connect error, timeout, 408/502/503/504).
-    Two within a minute = circuit breaker: skip the WHOLE provider for 60 s, so its other
-    models do not each burn a timeout and the chain jumps straight to another provider."""
+def provider_error(provider: str, key_slot: int = 0) -> None:
+    """Open the network breaker only after EVERY configured key has failed recently.
+
+    Repeated failures on key 1/2 must never hide an untouched key 3. Single-key providers
+    retain their two-failure retry allowance. An omitted slot refers to the first configured key.
+    """
+    slots = PROVIDERS[provider].slots()
+    if not slots:
+        return
+    slot = key_slot or slots[0]
+    if slot not in slots:
+        return
     now = time.time()
-    recent = [t for t in _perr.get(provider, []) if now - t < 60] + [now]
-    if len(recent) >= 2:
-        _perr[provider] = []
-        cooldown_provider(provider, 60)
-    else:
+    with _usage_lock:
+        recent = {s: [t for t in times if now - t < 60][-1:]
+                  for s, times in _perr.get(provider, {}).items() if s in slots}
+        recent.setdefault(slot, []).append(now)
         _perr[provider] = recent
+        if all(recent.get(s) for s in slots) and sum(map(len, recent.values())) >= max(2, len(slots)):
+            _perr.pop(provider, None)
+            cooldown_provider(provider, 60)
 
 
 def fail(spec: ModelSpec, base_seconds: float) -> None:

@@ -308,7 +308,7 @@ async def _judge(client, messages, errors) -> str | None:
 
 async def _repair(client, base_messages, answer, missing, attempt, errors, writer=None) -> str | None:
     """The judge dropped required headings. Show it its own answer and ask for the complete answer again.
-    Attempt 2 starts on a different model, because the same one may keep making the same mistake."""
+    Attempt 2 may try another existing model on the SAME provider; API failover stays provider-first."""
     base = writer or config.SYNTHESIZER
     spec = base if attempt == 0 else config.rotated(base)
     health.set_stage(f"repair{attempt + 1}")

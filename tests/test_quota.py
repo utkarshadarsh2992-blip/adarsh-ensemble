@@ -119,13 +119,14 @@ def test_end_to_end_daily_429_learns(monkeypatch):
     assert "gemini-3.8-flash" not in c2.calls
 
 
-def test_helper_chain_moves_a_heavy_model_to_the_back():
+def test_helper_chain_keeps_a_usable_primary_even_when_quota_is_heavy(monkeypatch):
     use_tokens(G120, 0.7)
+    monkeypatch.setattr(config, "QUOTA_BALANCE_AT", 0.6)  # an old deployment value cannot bypass provider priority
     health.set_stage("panel:theorist")
     c = Client()
     asyncio.run(llm.chat(c, config.THEORIST, SMALL))
-    assert c.calls[0] != G120.model
-    health.set_stage("judge")  # critical calls keep the written order
+    assert c.calls[0] == G120.model
+    health.set_stage("judge")  # critical calls also keep the primary provider first
     chain = [G120, GEM]
     assert llm.balance(chain) == chain
 

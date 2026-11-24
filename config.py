@@ -294,9 +294,17 @@ REFINER = use("gemini-3.8-flash", "refiner", ["nemotron-ultra", "gpt-oss-120b", 
 
 
 def rotated(spec: ModelSpec) -> ModelSpec:
-    """Same chain, but starting at its first fallback (another provider/family). Used for a second repair attempt."""
-    first = REGISTRY[spec.fallbacks[0]]
-    return replace(first, role=spec.role, extra=first.extra, fallbacks=tuple(spec.fallbacks[1:]) + (spec.label,))
+    """Second format repair may rotate models, but never proactively change providers.
+
+    Use an existing same-provider fallback if present; otherwise retain the original primary.
+    Real provider failover remains the responsibility of llm.chat after keys/models are exhausted.
+    """
+    label = next((label for label in spec.fallbacks if REGISTRY[label].provider == spec.provider), None)
+    if label is None:
+        return spec
+    first = REGISTRY[label]
+    return replace(first, role=spec.role, extra=first.extra,
+                   fallbacks=tuple(other for other in spec.fallbacks if other != label) + (spec.label,))
 
 
 def chain_of(spec: ModelSpec) -> list[ModelSpec]:
@@ -459,9 +467,9 @@ RL_ROUND_WAIT_S = float(os.getenv("RL_ROUND_WAIT_S", "45"))    # if EVERY model 
 
 # Quota saving (see health.py). Stages that may use the LAST part of a daily quota (QUOTA_RESERVE_MARGIN):
 CRITICAL_STAGES = ("judge", "repair", "refine", "revise", "synth", "single", "classify", "architect")
-# Helper roles move a model that has used this share of its daily quota to the back of their chain (0 = off),
-# so one model (e.g. gpt-oss-120b, first for 3 roles) does not run dry by noon while the others sit idle.
-QUOTA_BALANCE_AT = float(os.getenv("QUOTA_BALANCE_AT", "0.6"))
+# Legacy compatibility setting; llm.balance now enforces provider-first order and never reorders
+# a healthy primary behind another provider because of quota usage. Hard quota guards still apply.
+QUOTA_BALANCE_AT = float(os.getenv("QUOTA_BALANCE_AT", "0"))
 # Share of quota left (first model of every role) below which the roles engine saves on its own:
 QUOTA_TIGHT = float(os.getenv("QUOTA_TIGHT", "0.35"))  # deep -> fast
 QUOTA_LOW = float(os.getenv("QUOTA_LOW", "0.15"))      # fast, no debate, no reviewers (judge still answers)

@@ -177,7 +177,7 @@ async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, 
                         r = await client.post(f"{prov.url_for(slot)}/chat/completions", json=payload, headers=headers,
                                               timeout=max(5.0, min(45.0, deadline - time.monotonic())))
                 except httpx.HTTPError as e:
-                    health.provider_error("groq")
+                    health.provider_error("groq", slot)
                     health.fail(spec, 30)
                     reasons[spec.label] = f"network error: {type(e).__name__}"
                     break  # server down / unreachable: next key
@@ -253,7 +253,7 @@ async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, 
                     health.fail(spec, 60)
                     reasons[spec.label] = f"bad request (HTTP {code})"
                     break
-                health.provider_error("groq")  # 408 / 5xx / anything else = server trouble: next key
+                health.provider_error("groq", slot)  # exhaust configured Groq keys before the provider breaker opens
                 health.fail(spec, 30)
                 reasons[spec.label] = f"HTTP {code}"
                 break

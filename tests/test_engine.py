@@ -574,11 +574,13 @@ def test_repair_fixes_missing_sections_before_user_sees_it(scripted):
     assert scripted["repair_labels"] == [config.SYNTHESIZER.label]
 
 
-def test_second_repair_attempt_uses_a_different_model(scripted):
+def test_second_repair_attempt_does_not_proactively_change_provider(scripted):
     scripted["judge_replies"], scripted["repair_replies"] = [BROKEN], [BROKEN, GOOD]
     res = _ask()
     assert res["repairs"] == 2 and "### Explanation" in res["answer"]
-    assert scripted["repair_labels"] == [config.SYNTHESIZER.label, config.SYNTHESIZER.fallbacks[0]]
+    rotated = config.rotated(config.SYNTHESIZER)
+    assert rotated.provider == config.SYNTHESIZER.provider
+    assert scripted["repair_labels"] == [config.SYNTHESIZER.label, rotated.label]
 
 
 def test_format_that_cannot_be_repaired_is_flagged_and_not_audited(scripted):
@@ -657,13 +659,22 @@ def test_adapter_shows_audit_repairs_and_doubts(scripted, monkeypatch):
     assert "O(t·d)" in out[0]["text"]
 
 
-def test_rotated_chain_starts_on_another_model_and_keeps_all():
+def test_rotated_chain_never_proactively_changes_provider_and_keeps_all():
     r = config.rotated(config.SYNTHESIZER)
-    assert r.label == config.SYNTHESIZER.fallbacks[0] and r.label != config.SYNTHESIZER.label
+    assert r.provider == config.SYNTHESIZER.provider
     chain = [c.label for c in config.chain_of(r)]
-    assert config.SYNTHESIZER.label in chain and len(set(chain)) == len(chain)
+    assert set(chain) == {c.label for c in config.chain_of(config.SYNTHESIZER)}
+    assert len(set(chain)) == len(chain)
     assert config.PLAN_PROBLEMS == [] and "auditor" in dict(config.all_roles())
     assert config.AUDITOR.provider != config.SYNTHESIZER.provider  # not the judge's family
+
+
+def test_repair_rotation_prefers_an_existing_same_provider_model():
+    base = config.use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "gpt-oss-20b"])
+    rotated = config.rotated(base)
+    assert rotated.label == "gpt-oss-20b" and rotated.provider == base.provider
+    assert {c.label for c in config.chain_of(rotated)} == {c.label for c in config.chain_of(base)}
+    assert config.rotated(config.REGISTRY["gpt-oss-120b"]) == config.REGISTRY["gpt-oss-120b"]
 
 
 def test_prompts_carry_the_new_rules():
