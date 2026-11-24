@@ -216,22 +216,19 @@ async def run(
         for name, g in guard_report.items():
             if g["flagged"]:
                 warnings.append(
-                    f"Pasted answer '{name}' was flagged by the injection detector "
-                    f"(score {g['max_score']:.2f}). It was still used, but treated strictly as data."
+                    f"'{name}' mein injection jaisa text mila ({g['max_score']:.2f}); sirf data maana."
                 )
             elif g["chunks"] and g["unavailable"] == g["chunks"]:
                 warnings.append(
-                    f"Pasted answer '{name}' was NOT scanned: no injection detector was reachable "
-                    "(Groq guard and the fallback LLM both failed)."
+                    f"'{name}' scan nahi hua (injection detector nahi mila)."
                 )
             elif g["chunks"] and g["unparsed"] + g["unavailable"] == g["chunks"]:
                 warnings.append(
-                    f"Injection detector gave no readable score for '{name}' (output format differs?)."
+                    f"'{name}' ka injection score padha nahi gaya."
                 )
             elif "llm-fallback" in g["via"]:
                 warnings.append(
-                    f"'{name}' was scanned by the weaker LLM fallback detector (Groq guard unavailable). "
-                    f"Reason: {g.get('why') or 'unknown'}"
+                    f"'{name}' backup detector se scan hua ({g.get('why') or 'Groq guard nahi mila'})."
                 )
 
         if master_mode:
@@ -335,7 +332,7 @@ async def run(
         except LLMError as e:
             errors["synthesizer"] = str(e)
             answer = max(all_drafts.values(), key=len)
-            warnings.append("Final synthesis failed: returned the longest draft (unverified).")
+            warnings.append("Final jawab nahi bana: sabse lamba draft diya (unverified).")
 
     return _pack(
         answer, task, user_drafts, panel_drafts, errors, transcript, t0, debug, len(transcript),

@@ -68,14 +68,14 @@ def lint(answer: str, letters: set[str]) -> tuple[str, list[str], list[str]]:
     missing = missing_sections(answer)
     if missing:
         problems.append("missing_section")
-        warnings.append("Final answer is missing section(s): " + ", ".join(missing))
+        warnings.append("Jawab mein ye section nahi: " + ", ".join(missing))
     answer, bad = fix_tags(answer, letters)
     if bad:
         problems.append("bad_tag")
-        warnings.append("Kuch tags ke letters kisi answer ke the hi nahi (" + ", ".join(sorted(bad)) + "): hata diye.")
+        warnings.append("Galat tags hata diye (" + ", ".join(sorted(bad)) + ").")
     if letters and not _TAG.search(answer):
         problems.append("no_tags")
-        warnings.append("Jawab me kisi baat par source tag ([A], [B]...) nahi laga, isliye check karna mushkil hai.")
+        warnings.append("Jawab mein source tag ([A], [B]...) nahi hain.")
     return answer, warnings, problems
 
 
@@ -327,7 +327,7 @@ async def run_master(client, question, anon, letter_to_name, lang, lang_full, er
     audit = {"enabled": config.GROUND_ENABLED, "ran": False, "issues": [], "applied": [], "unsure": [], "label": "Grounding check"}
     if answer is None:
         answer = max(anon.values(), key=len)
-        warnings.append("Master writer fail hua: sabse lamba paste kiya answer jyun ka tyun diya (master format me nahi).")
+        warnings.append("Master writer fail: sabse lamba paste answer waisa hi diya.")
     else:
         used_model = (health.last_call("judge") or {}).get("used", "")
         config.emit(f"Master ({used_model}) ne jawab likha" if used_model else "Master ne jawab likha")

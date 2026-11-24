@@ -484,7 +484,7 @@ def test_adapter_passes_prefs_and_returns_notes(spy_models, monkeypatch):
     assert "### Short answer" in out[0]["text"]
     assert out[0]["notes"]["title"] == "Kahan galat ho sakta hai" and out[0]["notes"]["items"]
     assert out[0]["steps"][0].endswith("· explain")
-    assert "Python code proofs are off" not in out[0]["text"]  # not shown for explanations
+    assert "code proof off" not in out[0]["text"]  # not shown for explanations
     assert all("Hinglish" in s for s in spy_models["panel"])
     # junk prefs fall back to defaults instead of breaking the request
     spy_models["panel"].clear()

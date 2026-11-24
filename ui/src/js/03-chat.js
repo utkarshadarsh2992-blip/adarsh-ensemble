@@ -26,7 +26,7 @@ const Chat = (() => {
       return v;
     };
     for (let i = 0; replyBytes(out) > MAX_REPLY_BYTES && i < 8; i++) out = shrink(out);
-    if (replyBytes(out) > MAX_REPLY_BYTES) { out = { type: 'text', text: 'Reply details omitted because the backend response was too large.' }; omitted = true; }
+    if (replyBytes(out) > MAX_REPLY_BYTES) { out = { type: 'text', text: 'Jawab bahut bada tha, details hata di.' }; omitted = true; }
     if (omitted && out && typeof out === 'object') out._detailsOmitted = true;
     return out;
   }
@@ -49,7 +49,7 @@ const Chat = (() => {
   /* ---------- build ---------- */
   function mount(root) {
     titleEl = h('h1', { class: 'wm' }, 'ADARSH');
-    statusEl = h('span', { class: 'status', role: 'button', title: 'Tap to check the engine again', on: { click: () => Backend.refresh() } }, h('i'), h('span', {}, ''));
+    statusEl = h('span', { class: 'status', role: 'button', title: 'Engine dobara check karne ko tap karo', on: { click: () => Backend.refresh() } }, h('i'), h('span', {}, ''));
     callsBtn = ibtn('search2', 'Model calls dikhao', toggleCalls, 'calls');
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
@@ -67,8 +67,7 @@ const Chat = (() => {
     callsEl = h('div', { class: 'mcalls', hidden: true });
     root.append(hdrEl, thread,
       h('div', { class: 'dock pad' }, jump, callsEl,
-        h('div', { class: 'box' }, atts, ta, h('div', { class: 'row' }, plus, h('span', { class: 'sp' }), modeBtn, micBtn, sendBtn, voiceBtn)),
-        h('p', { class: 'fine' }, 'Adarsh can make mistakes. Check important info.')));
+        h('div', { class: 'box' }, atts, ta, h('div', { class: 'row' }, plus, h('span', { class: 'sp' }), modeBtn, micBtn, sendBtn, voiceBtn))));
     Bus.on('ask:answer', onAsk); Bus.on('approve:decide', onApprove);
     Bus.on('memory:undo', ({ msg }) => { const r = msg.reply; S.memories = S.memories.filter(m => m.id !== r.memId); r.gone = true; save(); });
     Bus.on('task:undo', ({ msg }) => { const r = msg.reply; S.tasks = S.tasks.filter(t => t.id !== r.taskId); r.gone = true; save(); });
@@ -97,7 +96,7 @@ const Chat = (() => {
   function setStatus(s) {
     statusEl.className = 'status' + (s.demo ? ' demo' : ''); statusEl.lastChild.textContent = s.label;
     statusEl.firstChild.style.background = s.ok === false ? 'var(--bad)' : '';
-    statusEl.title = s.hint ? s.hint + ' (tap to check again)' : 'Tap to check the engine again';
+    statusEl.title = s.hint ? s.hint + ' (tap to check again)' : 'Engine dobara check karne ko tap karo';
     if (s.hint && s.ok === false && s.label !== 'Offline') toast(s.label + ': ' + s.hint);
   }
 
@@ -154,7 +153,7 @@ const Chat = (() => {
   function actionsEl(m, isLast) {
     const txt = () => stripMd(speechOf(m.reply)) || '';
     const a = h('div', { class: 'actions' });
-    a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { toast(await copyText(m.reply.text || speechOf(m.reply)) ? 'Copied' : 'Copy not available here'); } } }, icon('copy', 's')));
+    a.append(h('button', { 'aria-label': 'Copy', on: { click: async () => { toast(await copyText(m.reply.text || speechOf(m.reply)) ? 'Copied' : 'Copy yahan available nahi'); } } }, icon('copy', 's')));
     if (TTS.ok()) a.append(h('button', { 'aria-label': 'Read aloud', on: { click: () => { if (TTS.speaking()) { TTS.stop(); return; } toast('Bol raha hoon… dobara tap = stop'); TTS.speak(m.reply.type === 'text' ? m.reply.text : txt()); } } }, icon('speaker', 's')));
     ['up', 'dn'].forEach(k => a.append(h('button', { 'aria-label': k === 'up' ? 'Good answer' : 'Bad answer', 'aria-pressed': String(m.fb === k), on: { click: (e) => { m.fb = m.fb === k ? null : k; save(); e.currentTarget.parentNode.replaceWith(actionsEl(m, isLast)); Bus.emit('feedback', { id: m.id, fb: m.fb }); if (m.reply && m.reply.master && m.fb) { if (m.fb === 'dn') Lessons.feedbackSheet(); else Lessons.good(m); } } } }, icon(k === 'up' ? 'thumbup' : 'thumbdn', 's'))));
     if (isLast && m.reply.type !== 'actions') a.append(h('button', { 'aria-label': 'Retry', title: 'Retry', on: { click: retry } }, icon('refresh', 's')));
@@ -225,17 +224,16 @@ const Chat = (() => {
     if (!callsEl) return;
     callsBtn.classList.toggle('on', callsOn());
     callsBtn.setAttribute('aria-pressed', String(callsOn()));
-    callsEl.hidden = !callsOn();
-    if (!callsOn()) return;
+    callsEl.hidden = !callsOn() || !callRows.length;   // the box appears only once a call runs
+    if (callsEl.hidden) return;
     callsEl.textContent = '';
     const run = callRows.filter(r => r.state === 'run').length;
     const bad = callRows.filter(r => r.state === 'fail' || r.state === 'dead').length;
     const stopped = callRows.filter(r => r.state === 'stop').length;
     callsEl.append(h('div', { class: 'mch' }, icon('search2', 's'), h('b', {}, 'Model calls'),
-      h('span', { class: 'muted' }, callRows.length ? callRows.length + ' calls' + (run ? ' · ' + run + ' chal rahe' : '') + (stopped ? ' · ' + stopped + ' roke' : '') + (bad ? ' · ' + bad + ' fail' : '') : 'abhi kuch nahi'),
+      h('span', { class: 'muted' }, callRows.length ? callRows.length + ' calls' + (run ? ' · ' + run + ' chal rahe' : '') + (stopped ? ' · ' + stopped + ' roke' : '') + (bad ? ' · ' + bad + ' fail' : '') : ''),
       h('span', { class: 'sp' }), h('button', { class: 'ib', 'aria-label': 'Model calls band karo', on: { click: toggleCalls } }, icon('x', 's'))));
     const list = h('div', { class: 'mcl' });
-    if (!callRows.length) list.append(h('div', { class: 'mcr muted' }, 'Sawaal bhejo: kaunsa model chal raha hai aur kaunsa fail hua, yahan dikhega.'));
     callRows.slice(-40).forEach(r => list.append(callRowEl(r, true)));
     callsEl.append(list);
     list.scrollTop = list.scrollHeight;
@@ -329,7 +327,7 @@ const Chat = (() => {
   async function generateMedia(kind, prompt, frames) {
     if (busy) return;
     if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
-    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for media generation.');
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Media ke liye background voice band.');
     if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
     if (!App || App.view !== 'chat') App.show('chat');
     const c = cur() || newChat();
@@ -372,7 +370,7 @@ const Chat = (() => {
   function dictate() {
     if (dictating) { STT.stop(); return; }
     const usingBnr = !!S.settings.bnr;
-    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for voice typing.');
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Voice typing ke liye background voice band.');
     let base = ta.value;
     const ok = STT.start({
       onPartial: (t) => { ta.value = (base + ' ' + t).replace(/ {2,}/g, ' ').trimStart(); onInput(); },
@@ -393,7 +391,7 @@ const Chat = (() => {
   async function submit(textOverride, meta) {
     const text = (textOverride != null ? textOverride : ta.value).trim(); const files = textOverride != null ? [] : pending;
     if ((!text && !files.length) || busy) return;
-    if (BackgroundVoice.active()) BackgroundVoice.stop('Background voice stopped for chat.');
+    if (BackgroundVoice.active()) BackgroundVoice.stop('Chat ke liye background voice band.');
     if (!meta && App.view !== 'chat') App.show('chat');
     const source = srcMode(), modeId = Modes.current().id;
     const answers = source !== 'auto' ? validAnswers() : [];
@@ -460,7 +458,7 @@ const Chat = (() => {
       }
     } catch (e) {
       if (ctl.signal.aborted) toast('Rok diya: engine ko bhi stop bhej diya');
-      else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
+      else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Backend se baat nahi ho payi.') }); }
     } finally {
       settleCalls(!!(ctl && ctl.signal.aborted));
       busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save();

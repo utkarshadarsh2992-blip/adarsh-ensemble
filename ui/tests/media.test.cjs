@@ -154,7 +154,7 @@ test('BNR preference is off by default and opt-in/function ID are passed only to
   assert.ok(voiceLink, 'Voice & language settings link should exist');
   voiceLink.click();
   await settle(0);
-  const toggle = [...app.document.querySelectorAll('[role="switch"]')].find(b => text(b).includes('NVIDIA noise removal for voice typing'));
+  const toggle = [...app.document.querySelectorAll('[role="switch"]')].find(b => text(b).includes('Voice typing noise removal (NVIDIA)'));
   assert.ok(toggle);
   assert.match(text(toggle), /online/i);
   assert.equal(toggle.getAttribute('aria-checked'), 'false');

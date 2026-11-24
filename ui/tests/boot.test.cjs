@@ -140,7 +140,7 @@ test('Settings: the switch saves bootAnim and the preview row replays the animat
   await settle(300);   // save() is debounced (250 ms)
   assert.equal(JSON.parse(app.window.localStorage.getItem('adarsh.ui.v3')).settings.bootAnim, false, 'saved off');
 
-  const preview = [...app.document.querySelectorAll('button')].find(b => text(b).includes('Startup animation dekho'));
+  const preview = [...app.document.querySelectorAll('button')].find(b => text(b).includes('Animation preview'));
   assert.ok(preview, 'preview row exists');
   preview.click();
   const again = app.document.getElementById('boot');

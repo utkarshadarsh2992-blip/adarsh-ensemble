@@ -264,7 +264,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
                 quota["saved"].append("Reviewers + Refiner band")
         if quota["saved"]:
             pct = int(round(quota["left"] * 100))
-            msg = f"Quota kam hai (~{pct}% bacha): " + ", ".join(quota["saved"]) + ". Judge ke liye quota bachaya gaya."
+            msg = f"Quota kam (~{pct}%): " + ", ".join(quota["saved"]) + "."
             config.emit(msg)
             warnings.append(msg)
     roles_dbg["quota"] = quota
@@ -282,7 +282,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     sources: list[dict] = []
     queries = []
     if not web_research:
-        warnings.append("Private app/chat context used: web searches disabled for this answer.")
+        warnings.append("Private app context use hua, isliye web search off raha.")
     if web_research and config.RESEARCH_ENABLED and pol.research != "off":
         queries = research.queries_from_plan(plan, question)
         if not queries and pol.research == "must":  # Architect said SEARCH: none, but this mode always checks the web
@@ -404,7 +404,7 @@ async def run_roles(client, question, task, user_drafts, guard_report, lang, lan
     else:
         full_text = compact_text = "(no drafts: every drafter failed)"
         fals_text = "No falsification report available."
-        warnings.append("Koi draft nahi mila (sab drafters fail). Judge ne seedhe sawaal se jawab likha, isliye kam jaancha gaya hai.")
+        warnings.append("Sab drafters fail: Judge ne seedha jawab likha (kam jaancha).")
 
     roles_dbg.update({"skeptic": skeptic, "pattern": pattern, "debate": debate})
 

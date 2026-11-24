@@ -2,14 +2,14 @@
 /* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Missions, Memory, Abilities, Settings */
 
 const ABILITIES = [
-  { id: 'research', ic: 'globe', name: 'Research & verify', desc: 'Searches several sources and checks each claim before answering.', try: 'Research whether intermittent fasting really improves focus' },
-  { id: 'debate', ic: 'chat', name: 'Debate', desc: 'Argues both sides, then a moderator gives a verdict.', try: 'Debate: should I learn Rust or Go first?' },
-  { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Finds patterns across notes, chats and memories and links related ideas.', try: 'What patterns do you see in my last week of notes?' },
-  { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Long jobs broken into stages that keep running while you are away.', try: 'Start a mission: compare the best budget laptops for coding' },
-  { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Remembers things you tell it and uses them later.', try: 'Remember that I prefer short answers in Hinglish' },
-  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Standard typed/voice commands save to separate Tasks, Reminders, Alarms, Notes and Work lists.', try: 'task add karo kal 11 baje bank jana' },
-  { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Morning briefing, due-task nudges and alerts pushed to you.', try: 'Brief me on today' },
-  { id: 'selfeng', ic: 'code', name: 'Architecture (read-only)', desc: 'Explains its actual modules, mode chains and voice/action flow. Cannot change code or deploy.', try: 'Tumhara architecture kaise kaam karta hai?' }
+  { id: 'research', ic: 'globe', name: 'Research & verify', desc: 'Kai sources dekhkar har claim check karta hai.', try: 'Research whether intermittent fasting really improves focus' },
+  { id: 'debate', ic: 'chat', name: 'Debate', desc: 'Dono paksh, phir faisla.', try: 'Debate: should I learn Rust or Go first?' },
+  { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Notes, chats aur memory mein pattern dhoondta hai.', try: 'What patterns do you see in my last week of notes?' },
+  { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Bada kaam stages mein, background mein chalta hai.', try: 'Start a mission: compare the best budget laptops for coding' },
+  { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Batayi baatein yaad rakhta hai.', try: 'Remember that I prefer short answers in Hinglish' },
+  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Tasks, Reminders, Alarms, Notes aur Work.', try: 'task add karo kal 11 baje bank jana' },
+  { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Subah ki briefing aur due-task alerts.', try: 'Brief me on today' },
+  { id: 'selfeng', ic: 'code', name: 'Architecture (read-only)', desc: 'Apna architecture samjhata hai; code nahi badalta.', try: 'Tumhara architecture kaise kaam karta hai?' }
 ];
 const isOn = (id) => S.abilities[id] !== false;
 const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
@@ -100,12 +100,12 @@ const App = (() => {
     const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)).slice(0, 4);
     st.append(h('div', { class: 'sech' }, 'Due soon', h('button', { on: { click: () => show('tasks') } }, 'See all')));
     st.append(open.length ? h('div', { class: 'grp' }, open.map(t => { const f = fmtDue(t.due); return h('button', { class: 'item', on: { click: () => show('tasks') } }, icon('tasks'), h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, t.title), f.t ? h('small', {}, f.t) : null)); }))
-      : h('div', { class: 'item' }, h('span', { class: 't', style: 'color:var(--muted)' }, 'Nothing due. Say “remind me to…” in chat.')));
+      : h('div', { class: 'item' }, h('span', { class: 't', style: 'color:var(--muted)' }, 'Kuch due nahi')));
     const pins = S.memories.filter(m => m.pin).slice(0, 3);
     if (pins.length) { st.append(h('div', { class: 'sech' }, 'Pinned memory')); st.append(h('div', { class: 'grp' }, pins.map(m => h('div', { class: 'item' }, icon('pin'), h('span', { class: 't' }, m.text))))); }
-    const sugg = Backend.suggestions ? Backend.suggestions() : [];
+    const sugg = (Backend.suggestions && !Backend.isDemo()) ? Backend.suggestions() : [];
     if (sugg.length) {
-      st.append(h('div', { class: 'sech' }, 'Suggested', Backend.isDemo() ? h('span', { class: 'tag demo' }, 'DEMO') : null));
+      st.append(h('div', { class: 'sech' }, 'Suggested'));
       st.append(h('div', { class: 'grp' }, sugg.map(s => h('button', { class: 'item sug', on: { click: () => ask(s.prompt) } }, icon(s.ic || 'bolt'), h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, s.title), h('small', {}, s.sub)), icon('chev', 'chev')))));
     }
   };
@@ -116,7 +116,7 @@ const App = (() => {
 
   /* ================= Missions ================= */
   BUILD.missions = (st, redraw) => {
-    if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'No missions yet.'), h('div', { class: 'muted' }, 'A mission is a long job split into stages. Describe the goal in chat.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
+    if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'Abhi koi mission nahi.'), h('div', { class: 'muted' }, 'Chat mein goal batao.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
     S.missions.forEach(m => st.append(renderReply({ type: 'mission', ...m }, { msg: {}, redraw })));
   };
   Bus.on('missions:changed', () => { if (view === 'missions') build('missions'); if (view === 'tasks') build('tasks'); });
@@ -128,7 +128,7 @@ const App = (() => {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
     st.append(h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Save')));
     st.append(h('p', { class: 'muted' }, 'Memory local hai. Online replies mein relevant entries tabhi jayengi jab AI access mein sharing on ho.'));
-    if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Nothing remembered yet.')));
+    if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Abhi kuch yaad nahi.')));
     const sorted = [...S.memories].sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     sorted.forEach((m, i) => st.append(h('div', { class: 'mem' }, h('span', { class: 'id' }, '#' + (S.memories.length - S.memories.indexOf(m))), h('p', {}, m.text),
       h('button', { 'aria-label': m.pin ? 'Unpin' : 'Pin', 'aria-pressed': String(!!m.pin), on: { click: () => { m.pin = !m.pin; save(); redraw(); } } }, icon('pin', 's')),
@@ -137,13 +137,11 @@ const App = (() => {
 
   /* ================= Abilities ================= */
   BUILD.abilities = (st, redraw) => {
-    st.append(h('p', { class: 'muted' }, 'No commands to learn. Just say what you want in normal language and Adarsh picks the right ability. Switch off the ones you don’t want.'));
     st.append(h('div', { class: 'grp' }, ABILITIES.map(a => {
       const on = isOn(a.id);
       return h('div', { class: 'item abil col2' },
-        h('div', { class: 'tt' }, h('span', { class: 'ico' }, icon(a.ic)), h('span', { class: 't', style: 'padding:0' }, h('b', {}, a.name, a.approval ? h('span', { class: 'tag' }, 'ASKS FIRST') : null), h('small', {}, a.desc)),
-          h('button', { class: 'swb', role: 'switch', 'aria-checked': String(on), 'aria-label': a.name, on: { click: () => { S.abilities[a.id] = !on; save(); redraw(); } } }, h('span', { class: 'sw' }))),
-        h('button', { class: 'try', on: { click: () => draft(a.try) } }, 'Try: “' + a.try + '”'));
+        h('div', { class: 'tt' }, h('span', { class: 'ico' }, icon(a.ic)), h('span', { class: 't', style: 'padding:0' }, h('b', {}, a.name, a.approval ? h('span', { class: 'tag' }, 'PEHLE PUCHHTA') : null), h('small', {}, a.desc)),
+          h('button', { class: 'swb', role: 'switch', 'aria-checked': String(on), 'aria-label': a.name, on: { click: () => { S.abilities[a.id] = !on; save(); redraw(); } } }, h('span', { class: 'sw' }))));
     })));
   };
 
@@ -153,22 +151,22 @@ const App = (() => {
   const navItem = (ic, title, sub, fn) => h('button', { class: 'item', 'aria-label': title, on: { click: fn } }, icon(ic), h('span', { class: 't' }, title, sub ? h('small', {}, sub) : null), icon('chev', 'chev'));
   BUILD.settings = (st, redraw) => {
     const label = (t) => h('div', { class: 'glabel' }, t);
-    st.append(h('button', { class: 'prof', on: { click: nameSheet } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()), h('span', { class: 't' }, h('b', {}, S.settings.name || 'Adarsh'), h('small', {}, 'Personal · private to this device')), icon('chev', 'chev')));
+    st.append(h('button', { class: 'prof', on: { click: nameSheet } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()), h('span', { class: 't' }, h('b', {}, S.settings.name || 'Adarsh'), null), icon('chev', 'chev')));
     const seg = (opts, get, set) => h('div', { class: 'seg' }, opts.map(([v, l]) => h('button', { 'aria-pressed': String(get() === v), on: { click: () => { set(v); save(); redraw(); } } }, l)));
     st.append(label('Appearance'),
       h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
       h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Reply font'), seg([['serif', 'Serif'], ['sans', 'Sans']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
     st.append(label('Assistant'), h('div', { class: 'grp' },
-      navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
+      navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
-      swItem('globe', 'Built-in web search', 'Standard mode: Groq ka live web search on/off. Wikipedia research hamesha on rehta hai', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
-      navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
+      navItem('book', 'Lessons', '', () => Lessons.listSheet()),
+      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },
-      navItem('refresh', 'App updates', 'Successful GitHub builds · check, download and install with approval', () => MobileUpdates.open()),
-      MobileUpdates.supported() ? swItem('bell', 'Update notification', 'Naya version aate hi khud notification aayega · install aapki approval se', () => MobileUpdates.notifyOn(), v => { MobileUpdates.setNotify(v); toast(v ? 'Update notification on' : 'Update notification off'); }) : null));
+      navItem('refresh', 'App updates', '', () => MobileUpdates.open()),
+      MobileUpdates.supported() ? swItem('bell', 'Update notification', '', () => MobileUpdates.notifyOn(), v => { MobileUpdates.setNotify(v); toast(v ? 'Update notification on' : 'Update notification off'); }) : null));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
-      swItem('bell', 'Notifications', 'Alert me when a reply arrives while the app is closed or hidden', () => S.settings.notif, async (v) => {
+      swItem('bell', 'Notifications', '', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
         if (window.AdarshNative && AdarshNative.setNotify) {   // Android: the app posts the notification itself
           let r = ''; try { r = AdarshNative.setNotify(v); } catch (e) {}
@@ -176,25 +174,25 @@ const App = (() => {
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
-      swItem('kbd', 'Haptics', 'Small vibration on taps', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
-      swItem('bolt', 'Startup animation', 'App khulte waqt ~2.5 second ka tech intro. Tap karke skip ho jata hai', () => S.settings.bootAnim !== false, v => { S.settings.bootAnim = v; if (v) Splash.replay(); else toast('Startup animation off'); }),
-      navItem('atom', 'Startup animation dekho', 'Abhi ek baar preview chalao', () => Splash.replay()),
-      swItem('sparkle', 'Adarsh (Standard mode)', 'Short "Ji Sir" replies, in-app actions and the working HUD', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
+      swItem('kbd', 'Haptics', '', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
+      swItem('bolt', 'Startup animation', '~2.5 s', () => S.settings.bootAnim !== false, v => { S.settings.bootAnim = v; if (v) Splash.replay(); else toast('Startup animation off'); }),
+      navItem('atom', 'Animation preview', '', () => Splash.replay()),
+      swItem('sparkle', 'Adarsh (Standard mode)', '', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
     st.append(label('Adarsh'), h('div', { class: 'grp' },
-      navItem('tasks', 'Tasks and Work', 'Drawer mein separate lists; Work sirf bade projects ke liye', () => show('tasks')),
-      navItem('shield', 'AI access', 'Local read/edit, online context aur old chats ke alag controls', aiAccessSheet),
-      navItem('code', 'Architecture (read-only)', 'Actual modules aur selected mode ka model plan; no code changes', architectureSheet),
-      navItem('bell', 'Notification permissions', 'Scheduled task/reminder/alarm alerts', () => Actions.infoSheet())));
+      navItem('tasks', 'Tasks and Work', '', () => show('tasks')),
+      navItem('shield', 'AI access', '', aiAccessSheet),
+      navItem('code', 'Architecture (read-only)', '', architectureSheet),
+      navItem('bell', 'Notification permissions', '', () => Actions.infoSheet())));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
-      navItem('lock', 'App lock (PIN)', S.lock ? 'On · tap to change or remove' : 'Off', () => Lock.manage(redraw)),
-      S.lock ? swItem('shield', 'Lock when app is hidden', 'Asks for PIN after 30 s away', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
+      navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
+      S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
-      navItem('server', 'Connection', Backend.isNative() ? 'On-device engine · tap for status' : Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
+      navItem('server', 'Connection', Backend.isNative() ? 'On-device' : Backend.isDemo() ? 'Demo' : (S.conn.url || 'Server'), connSheet)));
     st.append(label('Data'), h('div', { class: 'grp' },
-      navItem('download', 'Export data', 'Chats, memory and all productivity records as JSON', exportSheet),
-      navItem('upload', 'Import data', 'Restore from an export', () => $('#f-import').click()),
-      navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Clear all chats?', text: 'This removes every chat on this device. Memory and tasks stay.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
-    st.append(h('div', { class: 'center muted' }, 'ADARSH UI v4 · frontend only'));
+      navItem('download', 'Export data', '', exportSheet),
+      navItem('upload', 'Import data', '', () => $('#f-import').click()),
+      navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Saari chats clear karein?', text: 'Is phone ki saari chats hat jayengi. Memory aur tasks rahenge.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
+
   };
   function nameSheet() {
     sheet({ title: 'Your name', build(b, close) {
@@ -285,11 +283,11 @@ const App = (() => {
       })();
       const note = () => {
         const n = Backend.canTts() && !Backend.isDemo();
-        status.textContent = (n ? 'Natural voice: Gemini TTS (Gemini API key chahiye; free quota limited). ' : 'Natural voice is backend me nahi hai. ')
+        status.textContent = (n ? 'Natural voice: Gemini TTS (Gemini API key chahiye; free quota limited). ' : 'Natural voice is backend mein nahi hai. ')
           + 'Na chale to phone ki apni voice turant bolti hai.' + (TTS.info.last ? ' Last time: ' + (TTS.info.last === 'natural' ? 'natural voice' + (TTS.info.model ? ' (' + TTS.info.model + ')' : '') : 'phone voice' + (TTS.info.why ? ' · natural voice error: ' + TTS.info.why : '')) : '');
       };
       note();
-      b.append(swItem('speaker', 'Speak replies in chat', 'Har naya jawab apne aap padh ke sunaye (voice mode hamesha bolta hai)', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
+      b.append(swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
         h('label', { class: 'l' }, 'Voice engine'),
         segOf([['auto', 'Auto'], ['natural', 'Natural'], ['device', 'Phone']], () => S.settings.voiceEngine || 'auto', v => { S.settings.voiceEngine = v; }),
         h('p', { class: 'muted' }, 'Auto: natural (Gemini) awaaz, aur fail ho to phone ki voice. Phone: sirf device TTS, offline bhi chalta hai.'),
@@ -299,10 +297,10 @@ const App = (() => {
         segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
         h('label', { class: 'l' }, 'Speaking speed'), rate,
         bnrSupported ? h('div', { class: 'grp' },
-          swItem('mic', 'NVIDIA noise removal for voice typing', 'Optional; OFF by default. Foreground dictation only, not background voice. The installed recognizer may process cleaned audio online.', () => !!S.settings.bnr, v => { S.settings.bnr = v; }),
+          swItem('mic', 'Voice typing noise removal (NVIDIA)', 'Online', () => !!S.settings.bnr, v => { S.settings.bnr = v; }),
           h('label', { class: 'l' }, 'NVIDIA BNR Function ID'), bnrFunctionId,
-          h('p', { class: 'muted' }, 'With the switch ON, the recorded utterance is sent to NVIDIA BNR, then cleaned audio goes to your installed Android speech recognizer, which may process it online. Audio is temporary and deleted after processing. Paste the BNR Function ID from NVIDIA Build; it is not a secret. The recognizer must support custom audio input.')
-        ) : (window.AdarshNative ? h('p', { class: 'muted' }, 'NVIDIA BNR voice typing needs Android 13 or later; normal Android dictation remains available.') : null),
+          h('p', { class: 'muted' }, 'On par audio NVIDIA aur Android speech recognizer ko online jaata hai; baad mein delete.')
+        ) : (window.AdarshNative ? h('p', { class: 'muted' }, 'NVIDIA BNR ke liye Android 13+ chahiye; normal dictation chalta rahega.') : null),
         offlineBlock(),
         TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
           : h('p', {}, 'Is browser me speech output nahi hai.'),
@@ -326,7 +324,7 @@ const App = (() => {
         b.append(h('label', { class: 'l' }, title), seg, h('p', { class: 'muted' }, note));
       };
       group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
-        'Auto answers in the language of your question.');
+        'Auto: sawaal ki bhasha mein jawab.');
       group('Council', 'think', 'fast', [['fast', 'Fast'], ['deep', 'Deep']],
         'Sirf Verified/Physics/Math/Business/Coding modes me: Fast = kam models, quota bachta hai. Deep = zyada models aur falsifiers, slow aur quota-heavy. Standard hamesha 1 model, turant.');
       group('Depth', 'depth', 'normal', [['simple', 'Simple'], ['normal', 'Normal'], ['detailed', 'Detailed']],
@@ -440,9 +438,9 @@ const App = (() => {
       const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
       const N = window.AdarshNative;
-      window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'Could not save the file'); };
+      window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'File save nahi hui'); };
       b.append(h('p', {}, 'Save this JSON as a file or copy it, and keep it somewhere safe. It does not include your PIN or token.'), ta,
-        N && N.saveFile ? h('button', { class: 'btn pri', on: { click: () => { try { N.saveFile('adarsh-backup-' + new Date().toISOString().slice(0, 10) + '.json', data); } catch (e) { toast('Could not open the save dialog'); } } } }, 'Save as file') : null,
+        N && N.saveFile ? h('button', { class: 'btn pri', on: { click: () => { try { N.saveFile('adarsh-backup-' + new Date().toISOString().slice(0, 10) + '.json', data); } catch (e) { toast('Save dialog nahi khula'); } } } }, 'Save as file') : null,
         h('button', { class: N && N.saveFile ? 'btn ghost' : 'btn pri', on: { click: async () => { if (await copyText(data)) toast('Copied'); else { ta.focus(); ta.select(); toast('Select all and copy'); } } } }, 'Copy JSON'),
         N && N.shareText ? h('button', { class: 'btn ghost', on: { click: () => { try { N.shareText(data); } catch (e) {} } } }, 'Share…') : null,
         !(N && N.saveFile) ? h('button', { class: 'btn ghost', on: { click: () => { const a = h('a', { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: 'adarsh-backup.json' }); document.body.append(a); a.click(); a.remove(); } } }, 'Download file') : null);

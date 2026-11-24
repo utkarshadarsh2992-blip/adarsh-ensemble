@@ -203,7 +203,7 @@ def test_chat_adapter_standard_is_groq_only_and_private_records_disable_search(m
     out = run(chat_adapter.handle({"text": "Photosynthesis samjhao", "mode": "standard", "meta": {"deep": True},
                                    "attachments": [{"name": "a.txt"}]}))
     assert seen[-1]["tools"] is True and seen[-1]["effort"] == "medium"
-    assert "en.wikipedia.org/wiki/X" in out[0]["text"] and "attachments" in out[0]["text"]
+    assert "en.wikipedia.org/wiki/X" in out[0]["text"] and "Attachment nahi padha" in out[0]["text"]
     assert any("Wikipedia" in s for s in out[0]["steps"]) and any("Web search" in s for s in out[0]["steps"])
     # voice replies are spoken: no sources block
     out = run(chat_adapter.handle({"text": "Photosynthesis samjhao", "mode": "standard", "meta": {"voice": True}}))

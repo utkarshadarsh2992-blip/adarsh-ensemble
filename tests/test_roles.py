@@ -244,7 +244,7 @@ def test_all_drafters_fail_judge_still_answers(script):
         script[r] = LLMError("down")
     res = run()
     assert "### Short answer" in res["answer"]
-    assert any("Koi draft nahi mila" in w for w in res["warnings"])
+    assert any("Sab drafters fail" in w for w in res["warnings"])
     assert "falsifier" not in script["calls"]
 
 
@@ -336,7 +336,7 @@ def test_tight_quota_turns_deep_into_fast(script):
     assert "specialist" not in c and "pattern" not in c
     assert c.count("falsifier") == 2 and c.count("debater") == 1
     assert res["quota"]["level"] == "tight" and res["quota"]["saved"]
-    assert any("Quota kam hai" in w for w in res["warnings"])
+    assert any("Quota kam" in w for w in res["warnings"])
 
 
 def test_low_quota_keeps_only_what_the_answer_needs(script):

@@ -334,7 +334,7 @@ async def handle(body: dict) -> dict | list[dict]:
         if cut_note:
             quick["text"] += "\n\n" + cut_note
         if body.get("attachments"):
-            quick["text"] += "\n\n*Standard mode attachments nahi padhta (sirf text jaata hai).*"
+            quick["text"] += "\n\n*Attachment nahi padha; sirf text gaya.*"
         return [quick]
     q_text, q_extra, cut_note = _fit(text, extra)
     question = q_text + q_extra
@@ -369,9 +369,9 @@ async def handle(body: dict) -> dict | list[dict]:
     )
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
     if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:
-        replies[0]["text"] += "\n\n*Python code proofs are off on Android. Steps are [REASONED], not [PROVEN by code].*"
+        replies[0]["text"] += "\n\n*Android par code proof off hai: steps [REASONED] hain.*"
     if body.get("attachments"):
-        replies[0]["text"] += "\n\n*Attachments abhi ensemble tak nahi bheje jaate (sirf text).*"
+        replies[0]["text"] += "\n\n*Attachment nahi padha; sirf text gaya.*"
     if cut_note:
         replies[0]["text"] += "\n\n" + cut_note
     # shown folded under the answer as "Worked through N steps"

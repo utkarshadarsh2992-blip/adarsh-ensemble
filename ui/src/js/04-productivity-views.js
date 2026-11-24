@@ -33,7 +33,7 @@ function productivityList(kind) {
 
 async function productivityManual(action, args) {
   const p = productivityApi();
-  if (!p || typeof p.manual !== 'function') return { ok: false, message: 'Productivity is not available yet.' };
+  if (!p || typeof p.manual !== 'function') return { ok: false, message: 'Productivity abhi available nahi.' };
   try { return await p.manual(action, args); }
   catch (e) { return { ok: false, message: e && e.message ? e.message : 'Could not save that.' }; }
 }
@@ -42,7 +42,7 @@ async function productivitySync() {
   const p = productivityApi();
   if (!p || typeof p.sync !== 'function') return { ok: true };
   try { return await p.sync(); }
-  catch (e) { return { ok: false, message: e && e.message ? e.message : 'Could not refresh records.' }; }
+  catch (e) { return { ok: false, message: e && e.message ? e.message : 'Records refresh nahi hue.' }; }
 }
 
 function nativeOrBrowserNotice() {
@@ -100,7 +100,7 @@ function actionButtons(saveLabel, onSave, onCancel) {
   return h('div', { class: 'pv-actions' }, h('button', { class: 'btn pri', type: 'button', on: { click: onSave } }, saveLabel), onCancel ? h('button', { class: 'btn ghost', type: 'button', on: { click: onCancel } }, 'Cancel') : null);
 }
 function emptyState(ic, title, text, example) {
-  return h('div', { class: 'pv-empty' }, icon(ic), h('b', {}, title), h('span', {}, text), example ? h('small', {}, 'Example: ' + example) : null);
+  return h('div', { class: 'pv-empty' }, icon(ic), h('b', {}, title), text ? h('span', {}, text) : null);
 }
 function searchControl(placeholder, onInput) {
   const input = h('input', { class: 'search pv-search', type: 'search', placeholder, 'aria-label': placeholder });
@@ -125,9 +125,9 @@ async function finishMutation(action, args, redraw, fallbackMessage) {
 async function finishDelete(id, redraw) {
   const p = productivityApi();
   let result;
-  try { result = p && typeof p.removeManual === 'function' ? await p.removeManual(id) : { ok: false, message: 'Delete is not available yet.' }; }
-  catch (e) { result = { ok: false, message: e && e.message ? e.message : 'Could not delete that.' }; }
-  if (!result || !result.ok) { toast((result && result.message) || 'Could not delete that.'); return; }
+  try { result = p && typeof p.removeManual === 'function' ? await p.removeManual(id) : { ok: false, message: 'Delete abhi available nahi.' }; }
+  catch (e) { result = { ok: false, message: e && e.message ? e.message : 'Delete nahi hua.' }; }
+  if (!result || !result.ok) { toast((result && result.message) || 'Delete nahi hua.'); return; }
   await productivitySync();
   redraw();
   toast(result.message || 'Deleted');
@@ -149,9 +149,9 @@ function editSchedule(kind, record, redraw) {
   editSheet(kind === 'task' ? 'Edit task' : 'Edit ' + kind, (body, close) => {
     body.append(field('Title', title), field('When', at), actionButtons('Save changes', async () => {
       const text = title.value.trim();
-      if (!text) return toast('Add a title first.');
+      if (!text) return toast('Pehle title likho.');
       const time = localDateTimeMs(at.value);
-      if (at.value && time == null) return toast('Choose a valid local date and time.');
+      if (at.value && time == null) return toast('Sahi date aur time chuno.');
       const action = kind === 'task' ? 'task.edit' : kind + '.edit';
       const args = kind === 'task' ? { id: record.id, title: text } : { id: record.id, text };
       if (time && localDateTimeValue(record.at) !== at.value) args.at = time;
@@ -184,9 +184,9 @@ function scheduleEditBody(kind, record, redraw, body, close) {
   const at = h('input', { class: 'pv-input', type: 'datetime-local', value: localDateTimeValue(record.at), 'aria-label': 'Date and time' });
   body.append(field('Title', text), field('When', at), actionButtons('Save changes', async () => {
     const value = text.value.trim();
-    if (!value) return toast('Add a title first.');
+    if (!value) return toast('Pehle title likho.');
     const time = localDateTimeMs(at.value);
-    if (at.value && time == null) return toast('Choose a valid local date and time.');
+    if (at.value && time == null) return toast('Sahi date aur time chuno.');
     const action = kind === 'task' ? 'task.edit' : kind + '.edit';
     const args = kind === 'task' ? { id: record.id, title: value } : { id: record.id, text: value };
     if (time && localDateTimeValue(record.at) !== at.value) args.at = time;
@@ -201,20 +201,20 @@ function tasksView(st, redraw) {
   const at = h('input', { class: 'pv-input', type: 'datetime-local', 'aria-label': 'Due date and time' });
   const add = async () => {
     const value = title.value.trim();
-    if (!value) return toast('Add a task title first.');
+    if (!value) return toast('Pehle task title likho.');
     const time = localDateTimeMs(at.value);
-    if (at.value && time == null) return toast('Choose a valid local date and time.');
+    if (at.value && time == null) return toast('Sahi date aur time chuno.');
     const ok = await finishMutation('task.add', { title: value, at: time }, redraw, 'Task added');
     if (ok) { title.value = ''; at.value = ''; }
   };
-  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, 'Keep the next actions clear and manual.')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Due (optional)', at), actionButtons('Add task', add)));
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, '')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Due (optional)', at), actionButtons('Add task', add)));
   const list = h('div', { class: 'pv-list-wrap' });
   const render = (query) => {
     list.textContent = '';
     const all = productivityList('task').slice().sort((a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0) || sortNewest(a, b));
     const rows = all.filter(r => recordMatches(r, query));
-    if (!all.length) return list.append(emptyState('tasks', 'No tasks yet', 'Add a task here instead of relying on memory.', 'Submit expense report · tomorrow 10:00'));
-    if (!rows.length) return list.append(emptyState('search', 'No matching tasks', 'Try a different search term.'));
+    if (!all.length) return list.append(emptyState('tasks', 'Abhi koi task nahi', '', 'Submit expense report · tomorrow 10:00'));
+    if (!rows.length) return list.append(emptyState('search', 'Kuch nahi mila', ''));
     rows.forEach(record => {
       const done = !!record.done;
       const check = h('button', { class: 'pv-check', type: 'button', role: 'checkbox', 'aria-checked': String(done), 'aria-label': done ? 'Mark task open' : 'Mark task complete', on: {
@@ -245,7 +245,7 @@ function scheduleView(kind, st, redraw) {
     const value = text.value.trim();
     if (!value) return toast('Add some text first.');
     const time = localDateTimeMs(at.value);
-    if (time == null) return toast('Choose a valid local date and time.');
+    if (time == null) return toast('Sahi date aur time chuno.');
     const ok = await finishMutation(kind + '.add', { text: value, at: time }, redraw, label + ' scheduled');
     if (ok) { text.value = ''; at.value = ''; }
   };
@@ -255,8 +255,8 @@ function scheduleView(kind, st, redraw) {
     list.textContent = '';
     const all = productivityList(kind).slice().sort(sortNewest);
     const rows = all.filter(r => recordMatches(r, query));
-    if (!all.length) return list.append(emptyState('bell', 'No ' + label.toLowerCase() + 's yet', 'Add one with a local date and time.', kind === 'reminder' ? 'Water the plants · Friday 18:00' : 'Call home · Saturday 09:00'));
-    if (!rows.length) return list.append(emptyState('search', 'No matching ' + label.toLowerCase() + 's', 'Try a different search term.'));
+    if (!all.length) return list.append(emptyState('bell', 'Abhi koi ' + label.toLowerCase() + ' nahi', '', kind === 'reminder' ? 'Water the plants · Friday 18:00' : 'Call home · Saturday 09:00'));
+    if (!rows.length) return list.append(emptyState('search', 'Kuch nahi mila', ''));
     rows.forEach(r => list.append(scheduleRow(kind, r, redraw)));
   };
   st.append(h('div', { class: 'pv-search-row' }, searchControl('Search ' + label.toLowerCase() + 's', render)), list);
@@ -283,7 +283,7 @@ function alarmsView(st, redraw) {
   const renderTimers = () => {
     timerList.textContent = '';
     const timers = productivityList('timer').slice().sort(sortNewest);
-    if (!timers.length) timerList.append(emptyState('target', 'No timers yet', 'Start a timer for a focused block.', '25 minutes · Deep work'));
+    if (!timers.length) timerList.append(emptyState('target', 'Abhi koi timer nahi', '', '25 minutes · Deep work'));
     else timers.forEach(r => timerList.append(timerRow(r, redraw)));
   };
   timerRoot.append(timerList);
@@ -311,14 +311,14 @@ function notesView(st, redraw) {
     const ok = await finishMutation('note.add', { text: value }, redraw, 'Note saved');
     if (ok) text.value = '';
   };
-  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Notes'), h('span', {}, 'Keep durable thoughts separate from tasks and projects.')), h('div', { class: 'pv-form pv-form-card' }, field('New note', text), actionButtons('Save note', add)));
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Notes'), h('span', {}, '')), h('div', { class: 'pv-form pv-form-card' }, field('New note', text), actionButtons('Save note', add)));
   const list = h('div', { class: 'pv-list-wrap' });
   const render = (query) => {
     list.textContent = '';
     const all = productivityList('note').slice().sort(sortNewest);
     const rows = all.filter(r => recordMatches(r, query));
-    if (!all.length) return list.append(emptyState('file', 'No notes yet', 'Save a thought here so it is easy to find later.', 'Prepare questions for Monday’s meeting'));
-    if (!rows.length) return list.append(emptyState('search', 'No matching notes', 'Try a different search term.'));
+    if (!all.length) return list.append(emptyState('file', 'Abhi koi note nahi', '', 'Prepare questions for Monday’s meeting'));
+    if (!rows.length) return list.append(emptyState('search', 'Kuch nahi mila', ''));
     rows.forEach(r => {
       const edit = h('button', { class: 'pv-icon-btn', type: 'button', 'aria-label': 'Edit note', on: {
         click: () => noteEdit(r, redraw)
@@ -346,7 +346,7 @@ function workEdit(record, redraw) {
     body.append(field('Title', title), field('Category', category), field('Goal', goal), field('Progress %', progress, '0 to 100.'), field('Outcome', outcome), actionButtons('Save changes', async () => {
       const name = title.value.trim();
       const pct = progressNumber(progress.value, false);
-      if (!name) return toast('Add a project title first.');
+      if (!name) return toast('Pehle project title likho.');
       if (pct == null) return toast('Progress must be between 0 and 100.');
       const ok = await finishMutation('work.edit', { id: record.id, title: name, category: category.value.trim(), goal: goal.value.trim(), progress: pct, outcome: outcome.value.trim() }, redraw, 'Project updated');
       if (ok) close();
@@ -360,13 +360,13 @@ function workLog(record, redraw) {
     const text = h('textarea', { class: 'pv-textarea', placeholder: 'What happened?', 'aria-label': 'Activity text' });
     const progress = h('input', { class: 'pv-input', type: 'number', min: '0', max: '100', step: '1', placeholder: 'Optional', 'aria-label': 'Progress percent' });
     const outcome = h('textarea', { class: 'pv-textarea', placeholder: 'Result or next outcome', 'aria-label': 'Activity result' });
-    body.append(field('Date', date), field('Minutes', minutes, 'Positive, up to 1440.'), field('Activity', text), field('Progress % (optional)', progress, 'Leave blank to keep the current progress.'), field('Result', outcome), actionButtons('Log activity', async () => {
+    body.append(field('Date', date), field('Minutes', minutes, 'Positive, up to 1440.'), field('Activity', text), field('Progress % (optional)', progress, 'Khaali chhodo to progress wahi rahega.'), field('Result', outcome), actionButtons('Log activity', async () => {
       const mins = positiveNumber(minutes.value, 1440);
       const pct = progressNumber(progress.value, true);
       if (mins == null || !Number.isInteger(mins)) return toast('Minutes must be whole, positive and at most 1440.');
       if (pct === null) return toast('Progress must be between 0 and 100.');
-      if (!date.value) return toast('Choose an activity date.');
-      if (!text.value.trim()) return toast('Describe the activity first.');
+      if (!date.value) return toast('Activity date chuno.');
+      if (!text.value.trim()) return toast('Pehle activity likho.');
       const args = { id: record.id, text: text.value.trim(), date: date.value, minutes: mins, outcome: outcome.value.trim() };
       if (pct !== undefined) args.progress = pct;
       const ok = await finishMutation('work.log', args, redraw, 'Activity logged');
@@ -387,8 +387,8 @@ function workView(st, redraw) {
   const goal = h('textarea', { class: 'pv-textarea', placeholder: 'What does done look like?', 'aria-label': 'Project goal' });
   const add = async () => {
     const name = title.value.trim();
-    if (!name) return toast('Add a project title first.');
-    if (!goal.value.trim()) return toast('Describe the project goal first.');
+    if (!name) return toast('Pehle project title likho.');
+    if (!goal.value.trim()) return toast('Pehle project goal likho.');
     const ok = await finishMutation('work.add', { title: name, category: category.value.trim(), goal: goal.value.trim() }, redraw, 'Project added');
     if (ok) { title.value = ''; category.value = ''; goal.value = ''; }
   };
@@ -398,8 +398,8 @@ function workView(st, redraw) {
     list.textContent = '';
     const all = productivityList('work').slice().sort(sortNewest);
     const rows = all.filter(r => recordMatches(r, query));
-    if (!all.length) return list.append(emptyState('flag', 'No work projects yet', 'Create one only when the work is a large, explicit outcome.', 'Ship the Q4 onboarding refresh'));
-    if (!rows.length) return list.append(emptyState('search', 'No matching projects', 'Try a title, category, or goal.'));
+    if (!all.length) return list.append(emptyState('flag', 'Abhi koi work project nahi', 'Sirf bade kaam ke liye.', 'Ship the Q4 onboarding refresh'));
+    if (!rows.length) return list.append(emptyState('search', 'Kuch nahi mila', ''));
     rows.forEach(r => list.append(projectCard(r, redraw)));
   };
   st.append(h('div', { class: 'pv-search-row' }, searchControl('Search projects', render)), list);
