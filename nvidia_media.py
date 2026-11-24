@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import json
 import os
 import re
+import time
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +27,25 @@ COSMOS3_URL = "https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos3-nano"
 COSMOS3_FUNCTION_ID = "d09cd49d-d7f2-4361-928f-ea22af707249"
 COSMOS3_FALLBACK_URL = f"https://{COSMOS3_FUNCTION_ID}.invocation.api.nvcf.nvidia.com/v1/infer"
 COSMOS3_POLL_SECONDS = "300"
+# Third try, only when BOTH Cosmos3 routes say the function is missing / forbidden for this account (many free
+# build.nvidia.com accounts get "Function ... Not found for account" for cosmos3-nano). Cosmos 1.0 Text2World is
+# NVIDIA's older hosted text-to-video NIM: Triton-style "command" body, NVCF queue (HTTP 202 + NVCF-REQID, then
+# polling), result = a zip with a 5 s 1280x704 24 fps MP4.
+# Docs: https://docs.api.nvidia.com/nim/reference/nvidia-cosmos-1_0-diffusion-7b-infer
+COSMOS1_URL = "https://ai.api.nvidia.com/v1/cosmos/nvidia/cosmos-1.0-7b-diffusion-text2world"
+NVCF_STATUS_URL = "https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/"
+COSMOS1_MODEL = "cosmos-1.0-7b-text2world"
+COSMOS1_FRAMES = 121
+COSMOS1_BUDGET_S = 690.0
+COSMOS1_PROMPT_WORDS = 280
+COSMOS1_MAX_HOPS = 3
+_REQID = re.compile(r"^[0-9A-Za-z-]{8,80}$")
+_ACCESS_STATUS = {403, 404}
+NVIDIA_ACCESS_HELP = (
+    "NVIDIA ne aapke account ko Cosmos3 video API ka access abhi nahi diya. Ye app ka bug nahi, NVIDIA account "
+    "permission ka issue hai: help@build.nvidia.com ko apna build.nvidia.com wala email aur ye error bhejo aur "
+    "'Public API Endpoints' / cosmos3-nano access maango. Image (FLUX) normal chalta rahega."
+)
 PROMPT_MAX = 2_000
 VIDEO_FRAMES = {25, 49, 73, 121}
 VIDEO_MAX_BYTES = 48 * 1024 * 1024
@@ -276,10 +298,135 @@ async def generate(request: dict) -> dict:
         try:
             data = await _post_keys(COSMOS3_FALLBACK_URL, body, keys, timeout=720.0, extra_headers=cosmos_headers)
         except MediaError as backup:
-            raise MediaError(
-                f"Cosmos3 public route HTTP 404 tha; backup NVCF route: {backup}",
-                status_code=backup.status_code,
-            ) from backup
+            if backup.status_code not in _ACCESS_STATUS:
+                raise MediaError(
+                    f"Cosmos3 public route HTTP 404 tha; backup NVCF route: {backup}",
+                    status_code=backup.status_code,
+                ) from backup
+            # Cosmos3 is not available to this account at all: try NVIDIA's older hosted text-to-video model.
+            try:
+                raw = await _cosmos1_keys(prompt, keys)
+            except MediaError as legacy:
+                raise MediaError(
+                    f"{NVIDIA_ACCESS_HELP}\n\nDetails: Cosmos3 public route HTTP 404 tha; backup NVCF route: {backup}; "
+                    f"Cosmos 1.0 backup: {legacy}",
+                    status_code=legacy.status_code,
+                ) from legacy
+            media_id = _save("video", raw)
+            return {"type": "video", "mediaId": media_id, "mime": "video/mp4", "prompt": prompt,
+                    "frames": COSMOS1_FRAMES, "fps": 24, "model": COSMOS1_MODEL}
     raw = _decode_payload(data.get("b64_video"), "video")
     media_id = _save("video", raw)
     return {"type": "video", "mediaId": media_id, "mime": "video/mp4", "prompt": prompt, "frames": frames, "fps": 24}
+
+
+def _cosmos1_body(prompt: str) -> dict:
+    """The NIM takes one command line; quotes and backslashes cannot break out of --prompt="..."."""
+    text = " ".join(prompt.replace("\\", " ").replace('"', "'").split())
+    words = text.split(" ")
+    if len(words) > COSMOS1_PROMPT_WORDS:
+        text = " ".join(words[:COSMOS1_PROMPT_WORDS])
+    return {
+        "inputs": [{"name": "command", "shape": [1], "datatype": "BYTES", "data": [f'text2world --prompt="{text}"']}],
+        "outputs": [{"name": "status", "datatype": "BYTES", "shape": [1]}],
+    }
+
+
+def _mp4_from_result(raw: bytes) -> bytes | None:
+    """MP4 bytes from a Cosmos 1.0 result: a zip (normal), a bare MP4, or JSON with base64. None = not media."""
+    if len(raw) >= 12 and raw[4:8] == b"ftyp":
+        if len(raw) > VIDEO_MAX_BYTES:
+            raise MediaError("Generated file allowed size se badi hai.")
+        return raw
+    if raw[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                videos = [i for i in archive.infolist() if not i.is_dir() and i.filename.lower().endswith(".mp4")]
+                if not videos:
+                    raise MediaError("Cosmos 1.0 ke result zip mein MP4 nahi mila.")
+                if videos[0].file_size > VIDEO_MAX_BYTES:
+                    raise MediaError("Generated file allowed size se badi hai.")
+                with archive.open(videos[0]) as handle:
+                    data = handle.read(VIDEO_MAX_BYTES + 1)  # bounded even if the zip header lies
+        except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError) as exc:
+            raise MediaError("Cosmos 1.0 ka result zip kharab tha.") from exc
+        if len(data) > VIDEO_MAX_BYTES:
+            raise MediaError("Generated file allowed size se badi hai.")
+        if len(data) < 12 or data[4:8] != b"ftyp":
+            raise MediaError("NVIDIA video output valid MP4 nahi tha.")
+        return data
+    try:
+        parsed = json.loads(raw or b"")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if isinstance(parsed, dict):
+        for field in ("b64_video", "video"):
+            if isinstance(parsed.get(field), str) and parsed[field]:
+                return _decode_payload(parsed[field], "video")
+    return None
+
+
+async def _cosmos1_once(prompt: str, api_key: str, deadline: float) -> bytes:
+    auth = {"Authorization": f"Bearer {api_key}", "Accept": "application/json",
+            "NVCF-POLL-SECONDS": COSMOS3_POLL_SECONDS}
+    method, url, body = "POST", COSMOS1_URL, _cosmos1_body(prompt)
+    headers = {**auth, "Content-Type": "application/json"}
+    hops = 0
+    limits = httpx.Limits(max_connections=2, max_keepalive_connections=0)
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(360.0, connect=20.0, write=45.0, pool=10.0),
+            limits=limits,
+            follow_redirects=False,
+        ) as client:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise MediaError("Cosmos 1.0 video time limit mein nahi bana. Thodi der baad manually dobara try karo.")
+                if "Authorization" in headers:  # NVCF holds a poll this long; never past the app's time budget
+                    headers["NVCF-POLL-SECONDS"] = str(max(5, min(int(COSMOS3_POLL_SECONDS), int(remaining))))
+                async with client.stream(method, url, headers=headers, json=body) as response:
+                    code = response.status_code
+                    location = str(response.headers.get("location") or "")
+                    if code == 202:  # queued: poll the NVCF status URL (the server holds each poll up to 300 s)
+                        reqid = str(response.headers.get("nvcf-reqid") or "")
+                        if not _REQID.match(reqid):
+                            raise MediaError("NVIDIA ne video queue kar di (HTTP 202) par request ID nahi di.", status_code=202)
+                        method, url, body, headers = "GET", NVCF_STATUS_URL + reqid, None, dict(auth)
+                        continue
+                    if code in (301, 302, 303, 307, 308):
+                        if not location.startswith("https://") or hops >= COSMOS1_MAX_HOPS:
+                            raise MediaError("NVIDIA ka result link safe nahi tha.")
+                        hops += 1
+                        method, url, body, headers = "GET", location, None, {}  # presigned asset: never send the key
+                        continue
+                    if code < 200 or code >= 300:
+                        error_body, truncated = await _read_limited(response, MAX_ERROR_BYTES)
+                        raise MediaError(_safe_provider_error(code, error_body, api_key, truncated), status_code=code)
+                    raw, truncated = await _read_limited(response, VIDEO_MAX_BYTES + 1024 * 1024)
+                    if truncated:
+                        raise MediaError("NVIDIA response is larger than this device can safely process.")
+                    video = _mp4_from_result(bytes(raw))
+                    if video is not None:
+                        return video
+                    if location.startswith("https://") and hops < COSMOS1_MAX_HOPS:
+                        hops += 1  # status reply that points at the result zip
+                        method, url, body, headers = "GET", location, None, {}
+                        continue
+                    raise MediaError("Cosmos 1.0 ne video output nahi diya. Prompt badal kar dobara try karo.")
+    except httpx.TimeoutException as exc:
+        raise MediaError("NVIDIA request timeout ho gaya. Generate dobara manually try karo.") from exc
+    except httpx.HTTPError as exc:
+        raise MediaError(f"NVIDIA network request fail hua ({type(exc).__name__}).", network=True) from exc
+
+
+async def _cosmos1_keys(prompt: str, keys: list[str]) -> bytes:
+    deadline = time.monotonic() + COSMOS1_BUDGET_S
+    for index, key in enumerate(keys):
+        try:
+            return await _cosmos1_once(prompt, key, deadline)
+        except MediaError as exc:
+            if index + 1 < len(keys) and (exc.status_code in _KEY_SWITCH_STATUS or exc.network):
+                continue
+            raise
+    raise MediaError("NVIDIA API key nahi mili. Settings > API keys mein NVIDIA key save karo.")

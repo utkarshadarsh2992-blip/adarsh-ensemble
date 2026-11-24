@@ -159,6 +159,7 @@ def test_cosmos3_reports_backup_error_when_both_routes_fail(monkeypatch):
         [
             FakeResponse(status_code=404, text="404 page not found"),
             FakeResponse({"detail": "Unauthorized access"}, status_code=403),
+            FakeResponse({"detail": "Function 'x': Not found for account 'secret-key'"}, status_code=404),
         ],
         calls,
     )
@@ -167,7 +168,98 @@ def test_cosmos3_reports_backup_error_when_both_routes_fail(monkeypatch):
         asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A dog runs", "frames": 25}))
     message = str(exc_info.value)
     assert "public route HTTP 404" in message and "backup NVCF route" in message and "HTTP 403" in message
+    assert "Cosmos 1.0 backup" in message and "help@build.nvidia.com" in message
     assert "secret-key" not in message
+    assert [call[0] for call in calls] == [nvidia_media.COSMOS3_URL, nvidia_media.COSMOS3_FALLBACK_URL,
+                                           nvidia_media.COSMOS1_URL]
+
+
+def _zip_with(name, data):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("meta.json", "{}")
+        archive.writestr(name, data)
+    return buf.getvalue()
+
+
+def test_cosmos1_backup_polls_the_nvcf_queue_and_unzips_the_mp4(monkeypatch, tmp_path):
+    mp4 = b"\x00\x00\x00\x18ftypisom" + b"cosmos1-mp4"
+    calls = []
+    install_sequence_client(
+        monkeypatch,
+        [
+            FakeResponse(status_code=404, text="404 page not found"),
+            FakeResponse({"detail": "Function 'd09cd49d': Not found for account 'abc'"}, status_code=404),
+            FakeResponse(status_code=202, body=b"", headers={"nvcf-reqid": "11111111-2222-3333-4444-555555555555"}),
+            FakeResponse(body=_zip_with("output/video.mp4", mp4), headers={"content-type": "application/zip"}),
+        ],
+        calls,
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    monkeypatch.setenv("GENERATED_MEDIA_DIR", str(tmp_path))
+
+    result = asyncio.run(nvidia_media.generate({"kind": "video", "prompt": 'A "red" car drives', "frames": 49}))
+
+    assert [call[0] for call in calls] == [
+        nvidia_media.COSMOS3_URL, nvidia_media.COSMOS3_FALLBACK_URL, nvidia_media.COSMOS1_URL,
+        nvidia_media.NVCF_STATUS_URL + "11111111-2222-3333-4444-555555555555"]
+    command = calls[2][2]["inputs"][0]["data"][0]
+    assert command == "text2world --prompt=\"A 'red' car drives\""
+    assert calls[3][1]["Authorization"] == "Bearer key" and calls[3][2] is None
+    assert result["frames"] == 121 and result["model"] == "cosmos-1.0-7b-text2world"
+    assert (tmp_path / f"{result['mediaId']}.mp4").read_bytes() == mp4
+
+
+def test_cosmos1_result_link_is_downloaded_without_the_api_key(monkeypatch, tmp_path):
+    mp4 = b"\x00\x00\x00\x18ftypisom" + b"linked"
+    calls = []
+    install_sequence_client(
+        monkeypatch,
+        [
+            FakeResponse(status_code=404, text="404 page not found"),
+            FakeResponse({"detail": "Not found for account"}, status_code=404),
+            FakeResponse(status_code=302, body=b"", headers={"location": "https://assets.ngc.nvidia.com/r.zip"}),
+            FakeResponse(body=_zip_with("video.mp4", mp4)),
+        ],
+        calls,
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    monkeypatch.setenv("GENERATED_MEDIA_DIR", str(tmp_path))
+    result = asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A cat", "frames": 25}))
+    assert calls[3][0] == "https://assets.ngc.nvidia.com/r.zip"
+    assert "Authorization" not in calls[3][1]
+    assert (tmp_path / f"{result['mediaId']}.mp4").read_bytes() == mp4
+
+
+def test_cosmos1_rejects_plain_http_result_links(monkeypatch):
+    calls = []
+    install_sequence_client(
+        monkeypatch,
+        [
+            FakeResponse(status_code=404, text="404 page not found"),
+            FakeResponse({"detail": "Not found for account"}, status_code=404),
+            FakeResponse(status_code=302, body=b"", headers={"location": "http://evil.example/r.zip"}),
+        ],
+        calls,
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    with pytest.raises(nvidia_media.MediaError, match="safe nahi"):
+        asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A cat", "frames": 25}))
+    assert len(calls) == 3
+
+
+def test_cosmos1_is_not_tried_when_the_backup_fails_for_other_reasons(monkeypatch):
+    calls = []
+    install_sequence_client(
+        monkeypatch,
+        [FakeResponse(status_code=404, text="404 page not found"), FakeResponse({"detail": "bad"}, status_code=422)],
+        calls,
+    )
+    monkeypatch.setenv("NVIDIA_API_KEY", "key")
+    with pytest.raises(nvidia_media.MediaError, match="HTTP 422"):
+        asyncio.run(nvidia_media.generate({"kind": "video", "prompt": "A cat", "frames": 25}))
     assert len(calls) == 2
 
 

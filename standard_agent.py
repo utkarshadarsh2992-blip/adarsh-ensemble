@@ -5,8 +5,10 @@ A key is switched when it hits its limit (429), needs credits / is rejected (401
 (5xx, timeouts, network). No other provider is used: if every Groq key is out, the user gets a clear message.
 
 The model gets two tools in the same request (Groq allows built-in + local tools together on GPT-OSS):
-  * `browser_search`  - Groq's built-in web search, run on Groq's side (fast, nothing to execute here)
-  * `wikipedia_search` - a local function tool; we query the Wikipedia API and send the extracts back
+  * `browser_search`  - Groq's built-in web search, run on Groq's side (fast, nothing to execute here).
+                        Settings > Built-in web search can switch it off (`web=False`).
+  * `wikipedia_search` - a local function tool; we query the Wikipedia API and send the extracts back.
+                        Always offered when tools are on, also with web search off.
 gpt-oss has no parallel tool calls, so tool calls come one per round; at most MAX_TOOL_ROUNDS local rounds.
 Docs: https://console.groq.com/docs/browser-search , https://console.groq.com/docs/tool-use/built-in-tools
 """
@@ -46,13 +48,27 @@ WIKI_TOOL = {
         },
     },
 }
-TOOL_SETS = ([BROWSER_TOOL, WIKI_TOOL], [BROWSER_TOOL], [])  # a 400 on a tool combo steps down to the next set
-RESEARCH_HINT = (
-    "You can research: use wikipedia_search for stable facts and browser_search for current or fast-changing facts. "
+# A 400 on a tool combination steps down to the next set on the same key. Wikipedia comes before web-only
+# because the user wants Wikipedia research to keep working whatever happens to built-in search.
+TOOL_SETS = ([BROWSER_TOOL, WIKI_TOOL], [WIKI_TOOL], [BROWSER_TOOL], [])
+TOOL_SETS_NO_WEB = ([WIKI_TOOL], [])  # Settings > Built-in web search: off
+_HINT_TAIL = (
     "Search only when it really helps; answer simple or personal questions directly. "
     "Never put the user's private details (names, numbers, notes, reminders) into a search query. "
     "Do not include citation markers in the answer."
 )
+RESEARCH_HINT = (
+    "You can research: use wikipedia_search for stable facts and browser_search for current or fast-changing facts. "
+    + _HINT_TAIL
+)
+RESEARCH_HINT_NO_WEB = (
+    "You can research with wikipedia_search (stable facts). Live web search is switched off by the user, so for "
+    "very recent news, prices or scores say briefly that live web search is off in Settings. " + _HINT_TAIL
+)
+
+
+def research_hint(web: bool = True) -> str:
+    return RESEARCH_HINT if web else RESEARCH_HINT_NO_WEB
 _CITE_RE = re.compile(r"\u3010[^\u3011]{0,60}\u3011")  # 【1†L3-L9】 markers from browser_search
 _THINK_RE = re.compile(r"<think>.*?(?:</think>|$)", re.DOTALL)
 
@@ -106,10 +122,10 @@ def _browser_sources(msg: dict) -> tuple[int, list[dict]]:
     return n, out
 
 
-async def answer(messages: list[dict], *, tools: bool = True, max_tokens: int = 1500, effort: str = "low",
-                 temperature: float = 0.6, budget: float = 75.0) -> dict:
+async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
+                 effort: str = "low", temperature: float = 0.6, budget: float = 75.0) -> dict:
     """Run the Groq-only agent. Returns {"text", "used", "searches", "wiki", "sources", "secs"};
-    raises StandardError when no Groq key could answer."""
+    raises StandardError when no Groq key could answer. `web=False` keeps Wikipedia but never sends browser_search."""
     base = _base_spec()
     prov = config.PROVIDERS["groq"]
     slots = prov.slots()
@@ -120,7 +136,8 @@ async def answer(messages: list[dict], *, tools: bool = True, max_tokens: int = 
     msgs = [dict(m) for m in messages]
     reasons: dict[str, str] = {}
     searches, wiki_queries, sources = 0, [], []
-    tool_idx = 0 if tools else len(TOOL_SETS) - 1
+    tool_sets = TOOL_SETS if web else TOOL_SETS_NO_WEB
+    tool_idx = 0 if tools else len(tool_sets) - 1
     rounds, forced = 0, False
     async with _client() as client:
         for slot in slots:
@@ -139,7 +156,7 @@ async def answer(messages: list[dict], *, tools: bool = True, max_tokens: int = 
                     break
                 payload = {"model": spec.model, "messages": msgs, "reasoning_effort": effort,
                            "max_completion_tokens": max_tokens, "temperature": temperature}
-                tool_list = TOOL_SETS[tool_idx] if rounds < MAX_TOOL_ROUNDS else []
+                tool_list = tool_sets[tool_idx] if rounds < MAX_TOOL_ROUNDS else []
                 if tool_list:
                     payload["tools"] = tool_list  # tool_choice left at Groq's default ("auto")
                 rpm, tpm = config.rpm_limit(spec), config.tpm_limit(spec)
@@ -230,7 +247,7 @@ async def answer(messages: list[dict], *, tools: bool = True, max_tokens: int = 
                     reasons[spec.label] = "model not found"
                     raise StandardError("Groq par gpt-oss-120b abhi mil nahi raha (HTTP 404). Thodi der baad try karo.")
                 if code in (400, 413, 422):
-                    if tool_idx < len(TOOL_SETS) - 1:
+                    if tool_idx < len(tool_sets) - 1:
                         tool_idx += 1  # this tool combination was refused: same key, fewer tools
                         continue
                     health.fail(spec, 60)

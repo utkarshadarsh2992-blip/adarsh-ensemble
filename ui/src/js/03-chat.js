@@ -287,7 +287,7 @@ const Chat = (() => {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
       b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()),
         row('sparkle', 'Generate image', 'NVIDIA FLUX 3 Image Klein', () => mediaPrompt('image')),
-        row('video', 'Generate video', 'NVIDIA Cosmos3 Nano · MP4', () => mediaPrompt('video')),
+        row('video', 'Generate video', 'NVIDIA Cosmos3 Nano (backup: Cosmos 1.0) · MP4', () => mediaPrompt('video')),
         row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()),
         row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
     } });
@@ -302,7 +302,7 @@ const Chat = (() => {
         [[25, 'About 1 second'], [49, 'About 2 seconds'], [73, 'About 3 seconds'], [121, 'About 5 seconds']].map(([v, label]) => h('option', { value: String(v), selected: v === 49 }, label))) : null;
       const note = h('p', { class: 'muted' }, kind === 'image'
         ? 'FLUX makes one 1024×1024 JPEG. NVIDIA API limits apply.'
-        : 'Cosmos3 makes a 480p, 24 fps MP4. It may take several minutes; the request can be stopped.');
+        : 'Cosmos3 makes a 480p, 24 fps MP4. Agar aapke NVIDIA account par Cosmos3 band hai to backup Cosmos 1.0 ek 5 second 704p video banata hai. It may take several minutes; the request can be stopped.');
       const disclosure = h('p', { class: 'muted' }, 'Prompt NVIDIA ko bheja jayega; private info mat likho. Stop app request ko locally cancel karta hai, lekin NVIDIA ke accepted generation ya billing ko rokne ki guarantee nahi hai.');
       const go = h('button', { class: 'btn pri', style: 'width:100%', on: { click: () => {
         const text = prompt.value.trim();
@@ -410,7 +410,7 @@ const Chat = (() => {
     try {
       const perms = Productivity.access();
       const personal = Productivity.modelContext(text, c.id);
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast' } },
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.charCodeAt(0) === 1) {  // structured model-call event (see config.emit_call)
             try { onCallEvent(JSON.parse(s.slice(s.indexOf('{')))); } catch (e) { /* ignore */ }

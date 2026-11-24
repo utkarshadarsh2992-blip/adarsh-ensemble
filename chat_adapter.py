@@ -158,12 +158,12 @@ QUICK_VOICE = (
     "2 to 5 short sentences, conversational and confident."
 )
 async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool, *,
-                       research: bool = True, deep: bool = False) -> dict:
+                       research: bool = True, deep: bool = False, web: bool = True) -> dict:
     """Standard mode: Groq gpt-oss-120b only. It searches the web (Groq browser_search) and Wikipedia by itself
     when that helps. Never falls back to another provider; a failure comes back as a clear text reply."""
     system = QUICK_SYSTEM + " " + QUICK_DEPTH.get(depth, QUICK_DEPTH["normal"]) + " " + pipeline._language_hint(text, reply_lang)
     if research:
-        system += " " + standard_agent.RESEARCH_HINT
+        system += " " + standard_agent.research_hint(web)
     if voice:
         system += " " + QUICK_VOICE
     user = text + (extra or "")
@@ -172,7 +172,7 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
     try:
         out = await standard_agent.answer(
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            tools=research, max_tokens=3000 if (depth == "detailed" or deep) else 1600,
+            tools=research, web=web, max_tokens=3000 if (depth == "detailed" or deep) else 1600,
             effort="medium" if deep else "low", temperature=0.5, budget=90 if deep else 75,
         )
     except standard_agent.StandardError as e:
@@ -183,6 +183,8 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
     steps = [f"Standard · Groq {out['used']} (sirf Groq)"]
     if out["searches"]:
         steps.append(f"Web search x{out['searches']} (Groq built-in)")
+    elif research and not web:
+        steps.append("Built-in web search off (Settings) · Wikipedia on")
     if out["wiki"]:
         steps.append("Wikipedia: " + ", ".join(q for q in out["wiki"] if q)[:160])
     steps.append(f"{out['secs']}s")
@@ -286,6 +288,7 @@ async def handle(body: dict) -> dict | list[dict]:
     rp = body.get("reply") if isinstance(body.get("reply"), dict) else {}
     reply_lang = rp.get("lang") if rp.get("lang") in ("auto", "hinglish", "english", "hindi") else "auto"
     depth = rp.get("depth") if rp.get("depth") in ("simple", "normal", "detailed") else "normal"
+    web_search = rp.get("web") != "off"  # Settings > Built-in web search (Standard mode); Wikipedia stays on
 
     think = rp.get("think") if rp.get("think") in ("fast", "deep") else config.CHAT_MODE  # Settings > Reply style > Council
     source = body.get("source") if body.get("source") in ("auto", "manual", "hybrid") else "auto"
@@ -312,7 +315,7 @@ async def handle(body: dict) -> dict | list[dict]:
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra
         quick = await _quick_reply(text[:MAX_QUESTION_CHARS - len(extra)], extra, reply_lang, depth, bool(meta.get("voice")),
-                                   research=not has_records, deep=bool(meta.get("deep")))
+                                   research=not has_records, deep=bool(meta.get("deep")), web=web_search)
         if body.get("attachments"):
             quick["text"] += "\n\n*Standard mode attachments nahi padhta (sirf text jaata hai).*"
         return [quick]

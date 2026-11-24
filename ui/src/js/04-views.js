@@ -161,6 +161,7 @@ const App = (() => {
     st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
+      swItem('globe', 'Built-in web search', 'Standard mode: Groq ka live web search on/off. Wikipedia research hamesha on rehta hai', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },

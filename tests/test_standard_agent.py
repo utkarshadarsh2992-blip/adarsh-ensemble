@@ -139,8 +139,32 @@ def test_refused_tool_combo_steps_down_on_the_same_key(monkeypatch):
     out = run(standard_agent.answer(Q))
     assert out["text"] == "ok"
     assert [t["type"] for t in log[0]["body"]["tools"]] == ["browser_search", "function"]
-    assert [t["type"] for t in log[1]["body"]["tools"]] == ["browser_search"]
+    # Wikipedia is kept first when the combination is refused (user: Wikipedia research must keep working)
+    assert [t["type"] for t in log[1]["body"]["tools"]] == ["function"]
+    assert log[1]["body"]["tools"][0]["function"]["name"] == "wikipedia_search"
     assert log[0]["auth"] == log[1]["auth"] == "Bearer gsk_one"
+
+
+def test_web_search_off_keeps_only_wikipedia(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
+    log = fake_net(monkeypatch, [wiki_call("Chandrayaan-3"), final("23 August 2023.")])
+    out = run(standard_agent.answer(Q, web=False))
+    assert out["text"] == "23 August 2023." and out["wiki"] == ["Chandrayaan-3"]
+    groq = [r for r in log if r["host"] == "api.groq.com"]
+    for req in groq:
+        assert all(t["type"] != "browser_search" for t in req["body"].get("tools", []))
+    assert [t["function"]["name"] for t in groq[0]["body"]["tools"]] == ["wikipedia_search"]
+    assert "en.wikipedia.org" in [r["host"] for r in log]
+
+
+def test_web_search_off_refused_wikipedia_never_falls_back_to_browser(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
+    log = fake_net(monkeypatch, [(400, {"error": {"message": "tool refused"}}), final("bina tools")])
+    out = run(standard_agent.answer(Q, web=False))
+    assert out["text"] == "bina tools"
+    assert "tools" not in log[1]["body"]
+    assert standard_agent.research_hint(False) != standard_agent.research_hint(True)
+    assert "browser_search" not in standard_agent.research_hint(False)
 
 
 def test_no_groq_key_is_a_clear_error_even_with_other_keys(monkeypatch):
@@ -190,3 +214,24 @@ def test_chat_adapter_standard_is_groq_only_and_private_records_disable_search(m
     n = len(seen)
     run(chat_adapter.handle({"text": "doctor ke baare mein maine kya likha tha, samjhao", "mode": "standard"}))
     assert len(seen) == n + 1 and seen[-1]["tools"] is False
+
+
+def test_chat_adapter_passes_the_web_search_setting(monkeypatch):
+    seen = []
+
+    async def fake_answer(messages, **kw):
+        seen.append((messages, kw))
+        return {"text": "jawab", "used": "gpt-oss-120b", "searches": 0, "wiki": ["Moon"],
+                "sources": [], "secs": 1.0}
+
+    monkeypatch.setattr(standard_agent, "answer", fake_answer)
+    monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", True)
+    q = "Chand ki doori kitni hai, samjhao"
+    out = run(chat_adapter.handle({"text": q, "mode": "standard", "reply": {"web": "off"}}))
+    assert seen[-1][1]["web"] is False and seen[-1][1]["tools"] is True
+    assert "browser_search" not in seen[-1][0][0]["content"]
+    assert any("web search off" in s for s in out[0]["steps"])
+    run(chat_adapter.handle({"text": q, "mode": "standard", "reply": {"web": "on"}}))
+    assert seen[-1][1]["web"] is True
+    run(chat_adapter.handle({"text": q, "mode": "standard"}))  # older app / background voice config: default on
+    assert seen[-1][1]["web"] is True
