@@ -19,10 +19,14 @@ import time
 import httpx
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-# Newest first. 3.8 models read the text verbatim (no style prefix); older previews follow a short spoken direction.
+# Newest first. 3.8 models read the text verbatim (no style prefix); other models get a short spoken direction.
+# gemini-3.1-flash-tts-preview and gemini-2.5-flash-preview-tts were shut down by Google on Nov 17, 2026
+# (ai.google.dev deprecations page): every call to them only failed, so they are gone from the list, and dropped
+# even if an old TTS_MODELS setting still names them.
+RETIRED_MODELS = frozenset({"gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"})
 GEMINI_MODELS = [m.strip() for m in os.getenv(
-    "TTS_MODELS", "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview,gemini-2.5-flash-preview-tts"
-).split(",") if m.strip()]
+    "TTS_MODELS", "gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts"
+).split(",") if m.strip() and m.strip() not in RETIRED_MODELS]
 STYLE = "Say this in a confident, warm and natural voice, at a steady conversational pace"
 GROQ_URL = "https://api.groq.com/openai/v1/audio/speech"
 GROQ_MODEL = os.getenv("TTS_GROQ_MODEL", "canopylabs/orpheus-v1-english")

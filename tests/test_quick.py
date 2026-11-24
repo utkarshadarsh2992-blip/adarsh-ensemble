@@ -154,10 +154,14 @@ def test_voice_returns_wav_file_and_caches(monkeypatch, tts_env):
 
 
 def test_voice_skips_missing_model_and_rests_on_429(monkeypatch, tts_env):
+    # two live TTS models: model 1 is missing (404 -> skipped), model 2 key 1 is out of quota (429 -> rests),
+    # model 2 key 2 speaks
+    monkeypatch.setenv("GEMINI_API_KEY_2", "g-test-key-456")
+    monkeypatch.delenv("GEMINI_API_KEY_3", raising=False)
     tried = []
 
     async def fake_post(self, url, **kw):
-        tried.append(url.split("/models/")[1].split(":")[0])
+        tried.append((url.split("/models/")[1].split(":")[0], kw["headers"]["x-goog-api-key"]))
         if len(tried) == 1:
             return _Resp(404, text="not found")
         if len(tried) == 2:
@@ -166,8 +170,10 @@ def test_voice_skips_missing_model_and_rests_on_429(monkeypatch, tts_env):
 
     monkeypatch.setattr("httpx.AsyncClient.post", fake_post)
     out = run(voice.handle({"text": "Hello there my friend"}))
-    assert out["type"] == "audio" and len(tried) == 3
-    assert tried[0] in voice._dead and tried[1] in voice._rest
+    assert out["type"] == "audio" and out["model"] == voice.GEMINI_MODELS[1] and len(tried) == 3
+    assert [m for m, _ in tried] == [voice.GEMINI_MODELS[0], voice.GEMINI_MODELS[1], voice.GEMINI_MODELS[1]]
+    assert [key for _, key in tried[1:]] == ["g-test-key-123", "g-test-key-456"]
+    assert tried[0][0] in voice._dead and tried[1][0] in voice._rest
 
 
 def test_voice_without_any_key_reports_error(monkeypatch, tmp_path):

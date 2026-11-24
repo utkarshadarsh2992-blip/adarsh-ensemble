@@ -84,7 +84,8 @@ class Server:
     def handler(self, request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         key = request.headers["authorization"].removeprefix("Bearer ")
-        self.calls.append({"model": body["model"], "key": key, "body": body})
+        self.calls.append({"model": body["model"], "key": key, "body": body,
+                           "read_timeout": (request.extensions.get("timeout") or {}).get("read")})
         todo = self.script.get((body["model"], key))
         beh = todo.pop(0) if todo else plain()
         if isinstance(beh, Exception):
@@ -194,3 +195,33 @@ def test_make_client_turns_on_tcp_keepalive_and_zero_turns_it_off(monkeypatch):
     finally:
         run(c.aclose())
     assert pipeline.make_client is llm.make_client
+
+
+# ---------------------------------------------------------------- per-model attempt timeouts
+
+GEMINI_FLASH = config.REGISTRY["gemini-3.8-flash"].model
+GPT20 = config.REGISTRY["gpt-oss-20b"].model
+
+
+def test_gemini_flash_waits_200s_and_its_fallback_keeps_the_default():
+    s = Server({(GEMINI_FLASH, k("gemini", n)): [httpx.Response(503, json={"error": {"message": "overloaded"}})]
+                for n in (1, 2, 3)})
+    assert run(ask(s, config.use("gemini-3.8-flash", "judge", ["gpt-oss-20b"]))) == "ok"
+    waits = {(x["model"], x["key"]): x["read_timeout"] for x in s.calls}
+    assert [waits[(GEMINI_FLASH, k("gemini", n))] for n in (1, 2, 3)] == [200.0, 200.0, 200.0]
+    assert waits[(GPT20, k("groq", 1))] == config.LLM_TIMEOUT_S == 120.0
+
+
+def test_a_caller_timeout_still_wins_for_every_model():
+    s = Server({(GEMINI_FLASH, k("gemini", 1)): [httpx.Response(503, json={})]})
+    assert run(ask(s, config.use("gemini-3.8-flash", "judge", ["gpt-oss-20b"]), timeout=60)) == "ok"
+    assert {x["read_timeout"] for x in s.calls} == {60.0}
+
+
+def test_model_timeouts_setting_is_parsed_per_label_and_shared_by_all_keys(monkeypatch):
+    assert config._timeouts("mistral-large-4=300, nemotron-ultra = 240,bad,x=abc,y=0,=5") == {
+        "mistral-large-4": 300.0, "nemotron-ultra": 240.0}
+    monkeypatch.setitem(config.MODEL_TIMEOUT_S, "mistral-large-4", 300.0)
+    assert config.model_timeout(config.keyed(config.REGISTRY["mistral-large-4"], 2)) == 300.0
+    assert config.model_timeout(config.REGISTRY["gemini-3.8-flash"]) == 200.0
+    assert config.model_timeout(config.REGISTRY["gpt-oss-120b"]) == config.LLM_TIMEOUT_S

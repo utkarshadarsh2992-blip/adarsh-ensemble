@@ -436,6 +436,37 @@ STREAM_PROVIDERS = frozenset(
 # TCP keep-alive probes after this many silent seconds on every model connection (llm.make_client): keeps the
 # phone's / carrier's NAT entry alive while a model is still queued or thinking. 0 = off.
 TCP_KEEPALIVE_S = int(os.getenv("TCP_KEEPALIVE_S", "15"))
+# How long ONE model attempt (one model on one key) may take before the chain moves on. Plain request: until the whole
+# answer arrives. Streamed providers (above): the longest silent gap; the whole stream may take at most 2x.
+# MODEL_TIMEOUT_S overrides the default per registry label (all keys of that model); MODEL_TIMEOUTS="label=secs,..."
+# adds or changes entries. A caller that passes its own short timeout (guard, grounding check, Standard agent,
+# classifier) keeps it: those steps must fail fast. Every stage still has its own total limit (PANEL_TIMEOUT_S).
+LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "120"))
+
+
+def _timeouts(raw: str) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for part in raw.split(","):
+        label, sep, secs = part.partition("=")
+        try:
+            if sep and label.strip() and float(secs) > 0:
+                out[label.strip()] = float(secs)
+        except ValueError:
+            pass  # a typo in the setting must not stop the app
+    return out
+
+
+MODEL_TIMEOUT_S: dict[str, float] = {
+    "gemini-3.8-flash": 200.0,  # long Judge / Synthesizer / Refiner answers: 120 s cut it off while it was still writing
+    **_timeouts(os.getenv("MODEL_TIMEOUTS", "")),
+}
+
+
+def model_timeout(spec: "ModelSpec") -> float:
+    """Seconds one attempt of this model may take ("gemini-3.8-flash#2" uses the "gemini-3.8-flash" entry)."""
+    return MODEL_TIMEOUT_S.get(base_label(spec.label), LLM_TIMEOUT_S)
+
+
 APP_API_KEY = os.getenv("APP_API_KEY", "")  # if set, clients must send X-API-Key or Authorization: Bearer <key>
 
 # ADARSH UI chat endpoint (/api/chat): how each chat message is answered

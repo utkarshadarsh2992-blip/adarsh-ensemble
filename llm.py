@@ -453,11 +453,13 @@ async def chat(
     *,
     temperature: float | None = 0.4,
     max_tokens: int | None = 1800,
-    timeout: float = 120.0,
+    timeout: float | None = None,
     retries: int = 1,
     budget: float | None = None,
 ) -> str:
-    """budget = most seconds this whole call may take (all models together). None = no limit."""
+    """budget = most seconds this whole call may take (all models together). None = no limit.
+    timeout = seconds per model attempt for every model of the chain; None = each model's own value
+    (config.model_timeout: gemini-3.8-flash 200 s, others config.LLM_TIMEOUT_S)."""
     chain = expand_keys(balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks]))
     reasons: dict[str, str] = {}
     dead: set[str] = set()  # failed for a reason waiting will not fix: not tried again in round 2
@@ -478,7 +480,8 @@ async def chat(
                 # another key of the same model comes next: do not retry a 5xx / network error on this key, switch
                 nxt = chain[i + 1] if i + 1 < len(chain) else None
                 same_next = nxt is not None and config.base_label(nxt.label) == config.base_label(cand.label)
-                text = await _try_model(client, cand, messages, temperature, max_tokens, timeout,
+                limit = timeout if timeout is not None else config.model_timeout(cand)
+                text = await _try_model(client, cand, messages, temperature, max_tokens, limit,
                                         0 if same_next else retries, boosts.get(config.base_label(cand.label)))
             except _Skip as e:
                 reasons[cand.label] = str(e)
