@@ -1970,7 +1970,7 @@ const Modes = (() => {
 
 const Chat = (() => {
   let thread, col, ta, sendBtn, voiceBtn, micBtn, atts, titleEl, statusEl, hdrEl, modeBtn, jump, callsBtn, callsEl;
-  let callRows = [];   // this answer's model calls: {stage, model, state: run|ok|fail|dead, why, secs, asked}
+  let callRows = [];   // this answer's model calls: {stage, model, state: run|ok|fail|dead|stop, why, secs, asked}
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
   const MAX_REPLY_BYTES = 256 * 1024;
@@ -2167,15 +2167,24 @@ const Chat = (() => {
     }
     drawCalls();
   }
+  // Once a request is stopped or finished, the bridge drops its later events, so a row still marked 'run' would show
+  // "chal raha…" forever. Settle those rows: 'rok diya' after Stop, 'ruk gaya' if the request ended without its result.
+  function settleCalls(stopped) {
+    let n = 0;
+    for (const r of callRows) if (r.state === 'run') { r.state = 'stop'; r.note = stopped ? 'rok diya' : 'ruk gaya'; n++; }
+    if (n) drawCalls();
+    return n;
+  }
   function callRowEl(r, live) {
     const why = r.why || (r.fails && r.fails.length ? r.fails[0] : '');
-    const cls = r.state === 'ok' ? 'ok' : (r.state === 'fail' || r.state === 'dead') ? 'bad' : 'run';
+    const cls = r.state === 'ok' ? 'ok' : (r.state === 'fail' || r.state === 'dead') ? 'bad' : r.state === 'stop' ? 'stop' : 'run';
     return h('div', { class: 'mcr ' + cls },
       h('span', { class: 'st' }, stageName(r.stage)),
       h('span', { class: 'md' }, (r.asked && r.asked !== r.model ? r.asked + ' → ' : '') + r.model),
       live && r.state === 'run' ? h('span', { class: 'ms' }, 'chal raha…')
         : r.state === 'ok' ? h('span', { class: 'ms' }, secsTxt(r.secs) || 'ok')
-          : h('span', { class: 'ms' }, r.state === 'dead' ? 'fail' : 'fail'),
+          : r.state === 'stop' ? h('span', { class: 'ms' }, r.note || 'rok diya')
+            : h('span', { class: 'ms' }, 'fail'),
       why ? h('span', { class: 'why' }, why) : null);
   }
   function drawCalls() {
@@ -2187,8 +2196,9 @@ const Chat = (() => {
     callsEl.textContent = '';
     const run = callRows.filter(r => r.state === 'run').length;
     const bad = callRows.filter(r => r.state === 'fail' || r.state === 'dead').length;
+    const stopped = callRows.filter(r => r.state === 'stop').length;
     callsEl.append(h('div', { class: 'mch' }, icon('search2', 's'), h('b', {}, 'Model calls'),
-      h('span', { class: 'muted' }, callRows.length ? callRows.length + ' calls' + (run ? ' · ' + run + ' chal rahe' : '') + (bad ? ' · ' + bad + ' fail' : '') : 'abhi kuch nahi'),
+      h('span', { class: 'muted' }, callRows.length ? callRows.length + ' calls' + (run ? ' · ' + run + ' chal rahe' : '') + (stopped ? ' · ' + stopped + ' roke' : '') + (bad ? ' · ' + bad + ' fail' : '') : 'abhi kuch nahi'),
       h('span', { class: 'sp' }), h('button', { class: 'ib', 'aria-label': 'Model calls band karo', on: { click: toggleCalls } }, icon('x', 's'))));
     const list = h('div', { class: 'mcl' });
     if (!callRows.length) list.append(h('div', { class: 'mcr muted' }, 'Sawaal bhejo: kaunsa model chal raha hai aur kaunsa fail hua, yahan dikhega.'));
@@ -2306,6 +2316,7 @@ const Chat = (() => {
       if (ctl.signal.aborted || e.name === 'AbortError') toast('App request stopped; NVIDIA may continue processing.');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'NVIDIA media request fail hua.') }); }
     } finally {
+      settleCalls(!!(ctl && ctl.signal.aborted));
       busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save(); Bus.emit('busy', false);
     }
   }
@@ -2340,7 +2351,7 @@ const Chat = (() => {
   }
 
   /* ---------- send pipeline ---------- */
-  function stop() { if (ctl) ctl.abort(); }
+  function stop() { if (ctl) { ctl.abort(); settleCalls(true); } }
   function histText(c = cur()) {
     const allowPersonal = Productivity.access().personalOnline && Productivity.access().localRead;
     return (c ? c.msgs : []).filter(m => !m.localOnly && m.requestSource !== 'media' && !(m.reply && ['actions', 'blocked', 'clarification', 'task', 'memory', 'image', 'video'].includes(m.reply.type)) && (!m.personalContext || allowPersonal)).slice(-14).map(m => m.role === 'user' ? { role: 'user', text: m.text || (m.answer ? m.answer.map(a => a.answer).join('; ') : (m.decision || '')) } : { role: 'assistant', text: speechOf(m.reply) });
@@ -2400,9 +2411,10 @@ const Chat = (() => {
         deliver(c, r);
       }
     } catch (e) {
-      if (ctl.signal.aborted) toast('Stopped');
+      if (ctl.signal.aborted) toast('Rok diya: engine ko bhi stop bhej diya');
       else { console.error(e); deliver(c, { type: 'text', text: '⚠️ ' + (e && e.message ? e.message : 'Something went wrong talking to the backend.') }); }
     } finally {
+      settleCalls(!!(ctl && ctl.signal.aborted));
       busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save();
       Bus.emit('busy', false);
     }

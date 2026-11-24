@@ -173,3 +173,61 @@ test('BNR preference is off by default and opt-in/function ID are passed only to
   assert.equal(calls[0].useBnr, true);
   assert.equal(calls[0].functionId, id.value);
 });
+
+
+test('Stop cancels the engine request and no model-call row stays "chal raha"', async t => {
+  const sent = [], cancelled = [];
+  const app = mount({ nativeMethods: {
+    send: (id, json) => { sent.push({ id, req: JSON.parse(json) }); },  // the engine never answers on its own
+    cancel: id => cancelled.push(id)
+  } });
+  t.after(() => app.close());
+  app.S.settings.calls = 1;
+  const call = ev => '\u0001call ' + JSON.stringify(ev);
+
+  const done = app.Chat.submit('Why is the sky blue?');
+  await settle(10);
+  assert.equal(sent.length, 1);
+  const id = sent[0].id;
+  const progress = app.window.__adarshProgress;
+  progress(id, call({ t: 'try', stage: 'judge', model: 'nemotron-ultra', provider: 'openrouter' }));
+  progress(id, call({ t: 'fail', stage: 'judge', model: 'nemotron-ultra', why: 'network error: ReadError' }));
+  progress(id, call({ t: 'try', stage: 'judge', model: 'nemotron-ultra#3', provider: 'openrouter' }));
+  const panel = () => text(app.document.querySelector('.mcalls'));
+  assert.match(panel(), /1 chal rahe/);
+  assert.match(panel(), /chal raha…/);
+
+  await click(app.document, 'Stop');
+  await done;
+  await settle(10);
+  assert.deepEqual(cancelled, [id], 'Stop must tell the native engine to cancel this request');
+  assert.doesNotMatch(panel(), /chal rahe|chal raha…/);
+  assert.match(panel(), /1 roke/);
+  assert.match(panel(), /rok diya/);
+  assert.match(panel(), /1 fail/);
+  assert.equal(app.Chat.isBusy(), false);
+  assert.ok(button(app.document, 'Send'));
+
+  // Late engine output after Stop is ignored: no new rows, no reply in the chat.
+  progress(id, call({ t: 'try', stage: 'judge', model: 'late-model', provider: 'nvidia' }));
+  app.window.__adarshResult(id, JSON.stringify({ type: 'text', text: 'late answer' }), null);
+  await settle(10);
+  assert.doesNotMatch(panel(), /late-model|chal raha/);
+  assert.equal(text(app.document.querySelector('.thread')).includes('late answer'), false);
+});
+
+test('a request that ends without a final call list does not leave rows running', async t => {
+  let reply;
+  const app = mount({ nativeMethods: { send: (id, json) => { reply = id; } } });
+  t.after(() => app.close());
+  app.S.settings.calls = 1;
+  const done = app.Chat.submit('Explain entropy');
+  await settle(10);
+  app.window.__adarshProgress(reply, '\u0001call ' + JSON.stringify({ t: 'try', stage: 'stripper', model: 'nemotron-lightning', provider: 'openrouter' }));
+  app.window.__adarshResult(reply, JSON.stringify({ type: 'text', text: 'Timeout: partial answer' }), null);
+  await done;
+  await settle(10);
+  const panel = text(app.document.querySelector('.mcalls'));
+  assert.doesNotMatch(panel, /chal rahe|chal raha…/);
+  assert.match(panel, /ruk gaya/);
+});
