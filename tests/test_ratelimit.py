@@ -172,7 +172,7 @@ def test_big_prompt_skips_groq_without_any_call_and_goes_to_gemini_lite():
 def test_daily_quota_429_is_not_retried_for_an_hour():
     c = Client({"gemini-3.5-flash-lite": Resp(429, GEMINI_DAILY_429)})
     assert run(llm.chat(c, config.AUDITOR, BIG, retries=0)) == "ok"
-    assert c.calls == ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite"]
+    assert c.calls == ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
     assert health.snapshot()["cooling_down"]["gemini-3.5-flash-lite"] >= 3500
 
 
@@ -188,7 +188,9 @@ def test_empty_answer_is_not_retried_in_the_second_round():
     c = Client({m.model: ok("", finish="length") for m in config.chain_of(config.AUDITOR)})
     with pytest.raises(llm.LLMError) as e:
         run(llm.chat(c, config.AUDITOR, SMALL, retries=0))
-    assert len(c.calls) == len(set(c.calls))  # every model once, none twice
+    # every model: the first try plus at most ONE bigger-budget retry, and nothing again in round two
+    assert all(c.calls.count(m) <= 2 for m in set(c.calls))
+    assert len(set(c.calls)) == len(config.chain_of(config.AUDITOR))
     assert "ran out of tokens while thinking" in str(e.value)
 
 

@@ -10,6 +10,9 @@ Every outcome feeds health.py so later calls skip bad models faster.
 Several API keys per provider (config.KEY_SLOTS): each model of the chain is tried with key 1, then key 2, then key 3
 (only the configured ones) before the chain moves to the next model. A key that hits its limit (429), needs credits
 (402), is rejected (401/403) or meets a server error (5xx / network) hands over to the next key at once.
+Thinking models: when the whole max_tokens went into thinking (empty answer, finish_reason "length"), the SAME model
+and key is asked once more with a bigger budget and lighter thinking (see _think_retry). If that is empty too, the
+model's other keys are skipped (a token budget is not a key problem) and the chain moves to the next model.
 """
 import asyncio
 import re
@@ -36,12 +39,13 @@ class _Skip(Exception):
     """This candidate cannot serve the request: try the next model in the chain.
     retry=False: waiting will not fix it (empty answer, bad request, too big, daily quota...), so this call
                  does not come back to it in the second round.
-    retry_in:    seconds after which it may work again (rate limit); lets chat() decide to wait for it."""
-
-    def __init__(self, reason: str, retry: bool = True, retry_in: float | None = None):
+    retry_in:    seconds after which it may work again (rate limit); lets chat() decide to wait for it.
+    whole_model: the failure belongs to the MODEL, not to this key (its other keys would fail the same way)."""
+    def __init__(self, reason: str, retry: bool = True, retry_in: float | None = None, whole_model: bool = False):
         super().__init__(reason)
         self.retry = retry
         self.retry_in = retry_in
+        self.whole_model = whole_model
 
 
 def _sem(provider: str) -> asyncio.Semaphore:
@@ -147,6 +151,32 @@ def _retry_after(r) -> float | None:
     return None
 
 
+_HEAVY_EFFORT = ("medium", "high", "xhigh")
+
+
+def _think_retry(spec, extra: dict, max_tokens: int | None, est: int, tpm: int, plain: bool):
+    """One more try after an empty answer cut off by the token limit: (bigger max_tokens, lighter extra), or None.
+
+    Bigger: 2x the budget, at least +2048, at most config.THINK_RETRY_MAX_TOKENS, and never past the model's own
+    tokens-per-minute limit. Lighter: reasoning_effort "medium"/"high" -> "low"; Gemini models without an effort get
+    "low" too (Gemini 3 cannot switch thinking off, but "low" leaves room for the answer). Gemma and other models
+    without an effort setting only get the bigger budget. `plain` = the extras were already dropped after a 400."""
+    cap = config.THINK_RETRY_MAX_TOKENS
+    if not max_tokens or cap <= 0:
+        return None
+    room = min(cap, int(tpm * 0.9) - est) if tpm else cap
+    bigger = max(max_tokens, min(max(max_tokens * 2, max_tokens + 2048), room))
+    lighter = dict(extra)
+    effort = lighter.get("reasoning_effort")
+    if effort in _HEAVY_EFFORT:
+        lighter["reasoning_effort"] = "low"
+    elif effort is None and not plain and spec.provider == "gemini" and spec.model.startswith("gemini-"):
+        lighter["reasoning_effort"] = "low"
+    if bigger <= max_tokens and lighter == extra:
+        return None
+    return bigger, lighter
+
+
 async def _try_model(client, spec, messages, temperature, max_tokens, timeout, retries) -> str:
     """Return the answer text, or raise _Skip(reason)."""
     ok, why = health.available(spec)
@@ -169,7 +199,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         headers["X-Title"] = "multi-model-ensemble"
 
     extra, msgs = dict(spec.extra), messages
-    attempts, recovered = 0, False
+    attempts, recovered, think_retried = 0, False, False
     while True:
         attempts += 1
         payload = {"model": spec.model, "messages": msgs, **extra}
@@ -181,6 +211,10 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         if rpm or tpm:  # our own per-minute window: wait for a free slot or let the chain move on
             got, wait = health.reserve_slot(health.quota_key(spec), rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S)
             if not got:
+                if think_retried:  # the first try used this minute's tokens: the bigger retry cannot run now, and
+                    health.fail(spec, 15)  # keys 2/3 at the old small budget would only run out the same way
+                    raise _Skip("empty answer (ran out of tokens while thinking; no tokens/min room for a bigger retry)",
+                                retry=False, whole_model=True)
                 raise _Skip("own rate window full" + (f" (free in {int(wait)}s)" if wait else ""), retry_in=wait)
             if wait > 0:
                 await asyncio.sleep(wait)
@@ -218,10 +252,22 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                 raise _Skip("malformed response", retry=False)
             text = _OPEN_THINK_RE.sub("", _THINK_RE.sub("", text)).strip()
             if not text:
+                if finish == "length" and not think_retried:
+                    nxt = _think_retry(spec, extra, max_tokens, _est_tokens(msgs), tpm, recovered)
+                    if nxt:  # same model, same key: more room for the answer and less thinking, once
+                        think_retried = True
+                        max_tokens, extra = nxt
+                        need = _est_tokens(msgs) + max_tokens
+                        continue
                 health.fail(spec, 15)
+                if finish == "length":
+                    raise _Skip(
+                        "empty answer (ran out of tokens while thinking"
+                        + (f", also after a retry with {max_tokens} tokens)" if think_retried else ")"),
+                        retry=False, whole_model=True,
+                    )
                 raise _Skip(
-                    "empty answer (ran out of tokens while thinking)" if finish == "length"
-                    else "empty answer (thinking used the whole token budget?)",
+                    "empty answer (thinking used the whole token budget?)",
                     retry=False,
                 )
             usage = (data.get("usage") or {}) if isinstance(data, dict) else {}
@@ -330,6 +376,9 @@ async def chat(
                                   "provider": cand.provider, "why": str(e)})
                 if not e.retry:
                     dead.add(cand.label)
+                    if e.whole_model:  # key 2 / key 3 of this model would run out of tokens the same way
+                        dead.update(c.label for c in chain
+                                    if config.base_label(c.label) == config.base_label(cand.label))
                 elif e.retry_in is not None:
                     hints.append(e.retry_in)
                 continue

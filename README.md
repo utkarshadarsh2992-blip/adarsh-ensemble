@@ -69,7 +69,7 @@ Quota kam ho to "always" wale extras (specialist, pattern finder, 3rd falsifier,
 | empiricist | gemma-4-26b-g | qwen3.8-27b | gemini-3.8-flash | qwen3.8-27b | gemini-3.8-flash | qwen3.8-27b |
 | specialist | gemini-3.8-flash | nemotron-ultra | nemotron-ultra | nemotron-ultra | mistral-large-4 | glm-5-3-flash |
 | pattern | mistral-large-4 | mistral-large-4 | mistral-large-4 | gemini-3.5-flash-lite | nemotron-ultra | mistral-large-4 |
-| skeptic | gemini-2.5-flash-lite | gpt-oss-20b | gpt-oss-20b | gemini-3.1-flash-lite | gpt-oss-20b | gpt-oss-20b |
+| skeptic | gemini-3.1-flash-lite | gpt-oss-20b | gpt-oss-20b | gemini-3.1-flash-lite | gpt-oss-20b | gpt-oss-20b |
 | debater | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b | gpt-oss-120b |
 | judge | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash | gemini-3.8-flash |
 | method | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b | qwen3.8-27b |

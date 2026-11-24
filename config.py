@@ -170,7 +170,8 @@ _reg("gemini-3.1-flash-lite", "gemini", "gemini-3.1-flash-lite", {"reasoning_eff
 _reg("gemma-4-31b-g", "gemini", "gemma-4-31b-it")
 _reg("gemma-4-26b-g", "gemini", "gemma-4-26b-a4b-it")
 _reg("gemini-3.5-flash-lite", "gemini", "gemini-3.5-flash-lite", {"reasoning_effort": "low"})
-_reg("gemini-2.5-flash-lite", "gemini", "gemini-2.5-flash-lite")
+# gemini-2.5-flash-lite is gone: Google answers HTTP 404 "no longer available to new users, use gemini-3.5-flash-lite"
+# (Nov 2026). Its chain places now use gemini-3.5-flash-lite, or gemini-3.1-flash-lite where 3.5 lite is already there.
 
 # Cloudflare Workers AI (10,000 neurons/day, resets 00:00 UTC; neurons are not tokens, so no local cap:
 # real 429s move the chain on). bge-m3 is an embedding model, not a chat model, so it is not used here.
@@ -258,13 +259,13 @@ QUICK = use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "nemotron-l
 # the two Groq models are then skipped at once (8K tokens/min) and the Gemini lite models take over. They have their own
 # quota, unlike gemini-3.8-flash which has just written the answer. nemotron-ultra (slow reasoning model, often an empty
 # answer on a small token budget) comes late, gemini-3.8-flash last.
-AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"])
+AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "mistral-large-4", "nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"])
 
 # MANUAL MODE ONLY (master.py): the writer and the grounding check start on NVIDIA / Cloudflare so the Gemini and Groq
 # free quotas are kept for Auto. The two are different model families (Mistral vs gpt-oss), like judge vs auditor.
 # If a key is missing, an ID is wrong (404) or a quota is gone, the chain moves on to Gemini / Groq on its own.
 MASTER_WRITER = use("mistral-large-4", "synthesizer", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"])
-MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "gpt-oss-120b", "nemotron-lightning"])
+MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "mistral-large-4", "gpt-oss-120b", "nemotron-lightning"])
 
 # NOTE: the roles engine now takes its chains PER CHAT MODE from mode_plans.py (Standard, V, Physics, Math, Business,
 # Coding each have their own combination). The chains below are the defaults kept for the other engines / tools.
@@ -286,7 +287,7 @@ SPECIALISTS = {
 SKEPTIC = use("gpt-oss-20b", "skeptic", ["gemini-3.1-flash-lite", "nemotron-lightning", "gemma-4-26b-g"])
 DEBATER = use("gpt-oss-120b", "debater", ["gemini-3.8-flash", "nemotron-ultra", "mistral-large-4"])
 METHOD_REVIEWER = use("qwen3.8-27b", "method_reviewer", ["gemini-3.5-flash-lite", "nemotron-ultra", "gpt-oss-120b"])
-EVIDENCE_REVIEWER = use("gpt-oss-120b", "evidence_reviewer", ["gemini-3.5-flash-lite", "gemini-2.5-flash-lite", "mistral-large-4", "nemotron-ultra", "gemini-3.8-flash"])
+EVIDENCE_REVIEWER = use("gpt-oss-120b", "evidence_reviewer", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "mistral-large-4", "nemotron-ultra", "gemini-3.8-flash"])
 REFINER = use("gemini-3.8-flash", "refiner", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
 
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
@@ -420,6 +421,10 @@ MIN_PANEL_SUCCESS = int(os.getenv("MIN_PANEL_SUCCESS", "2"))
 PANEL_MAX_TOKENS = int(os.getenv("PANEL_MAX_TOKENS", "3000"))
 FALSIFIER_MAX_TOKENS = int(os.getenv("FALSIFIER_MAX_TOKENS", "2500"))
 FINAL_MAX_TOKENS = int(os.getenv("FINAL_MAX_TOKENS", "6000"))
+# A thinking model can spend the whole max_tokens on thinking and return an empty answer (finish_reason "length").
+# llm.py then asks the SAME model and key once more with a bigger budget (2x, at least +2048, at most this, and inside
+# the model's tokens/min limit) and lighter thinking, before the chain moves on. 0 turns the retry off.
+THINK_RETRY_MAX_TOKENS = int(os.getenv("THINK_RETRY_MAX_TOKENS", "8192"))
 APP_API_KEY = os.getenv("APP_API_KEY", "")  # if set, clients must send X-API-Key or Authorization: Bearer <key>
 
 # ADARSH UI chat endpoint (/api/chat): how each chat message is answered
