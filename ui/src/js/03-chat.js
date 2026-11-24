@@ -149,6 +149,7 @@ const Chat = (() => {
     wrap.append(renderReply(r, ctx));
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* check questions, new words, Gehrai mein jao */
+    if (r.type === 'text' && r.briefing) Briefing.extras(m, ctx).forEach(el => wrap.append(el));   /* KAL KA PLAN card */
     if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
   }
@@ -396,11 +397,14 @@ const Chat = (() => {
     if ((!text && !files.length) || busy) return;
     if (BackgroundVoice.active()) BackgroundVoice.stop('Chat ke liye background voice band.');
     if (!meta && App.view !== 'chat') App.show('chat');
-    const source = srcMode(), modeId = meta && meta.deeper ? 'standard' : Modes.current().id;   /* Gehrai mein jao = Standard 9.2 */
+    const night = !!(meta && meta.briefing), open0 = cur();
+    /* Gehrai mein jao = Standard 9.2. The night briefing and every follow-up in its chat stay in Standard (Groq only), as promised in the briefing consent. */
+    const source = night ? 'auto' : srcMode(), modeId = (meta && meta.deeper) || night || (open0 && open0.briefing) ? 'standard' : Modes.current().id;
     const answers = source !== 'auto' ? validAnswers() : [];
     if (source !== 'auto' && !answers.length) { toast('Manual/Hybrid source selected hai. Answer paste karo; source Auto nahi kiya.'); sourceSheet(); return; }
     const c = cur() || newChat();  // continue the open chat: every message used to start a new one, so follow-ups never saw earlier context
     const um = { id: uid('m'), role: 'user', text, ts: Date.now(), requestSource: source, atts: files.map(a => ({ id: a.id, name: a.name, kind: a.kind })) };
+    if (night) um.briefing = true;
     requestMeta.set(um, { source, answers });
     busy = true; // a second submission cannot race asynchronous FileReader work
     pushUser(c, um);
@@ -424,7 +428,7 @@ const Chat = (() => {
     try {
       const perms = Productivity.access();
       const personal = Productivity.modelContext(text, c.id);
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, learn: Learn.request(), reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', std: S.settings.stdStyle === '9.2' ? '9.2' : '2.9' } },
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, learn: Learn.request(), briefing: Briefing.request(c, meta), reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', std: S.settings.stdStyle === '9.2' ? '9.2' : '2.9' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.startsWith('\u0001part ')) {  // finished Part k/N (see config.emit_part)
             try {
@@ -475,6 +479,7 @@ const Chat = (() => {
     if (r.type === 'mission') upsertMission(r);
     if (r.council) { r.councilId = uid('cn'); Council.put(r.councilId, r.council); delete r.council; }  // big: stored apart from the chat state
     if (r.learn) Learn.absorb(r);   // a word counts as learned as soon as it was explained
+    if (r.briefing) Briefing.absorb(c, r);   // night briefing history (S.briefings)
     const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r, personalContext: !!r.personalContext };
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });
@@ -495,7 +500,8 @@ const Chat = (() => {
     if (extra.source !== 'auto' && !extra.answers.length) { toast('Original pasted answers is session mein nahi hain. Dobara paste karke send karo; Auto nahi kiya.'); sourceSheet(); return; }
     while (c.msgs.length && c.msgs[c.msgs.length - 1].role === 'ai') c.msgs.pop();
     // Retry is a new request in the currently selected mode, with this message's original source/answers.
-    renderThread(); runBackend(c, { text: lastU.text || '', ...extra, modeId: Modes.current().id });
+    if (lastU.briefing) { renderThread(); return runBackend(c, { text: lastU.text || '', source: 'auto', answers: [], meta: { briefing: true }, modeId: 'standard' }); }   // fresh night context
+    renderThread(); runBackend(c, { text: lastU.text || '', ...extra, modeId: c.briefing ? 'standard' : Modes.current().id });
   }
 
   /* structured-reply follow-ups */

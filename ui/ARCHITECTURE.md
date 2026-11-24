@@ -138,6 +138,20 @@ Reply fields (optional, on `text` replies):
 The UI checks answers on the phone (0 tokens): MCQ by index, fill-in by normalised text (Devanagari marks kept, numbers within 1 %, short contained phrases). Each answer is stored in `S.learnLog` (`{ts, concept, q, ok, mode}`), and reply words go into `S.vocab` (`{id, w, m, src, ts}`) as soon as the reply arrives. Both are exported and capped on import (vocab 5000, learnLog 3000). Settings > "Seekhna (learning)" has Standard style, Check questions and Seekhe shabd. Changing the style emits `std:changed`, not `mode:changed`, so background voice keeps running; background voice does not use `std`.
 
 
+## Mission and night briefing seam (change 1.3)
+
+**State (phone only).** `S.mission` (one line, max 400), `S.goals` (`{id, title, why, deadline 'YYYY-MM-DD'|'', status active|paused|done, milestones:[{id, t, done}]}`, max 30), `S.projects` (builder cycle: `{id, name, goalId, why, status, concepts[], versions:[{id, v, aim, built, learned, next, started, done}]}`, max 40), `S.briefings` (`{date, chatId, ts, saved}`, max 60). Days left and progress are computed on the phone (`Mission.daysLeft`, `Mission.progress`). "Upgrade" closes the current version and starts v+1 whose aim is the old "next". Drawer > Mission & goals (`js/04-mission.js`); the Today screen shows a small mission card. Export carries all four; import types and caps them (goals 200, projects 200, briefings 200 in the file; 30 / 40 / 60 kept).
+
+**Request.** `briefing` on the request body (`Briefing.request()` in `js/04-briefing.js`):
+* night call (`meta.briefing: true`, always mode `standard`): `{date, tomorrow, weekday, tomorrowDay, now, mission, goals[], projects[], today: {questions, concepts[], words[], right, total, weak[{concept, q}], done[], open[{title, due}], work[{title, minutes}]}, fixed[{title, time}], news[]}`. Before 4 am the day is still the previous day. `briefing.clean_context()` bounds every field again.
+* follow-up in the briefing chat: `{followup: true, goals[], projects[]}`; `chat_adapter` adds it as permitted app records, so Wikipedia and web search stay off for it. Follow-ups and Retry in that chat stay in Standard.
+
+**Reply.** One Groq call (`briefing.reply`, no tools, no web). The model writes a hidden `<<<ADARSH_PLAN {"focus", "plan":[{title, time, minutes, goal, project}]} ADARSH_PLAN>>>` block (max 8 items); the reply carries `briefing: {date, for, focus, plan[]}` and, when today had wrong check answers and checks are on, a normal `learn` block for revision. The UI draws a "KAL KA PLAN" card; the picked items become tasks through `Productivity.manual('task.add')` (a time is set only when it is still in the future, so the task alert rings then).
+
+**Android.** `Briefing.kt`: one daily alarm (exact when Android allows it, else inexact) that only posts a notification on channel `adarsh_briefing` and re-arms; boot, time / time-zone change and app update re-arm it. No engine, network or model call happens in the alarm. Bridge: `briefingSet({on, time, ask})`, `briefingStatus()`, `takeOpen()`; a notification tap calls `window.__adarshOpen('briefing')`, which waits for the lock screen. In a browser the page shows a banner once per night while it is open.
+
+**Privacy.** The night summary goes to Groq only after a one-time consent sheet (`S.settings.briefingConsent`, can be withdrawn in Settings > Mission & briefing). No chat text is sent in it; the Android path needs a Groq key and never falls back to other providers.
+
 ## Android update and outside-app voice seam
 
 `05-mobile.js` exposes user controls only, never AI actions. `MobileUpdates` calls native updateStatus/updateCheck/updateDownload/updateInstall; `window.__adarshUpdate(object)` paints state. Boot checks are throttled, available builds show Update now/Later, download and installer requests require button clicks. The native manager validates a fixed public repository's published metadata, private APK cache and installed signing identity. No GitHub credential or app state is sent. CI publishes metadata and APK only as a complete successful release, with version and stale-build gates.

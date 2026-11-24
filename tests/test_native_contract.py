@@ -93,3 +93,25 @@ def test_stop_cancels_the_python_request_off_the_ui_thread():
     assert "pool.execute" in body and 'callAttr("cancel", id)' in body  # Python stops, UI thread never waits
     entry = (ROOT / "android_entry.py").read_text(encoding="utf-8")
     assert "def cancel(request_id" in entry and "request_id=None" in entry
+def test_night_briefing_alarm_only_notifies_and_stays_private():
+    """Change 1.3: the daily alarm posts a notification and re-arms; it never starts the engine or the network.
+    The receiver is not exported, the bridge methods check the trusted page, and boot / time changes re-arm it."""
+    brief = source("Briefing.kt")
+    bridge = source("AdarshBridge.kt")
+    activity = source("MainActivity.kt")
+    boot = source("ActionReceiver.kt")
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+    fire = brief[brief.index("fun fire(ctx: Context)"):brief.index("fun notifyAllowed")]
+    assert "notify(ctx)" in fire and "arm(ctx)" in fire and 'putString("firedDate", today)' in fire
+    for banned in ("Engine.", "URL(", "HttpURLConnection", "startForegroundService", "Python"):
+        assert banned not in brief, banned
+    assert "canScheduleExactAlarms()" in brief and "setAndAllowWhileIdle" in brief
+    assert "PendingIntent.FLAG_IMMUTABLE" in brief and 'Regex("^([01]\\\\d|2[0-3]):([0-5]\\\\d)$")' in brief
+    assert '<receiver android:name=".BriefingReceiver" android:exported="false">' in manifest
+    for action in ("TIME_SET", "TIMEZONE_CHANGED", "MY_PACKAGE_REPLACED"):
+        assert f"android.intent.action.{action}" in manifest
+    for method in ("briefingSet", "briefingStatus"):
+        assert f"fun {method}" in bridge and f"if (ok()) MainActivity.{method}(" in bridge
+    assert 'fun takeOpen(): String = if (ok()) MainActivity.takeOpen() else ""' in bridge
+    assert "override fun onNewIntent(intent: Intent)" in activity and "BriefingScheduler.pendingOpen = true" in activity
+    assert "BriefingScheduler.arm(ctx)" in boot

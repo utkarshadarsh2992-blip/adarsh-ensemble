@@ -293,7 +293,17 @@ class MainActivity : AppCompatActivity() {
         ) askNotifications()
 
         current = this
+        if (intent?.action == BriefingScheduler.ACTION_OPEN) BriefingScheduler.pendingOpen = true   // notification tap on a cold start
         if (savedInstanceState == null) load() else web.restoreState(savedInstanceState)
+    }
+    /** Night briefing notification while the app is already running (singleTask): the page starts the briefing
+     *  after the lock screen; if the page is not loaded yet it takes the flag itself (AdarshNative.takeOpen). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action != BriefingScheduler.ACTION_OPEN) return
+        BriefingScheduler.pendingOpen = true
+        if (pageTrusted) js("window.__adarshOpen&&window.__adarshOpen('briefing')")
     }
 
     private fun load() {
@@ -661,6 +671,18 @@ class MainActivity : AppCompatActivity() {
 
         // ---- reply notifications: the WebView has no Notification API, so the app posts them itself
         /** "granted" | "asked" (system dialog shown) | "denied" | "off" */
+        /** Night briefing schedule {on, time, ask}; `ask` (a Settings change) may show the notification permission dialog. */
+        fun briefingSet(json: String): String {
+            val c = appCtx ?: return "{\"ok\":false,\"error\":\"not ready\"}"
+            val out = BriefingScheduler.configure(c, json)
+            val ask = try { JSONObject(json).optBoolean("ask", false) && JSONObject(json).optBoolean("on", true) } catch (_: Exception) { false }
+            if (ask && Build.VERSION.SDK_INT >= 33 && c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ui { it.notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+            }
+            return out
+        }
+        fun briefingStatus(): String = appCtx?.let { BriefingScheduler.status(it).toString() } ?: "{\"ok\":false,\"error\":\"not ready\"}"
+        fun takeOpen(): String = BriefingScheduler.takeOpen()
         fun setNotify(on: Boolean): String {
             val c = appCtx ?: return "denied"
             prefs(c).edit().putBoolean("notify", on).apply()

@@ -237,9 +237,13 @@ def handle(request_json: str, progress=None, request_id=None) -> str:
 
     # Offline in-app commands and read-only self-knowledge must work even with zero model keys.
     import chat_adapter
-    local = chat_adapter.local_response(body)
+    brief = body.get("briefing")
+    night = isinstance(brief, dict) and not brief.get("followup")  # the night briefing never goes to the action parser
+    local = None if night else chat_adapter.local_response(body)
     if local is not None:
         return json.dumps(local)
+    if night and not config.PROVIDERS["groq"].api_key:
+        return _text("Raat ki briefing sirf Groq se chalti hai. **Settings > API keys** me kam se kam ek Groq key daalo.")
     if not body.get("ping") and not any(v.api_key for v in config.PROVIDERS.values()):
         return _text("Koi API key set nahi hai. **Settings > API keys** me kam se kam ek key daalo (Groq, Gemini, OpenRouter, Cloudflare ya NVIDIA).")
 

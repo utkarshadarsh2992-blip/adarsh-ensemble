@@ -157,10 +157,20 @@ const App = (() => {
       h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
       h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Reply font'), seg([['serif', 'Serif'], ['sans', 'Sans']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
     st.append(label('Assistant'), h('div', { class: 'grp' },
-      navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
+      navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
-    topics: list[dict] | None = None,  # sub-topic map of a big message (bigtask.py); roles engine answers each
-    learner_note: str = "",  # learned words the app sent (learning.known_note): never defined again
+      swItem('globe', 'Built-in web search', 'Standard mode: Groq ka live web search on/off. Wikipedia research hamesha on rehta hai', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
+      navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
+      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+    st.append(label('Seekhna (learning)'), h('div', { class: 'grp' },
+      navItem('sparkle', 'Standard style', Learn.styleName() + ' · dono mein 1 jawab = 1 concept', () => Learn.styleSheet(redraw)),
+      swItem('ask', 'Check questions', 'Har jawab ke baad MCQ ya fill-in; phone par check hota hai, 0 token', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
+      navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd · dobara nahi samjhaye jaate', () => Learn.vocabSheet())));
+    st.append(label('Mission & briefing'), h('div', { class: 'grp' },
+      navItem('target', 'Mission & goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
+      swItem('moon', 'Raat ki briefing', 'Roz tay time par notification; kholne par aaj ka hisaab + kal ka plan (1 Groq call)', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
+      navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
+      navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Summary Groq ko jata hai: haan (badal sakte ho)' : 'Pehli briefing par poochega', () => Briefing.privacySheet(() => redraw()))));
     st.append(label('Android'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },

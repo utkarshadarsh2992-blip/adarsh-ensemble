@@ -13,6 +13,7 @@ import time
 
 import httpx
 
+import briefing
 import config
 import health
 import learning
@@ -308,6 +309,10 @@ async def handle(body: dict) -> dict | list[dict]:
         return await voice.handle(body["tts"])  # natural voice for a reply: no chat model involved
     if isinstance(body.get("lesson"), dict):
         return lessons.handle_op(body["lesson"])  # list / add / edit / delete / clear / good: no model call
+    brief = body.get("briefing") if isinstance(body.get("briefing"), dict) else None
+    if brief is not None and not brief.get("followup"):
+        # night briefing: one Groq call over sir's own bounded summary, never the action parser (briefing.py)
+        return await briefing.reply(body)
 
     local = local_response(body)
     if local is not None:
@@ -348,6 +353,8 @@ async def handle(body: dict) -> dict | list[dict]:
     extra = _context(body.get("history") if perms["currentChat"] else [], text)
     private_context = bool(extra)
     extra += app_context.context(body, text)
+    if brief is not None:
+        extra += briefing.followup_note(brief)   # follow-up in the briefing chat: goals + projects as private context
     private_context = private_context or "[Permitted relevant app records;" in extra
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
     extra = extra[:6000]

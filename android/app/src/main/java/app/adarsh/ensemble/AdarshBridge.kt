@@ -119,6 +119,13 @@ class AdarshBridge(
     fun saveFile(name: String, text: String) { if (ok()) MainActivity.saveFile(name, text) }
     @JavascriptInterface
     fun setNotify(on: Boolean): String = if (ok()) MainActivity.setNotify(on) else denied
+    /** Night briefing (change 1.3): daily notification time; the model call happens only when sir opens it. */
+    @JavascriptInterface
+    fun briefingSet(json: String): String = if (ok()) MainActivity.briefingSet(json) else denied
+    @JavascriptInterface
+    fun briefingStatus(): String = if (ok()) MainActivity.briefingStatus() else denied
+    @JavascriptInterface
+    fun takeOpen(): String = if (ok()) MainActivity.takeOpen() else ""
 
     @JavascriptInterface
     fun status(): String = if (ok()) Engine.status() else denied
