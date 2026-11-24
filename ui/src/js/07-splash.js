@@ -4,7 +4,7 @@
    never flashes before it. This module runs the timed part: the name decodes letter by letter, a short boot log
    that reflects the real settings (mode, Wikipedia / web search, key storage), a progress bar and a clock, then the
    HUD zooms into the app. About 2.5 s in total; a tap skips it.
-   Settings > Alerts and feel > Startup animation turns it off (the layer is then removed before it is seen).
+   S.settings.bootAnim=false (AI command) turns it off (the layer is then removed before it is seen).
    prefers-reduced-motion gets a short fade only. If anything here fails, the layer is removed at once, and CSS
    hides it after a few seconds even if this script never runs. On Android the system bars go dark with it
    (AdarshNative.bootBars); MainActivity also turns them back on its own after 9 s or a load error. */
@@ -123,7 +123,7 @@ const Splash = (() => {
       el.addEventListener('click', skip);
       const calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
       if (calm) { el.classList.add('calm'); later(() => out(false), 450); return true; }
-      // two frames: the static first paint (the big "A", same as the Android splash) is on screen before the HUD moves
+      // two frames: the dark first paint is on screen before the HUD (and the "A") starts
       frame(() => frame(begin));
       return true;
     } catch (e) { remove(); return false; }

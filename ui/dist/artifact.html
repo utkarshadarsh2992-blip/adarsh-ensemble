@@ -676,9 +676,9 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
    ADARSH UI : boot.css   (startup animation, driven by js/07-splash.js)
    A dark "tech HUD" intro over the app on a cold start: spinning rings, a moving grid floor, a scan line,
    the name decoding letter by letter, a short boot log and a progress bar, then a zoom-and-fade into the app.
-   The layer is static markup in index.html, so it is the very first paint and continues the Android splash
-   (same dark ground, same "A" at the same size). Only transform / opacity are animated (cheap in the WebView).
-   Settings > Alerts and feel > Startup animation turns it off. A tap skips it. Reduced motion = a short fade.
+   The layer is static markup in index.html, so it is the very first paint: only the dark ground (no static "A")
+   until the HUD starts, then the "A" fades in with it. Only transform / opacity are animated (cheap in the WebView).
+   S.settings.bootAnim=false (AI command) turns it off. A tap skips it. Reduced motion = a short fade.
    ===================================================================================== */
 .boot{position:fixed;inset:0;z-index:1000;overflow:hidden;background:#05070B;color:#DCE7EF;font-family:var(--mono);
   -webkit-user-select:none;user-select:none;touch-action:none;
@@ -757,10 +757,11 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 @keyframes boot-pulse{40%{transform:scale(1.05)}100%{transform:none}}
 
 /* 288 px box = the Android 12+ splash icon size, so the hand-over from the system splash does not jump */
-.boot-logo{position:absolute;left:50%;top:50%;width:288px;height:288px;margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%}
+.boot-logo{position:absolute;left:50%;top:50%;width:288px;height:288px;margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%;opacity:0}
 .boot-logo .fill{fill:#EDEDED}
 .boot-logo .edge{fill:none;stroke:var(--bc);stroke-width:1;stroke-linejoin:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0}
-.boot.go .boot-logo{transform:scale(var(--ls,.62));transition:transform .75s cubic-bezier(.2,.8,.2,1) .05s}
+.boot.go .boot-logo,.boot.calm .boot-logo{opacity:1}
+.boot.go .boot-logo{transform:scale(var(--ls,.62));transition:transform .75s cubic-bezier(.2,.8,.2,1) .05s,opacity .3s ease}
 .boot.go .boot-logo .edge{animation:boot-draw .9s ease-out .25s forwards}
 @keyframes boot-draw{0%{opacity:1}100%{opacity:1;stroke-dashoffset:0}}
 
@@ -3525,8 +3526,7 @@ const App = (() => {
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },
-      navItem('refresh', 'App updates', '', () => MobileUpdates.open()),
-      MobileUpdates.supported() ? swItem('bell', 'Update notification', '', () => MobileUpdates.notifyOn(), v => { MobileUpdates.setNotify(v); toast(v ? 'Update notification on' : 'Update notification off'); }) : null));
+      navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', '', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -3536,15 +3536,9 @@ const App = (() => {
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
-      swItem('kbd', 'Haptics', '', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
-      swItem('bolt', 'Startup animation', '~2.5 s', () => S.settings.bootAnim !== false, v => { S.settings.bootAnim = v; if (v) Splash.replay(); else toast('Startup animation off'); }),
-      navItem('atom', 'Animation preview', '', () => Splash.replay()),
-      swItem('sparkle', 'Adarsh (Standard mode)', '', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
+      swItem('kbd', 'Haptics', '', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
     st.append(label('Adarsh'), h('div', { class: 'grp' },
-      navItem('tasks', 'Tasks and Work', '', () => show('tasks')),
-      navItem('shield', 'AI access', '', aiAccessSheet),
-      navItem('code', 'Architecture (read-only)', '', architectureSheet),
-      navItem('bell', 'Notification permissions', '', () => Actions.infoSheet())));
+      navItem('shield', 'AI access', '', aiAccessSheet)));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
@@ -4831,7 +4825,7 @@ const BackgroundVoice = (() => {
    never flashes before it. This module runs the timed part: the name decodes letter by letter, a short boot log
    that reflects the real settings (mode, Wikipedia / web search, key storage), a progress bar and a clock, then the
    HUD zooms into the app. About 2.5 s in total; a tap skips it.
-   Settings > Alerts and feel > Startup animation turns it off (the layer is then removed before it is seen).
+   S.settings.bootAnim=false (AI command) turns it off (the layer is then removed before it is seen).
    prefers-reduced-motion gets a short fade only. If anything here fails, the layer is removed at once, and CSS
    hides it after a few seconds even if this script never runs. On Android the system bars go dark with it
    (AdarshNative.bootBars); MainActivity also turns them back on its own after 9 s or a load error. */
@@ -4950,7 +4944,7 @@ const Splash = (() => {
       el.addEventListener('click', skip);
       const calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
       if (calm) { el.classList.add('calm'); later(() => out(false), 450); return true; }
-      // two frames: the static first paint (the big "A", same as the Android splash) is on screen before the HUD moves
+      // two frames: the dark first paint is on screen before the HUD (and the "A") starts
       frame(() => frame(begin));
       return true;
     } catch (e) { remove(); return false; }
@@ -4970,7 +4964,7 @@ const Splash = (() => {
 /* 08-boot.js : start-up + public UI hooks */
 (function boot() {
   load();
-  Splash.start();   // startup animation over the boot (Settings > Startup animation)
+  Splash.start();   // startup animation over the boot (S.settings.bootAnim, AI command se)
   Productivity.init();
   App.applyTheme();
   App.buildDrawer();

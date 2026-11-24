@@ -10,21 +10,15 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Shown until the page has painted: the same dark ground and "A" (288 dp) as the Android 12+ splash and the
-         first frame of the web startup animation (ui/src/css/boot.css), so the hand-over does not flash. -->
+    <!-- Shown until the page has painted: only the dark ground of the web startup animation (no static "A"). -->
     <LinearLayout
         android:id="@+id/loading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/adarsh_boot"
         android:gravity="center"
-        android:orientation="vertical">
-        <ImageView
-            android:layout_width="288dp"
-            android:layout_height="288dp"
-            android:contentDescription="@string/loading"
-            android:src="@drawable/ic_launcher_foreground" />
-    </LinearLayout>
+        android:contentDescription="@string/loading"
+        android:orientation="vertical" />
 
     <LinearLayout
         android:id="@+id/error"

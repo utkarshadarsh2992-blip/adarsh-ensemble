@@ -2,9 +2,9 @@
    ADARSH UI : boot.css   (startup animation, driven by js/07-splash.js)
    A dark "tech HUD" intro over the app on a cold start: spinning rings, a moving grid floor, a scan line,
    the name decoding letter by letter, a short boot log and a progress bar, then a zoom-and-fade into the app.
-   The layer is static markup in index.html, so it is the very first paint and continues the Android splash
-   (same dark ground, same "A" at the same size). Only transform / opacity are animated (cheap in the WebView).
-   Settings > Alerts and feel > Startup animation turns it off. A tap skips it. Reduced motion = a short fade.
+   The layer is static markup in index.html, so it is the very first paint: only the dark ground (no static "A")
+   until the HUD starts, then the "A" fades in with it. Only transform / opacity are animated (cheap in the WebView).
+   S.settings.bootAnim=false (AI command) turns it off. A tap skips it. Reduced motion = a short fade.
    ===================================================================================== */
 .boot{position:fixed;inset:0;z-index:1000;overflow:hidden;background:#05070B;color:#DCE7EF;font-family:var(--mono);
   -webkit-user-select:none;user-select:none;touch-action:none;
@@ -83,10 +83,11 @@
 @keyframes boot-pulse{40%{transform:scale(1.05)}100%{transform:none}}
 
 /* 288 px box = the Android 12+ splash icon size, so the hand-over from the system splash does not jump */
-.boot-logo{position:absolute;left:50%;top:50%;width:288px;height:288px;margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%}
+.boot-logo{position:absolute;left:50%;top:50%;width:288px;height:288px;margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%;opacity:0}
 .boot-logo .fill{fill:#EDEDED}
 .boot-logo .edge{fill:none;stroke:var(--bc);stroke-width:1;stroke-linejoin:round;stroke-dasharray:100;stroke-dashoffset:100;opacity:0}
-.boot.go .boot-logo{transform:scale(var(--ls,.62));transition:transform .75s cubic-bezier(.2,.8,.2,1) .05s}
+.boot.go .boot-logo,.boot.calm .boot-logo{opacity:1}
+.boot.go .boot-logo{transform:scale(var(--ls,.62));transition:transform .75s cubic-bezier(.2,.8,.2,1) .05s,opacity .3s ease}
 .boot.go .boot-logo .edge{animation:boot-draw .9s ease-out .25s forwards}
 @keyframes boot-draw{0%{opacity:1}100%{opacity:1;stroke-dashoffset:0}}
 

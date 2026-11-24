@@ -122,7 +122,7 @@ test('reduced motion gets a short fade only', async (t) => {
   assert.equal(app.document.getElementById('boot'), null);
 });
 
-test('Settings: the switch saves bootAnim and the preview row replays the animation', async (t) => {
+test('Settings: no startup-animation rows; Splash.replay still plays even with bootAnim off', async (t) => {
   const app = mount();
   t.after(() => app.close());
   app.Splash.skip();
@@ -130,19 +130,11 @@ test('Settings: the switch saves bootAnim and the preview row replays the animat
   assert.equal(app.document.getElementById('boot'), null);
   app.App.show('settings');
   await settle(0);
-  const sw = [...app.document.querySelectorAll('[role="switch"]')].find(b => text(b).includes('Startup animation'));
-  assert.ok(sw, 'Startup animation switch exists');
-  assert.equal(sw.getAttribute('aria-checked'), 'true');
-  sw.click();
-  assert.equal(app.S.settings.bootAnim, false);
-  assert.equal(sw.getAttribute('aria-checked'), 'false');
-  assert.equal(app.document.getElementById('boot'), null, 'turning it off does not play it');
-  await settle(300);   // save() is debounced (250 ms)
-  assert.equal(JSON.parse(app.window.localStorage.getItem('adarsh.ui.v3')).settings.bootAnim, false, 'saved off');
-
-  const preview = [...app.document.querySelectorAll('button')].find(b => text(b).includes('Animation preview'));
-  assert.ok(preview, 'preview row exists');
-  preview.click();
+  const labels = [...app.document.querySelectorAll('button')].map(text).join(' | ');
+  for (const gone of ['Startup animation', 'Animation preview', 'Adarsh (Standard mode)', 'Tasks and Work', 'Architecture (read-only)', 'Notification permissions', 'Update notification'])
+    assert.ok(!labels.includes(gone), gone + ' row removed');
+  app.S.settings.bootAnim = false;
+  app.Splash.replay();
   const again = app.document.getElementById('boot');
   assert.ok(again && app.Splash.active(), 'preview plays even while the switch is off');
   assert.equal(app.Splash.replay(), false, 'no second layer while one is playing');
@@ -153,11 +145,6 @@ test('Settings: the switch saves bootAnim and the preview row replays the animat
   await settle(320);
   assert.equal(app.document.getElementById('boot'), null);
 
-  sw.click();   // back on: plays a preview right away
-  assert.equal(app.S.settings.bootAnim, true);
-  assert.ok(app.document.getElementById('boot'));
-  app.Splash.skip();
-  await settle(320);
 });
 
 test('Android: the system bars go dark with the layer and come back mid-fade', async (t) => {

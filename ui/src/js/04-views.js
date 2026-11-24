@@ -163,8 +163,7 @@ const App = (() => {
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },
-      navItem('refresh', 'App updates', '', () => MobileUpdates.open()),
-      MobileUpdates.supported() ? swItem('bell', 'Update notification', '', () => MobileUpdates.notifyOn(), v => { MobileUpdates.setNotify(v); toast(v ? 'Update notification on' : 'Update notification off'); }) : null));
+      navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', '', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
@@ -174,15 +173,9 @@ const App = (() => {
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
-      swItem('kbd', 'Haptics', '', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); }),
-      swItem('bolt', 'Startup animation', '~2.5 s', () => S.settings.bootAnim !== false, v => { S.settings.bootAnim = v; if (v) Splash.replay(); else toast('Startup animation off'); }),
-      navItem('atom', 'Animation preview', '', () => Splash.replay()),
-      swItem('sparkle', 'Adarsh (Standard mode)', '', () => S.settings.adarshActions !== false, v => { S.settings.adarshActions = v; })));
+      swItem('kbd', 'Haptics', '', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
     st.append(label('Adarsh'), h('div', { class: 'grp' },
-      navItem('tasks', 'Tasks and Work', '', () => show('tasks')),
-      navItem('shield', 'AI access', '', aiAccessSheet),
-      navItem('code', 'Architecture (read-only)', '', architectureSheet),
-      navItem('bell', 'Notification permissions', '', () => Actions.infoSheet())));
+      navItem('shield', 'AI access', '', aiAccessSheet)));
     st.append(label('Privacy and connection'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,

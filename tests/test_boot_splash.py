@@ -19,23 +19,26 @@ def test_window_ground_matches_the_web_boot_layer():
     assert re.search(r"\.boot\{[^}]*background:#05070B", css)
 
 
-def test_android_12_splash_uses_the_same_ground_and_logo():
+def test_android_12_splash_is_only_the_dark_ground():
     v31 = read(RES / "values-v31/themes.xml")
     assert 'name="Theme.Adarsh" parent="Theme.AppCompat.DayNight.NoActionBar"' in v31
     for item in ("android:windowBackground\">@color/adarsh_boot",
                  "android:statusBarColor\">@color/adarsh_bg",
                  "android:navigationBarColor\">@color/adarsh_bg",
                  "android:windowSplashScreenBackground\">@color/adarsh_boot",
-                 "android:windowSplashScreenAnimatedIcon\">@drawable/ic_launcher_foreground"):
+                 "android:windowSplashScreenAnimatedIcon\">@drawable/splash_blank"):
         assert item in v31, item
 
 
-def test_loading_view_is_the_dark_logo_and_keeps_its_id():
+def test_loading_view_is_the_dark_ground_without_static_logo():
     layout = read(RES / "layout/activity_main.xml")
-    block = layout.split('android:id="@+id/loading"', 1)[1].split("</LinearLayout>", 1)[0]
+    block = layout.split('android:id="@+id/loading"', 1)[1].split("/>", 1)[0]
     assert 'android:background="@color/adarsh_boot"' in block
-    assert 'android:src="@drawable/ic_launcher_foreground"' in block
-    assert 'android:layout_width="288dp"' in block and 'android:layout_height="288dp"' in block
+    assert "ImageView" not in block and "ic_launcher_foreground" not in block
+    assert 'android:color/transparent' in read(RES / "drawable/splash_blank.xml")
+    css = read(ROOT / "ui/src/css/boot.css")
+    assert "margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%;opacity:0}" in css
+    assert ".boot.go .boot-logo,.boot.calm .boot-logo{opacity:1}" in css
     assert "ProgressBar" not in block
     assert 'android:id="@+id/error"' in layout and 'android:id="@+id/web"' in layout
 
