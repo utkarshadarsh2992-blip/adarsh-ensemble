@@ -61,6 +61,17 @@ def _bound_meta(value, depth: int = 0):
     return str(value)[:500]
 
 
+def _fit(text: str, extra: str, limit: int = MAX_QUESTION_CHARS) -> tuple[str, str, str]:
+    """Fit the user's message and the extra context (chat history, app records, app knowledge) into `limit` chars.
+    The message has priority: the extra context is trimmed first. Only a message that is longer than `limit` by
+    itself is cut, and then the returned note says so (never a silent cut)."""
+    if len(text) >= limit:
+        note = (f"*Note: aapka message {len(text):,} characters ka tha; is mode me ek baar me {limit:,} tak padha jata "
+                f"hai, isliye aakhri {len(text) - limit:,} characters is jawab me shamil nahi hue.*")
+        return text[:limit], "", note
+    return text, extra[: limit - len(text)], ""
+
+
 def _bound_request(body: dict) -> dict:
     """Apply caps shared by Android and the FastAPI adapter."""
     bounded = dict(body)
@@ -314,12 +325,16 @@ async def handle(body: dict) -> dict | list[dict]:
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra
-        quick = await _quick_reply(text[:MAX_QUESTION_CHARS - len(extra)], extra, reply_lang, depth, bool(meta.get("voice")),
+        q_text, q_extra, cut_note = _fit(text, extra)
+        quick = await _quick_reply(q_text, q_extra, reply_lang, depth, bool(meta.get("voice")),
                                    research=not has_records, deep=bool(meta.get("deep")), web=web_search)
+        if cut_note:
+            quick["text"] += "\n\n" + cut_note
         if body.get("attachments"):
             quick["text"] += "\n\n*Standard mode attachments nahi padhta (sirf text jaata hai).*"
         return [quick]
-    question = (text[: MAX_QUESTION_CHARS - len(extra)] + extra)[:MAX_QUESTION_CHARS]
+    q_text, q_extra, cut_note = _fit(text, extra)
+    question = q_text + q_extra
 
     res = await pipeline.run(
         question,
@@ -342,6 +357,8 @@ async def handle(body: dict) -> dict | list[dict]:
         replies[0]["text"] += "\n\n*Python code proofs are off on Android. Steps are [REASONED], not [PROVEN by code].*"
     if body.get("attachments"):
         replies[0]["text"] += "\n\n*Attachments abhi ensemble tak nahi bheje jaate (sirf text).*"
+    if cut_note:
+        replies[0]["text"] += "\n\n" + cut_note
     # shown folded under the answer as "Worked through N steps"
     master = res.get("master")
     if master:

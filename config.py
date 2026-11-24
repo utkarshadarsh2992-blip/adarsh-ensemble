@@ -416,7 +416,9 @@ GUARD_CHUNK_CHARS = int(os.getenv("GUARD_CHUNK_CHARS", "1400"))
 GUARD_MAX_CHUNKS = int(os.getenv("GUARD_MAX_CHUNKS", "20"))
 
 # Timeouts / token budgets (reasoning models spend part of max_tokens on thinking)
-PANEL_TIMEOUT_S = float(os.getenv("PANEL_TIMEOUT_S", "240"))
+# Total time ONE council stage (draft, falsifier, judge, ...) may take, all fallbacks included. 480 s leaves room for
+# a heavy model (300 s attempt) plus one fallback attempt.
+PANEL_TIMEOUT_S = float(os.getenv("PANEL_TIMEOUT_S", "480"))
 MIN_PANEL_SUCCESS = int(os.getenv("MIN_PANEL_SUCCESS", "2"))
 PANEL_MAX_TOKENS = int(os.getenv("PANEL_MAX_TOKENS", "3000"))
 FALSIFIER_MAX_TOKENS = int(os.getenv("FALSIFIER_MAX_TOKENS", "2500"))
@@ -458,6 +460,8 @@ def _timeouts(raw: str) -> dict[str, float]:
 
 MODEL_TIMEOUT_S: dict[str, float] = {
     "gemini-3.8-flash": 200.0,  # long Judge / Synthesizer / Refiner answers: 120 s cut it off while it was still writing
+    "mistral-large-4": 300.0,  # 1T-parameter NVIDIA model: long queue + slow writing
+    "nemotron-ultra": 300.0,  # 550B free OpenRouter model: often queued before the first token
     **_timeouts(os.getenv("MODEL_TIMEOUTS", "")),
 }
 

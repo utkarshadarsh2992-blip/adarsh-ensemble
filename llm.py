@@ -459,7 +459,7 @@ async def chat(
 ) -> str:
     """budget = most seconds this whole call may take (all models together). None = no limit.
     timeout = seconds per model attempt for every model of the chain; None = each model's own value
-    (config.model_timeout: gemini-3.8-flash 200 s, others config.LLM_TIMEOUT_S)."""
+    (config.model_timeout: gemini-3.8-flash 200 s, mistral-large-4 / nemotron-ultra 300 s, others config.LLM_TIMEOUT_S)."""
     chain = expand_keys(balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks]))
     reasons: dict[str, str] = {}
     dead: set[str] = set()  # failed for a reason waiting will not fix: not tried again in round 2
