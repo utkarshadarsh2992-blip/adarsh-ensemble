@@ -744,7 +744,7 @@ class BackgroundVoiceService : Service() {
         private val FATAL_RETRY_DELAYS_MS = longArrayOf(800L, 1600L, 3200L)
         private val CONFIG_KEYS = setOf("chatId", "mode", "source", "lang", "access", "history", "reply", "voice")
         private val ACCESS_KEYS = setOf("localRead", "localEdit", "personalOnline", "oldChats", "currentChat", "architecture")
-        private val REPLY_KEYS = setOf("lang", "depth", "think", "web")  // web: "on" / "off" (Settings > Built-in web search)
+        private val REPLY_KEYS = setOf("lang", "depth", "think", "web", "philosophy")  // web: "on" / "off" (Settings > Built-in web search)
         private val VOICE_KEYS = setOf("engine", "name", "deviceVoice", "rate")
         private val VOICE_NAMES = setOf("Kore", "Orus", "Charon", "Sulafat", "Achird", "Iapetus", "Puck", "Aoede", "Gacrux", "Sadaltager")
         private val ALLOWED_MODES = setOf("standard", "verified", "physics", "math", "business", "coding", "v")

@@ -128,19 +128,33 @@ function openImportFile(app, data) {
   picker.dispatchEvent(new app.window.Event('change', { bubbles: true }));
 }
 
-test('manual productivity pages render from the drawer, including Tasks, Work, reminders, alarms and notes', async t => {
+test('manual productivity pages render from the drawer: Tasks, Work, alarms, notes, Philosophy (no Reminders/Missions/Abilities)', async t => {
   const app = makeHarness();
   t.after(() => app.close());
 
   app.App.drawer(true);
   assert.equal(app.document.querySelector('#phone').classList.contains('open'), true);
-  for (const [name, title] of [['tasks', 'Tasks'], ['work', 'Work projects'], ['reminders', 'Reminders'], ['alarms', 'Alarms & timers'], ['notes', 'Notes']]) {
+  for (const [name, title] of [['tasks', 'Tasks'], ['work', 'Work projects'], ['alarms', 'Alarms & timers'], ['notes', 'Notes'], ['philosophy', 'Philosophy']]) {
     app.App.drawer(true);
     app.document.querySelector(`[data-nav="${name}"]`).click();
     await settle();
     assert.equal(app.App.view, name);
     assert.match(app.document.querySelector(`#v-${name}`).textContent, new RegExp(title.split(' ')[0], 'i'));
   }
+  for (const gone of ['reminders', 'missions', 'abilities']) assert.equal(app.document.querySelector(`[data-nav="${gone}"]`), null, gone + ' page removed');
+});
+test('Philosophy page saves locally and every chat request carries it', async t => {
+  const seen = [];
+  const app = makeHarness({ route: async req => { seen.push(req); return { type: 'text', text: 'ok' }; } });
+  t.after(() => app.close());
+  app.App.show('philosophy');
+  app.document.querySelector('#v-philosophy textarea').value = '  Sach pehle, phir aaram.  ';
+  await clickButton(app.document, 'Save');
+  assert.equal(app.S.philosophy, 'Sach pehle, phir aaram.');
+  await app.Chat.submit('kya karun aaj');
+  const req = seen.find(r => r.text === 'kya karun aaj');
+  assert.ok(req, 'request sent');
+  assert.equal(req.philosophy, 'Sach pehle, phir aaram.');
 });
 
 test('manual task and work forms create, edit, complete, and log records through current contracts', async t => {
@@ -187,15 +201,18 @@ test('manual task and work forms create, edit, complete, and log records through
   assert.equal(app.S.work[0].progress, 50);
 });
 
-test('manual reminder, alarm, timer, and note forms keep records in their own collections', async t => {
+test('manual timed-task reminder, alarm, timer, and note forms keep records in their own collections', async t => {
   const app = makeHarness();
   t.after(() => app.close());
 
-  app.App.show('reminders');
-  input(app.document, 'New reminder').value = 'Drink water';
-  input(app.document, 'Reminder date and time').value = localDateTime();
-  await clickButton(app.document, 'Schedule reminder');
-  assert.equal(app.S.reminders.length, 1);
+  // Reminder = task with a time (Reminders page removed)
+  app.App.show('tasks');
+  input(app.document, 'New task title').value = 'Drink water';
+  input(app.document, 'Due date and time').value = localDateTime();
+  await clickButton(app.document, 'Add task');
+  assert.equal(app.S.tasks.length, 1);
+  assert.ok(app.S.tasks[0].at > Date.now());
+  assert.equal(app.S.reminders.length, 0);
 
   app.App.show('alarms');
   input(app.document, 'New alarm').value = 'Stand-up';

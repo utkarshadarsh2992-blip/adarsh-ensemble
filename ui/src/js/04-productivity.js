@@ -240,12 +240,19 @@ const Productivity = (() => {
     rows.forEach(r => { if (r.kind === 'task') r.due = r.at || null; const a = list(r.kind), i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = r; else a.push(r); armWeb(r); }); changed(); return result(true, 'Records restore ho gaye');
   }
   const onlineFields = ['id', 'kind', 'title', 'text', 'at', 'done', 'category', 'goal', 'progress', 'minutes', 'outcome'];
+  /* "mere tasks padho", "purani chat dekho": the user asked in words, so that one request may carry those records
+     even when automatic sharing is off. Nothing is sent without such words or the toggle. */
+  const READ_VERB = /\b(?:padho|padh|parho|dekho|dekh|check|batao|bata|read|look|summari[sz]e|analy[sz]e|review|kya (?:kaha|bola|likha|baat))\b/i;
+  const OLD_CHAT_RE = /old chats?|purani? chats?|purane chats?|pichli (?:chat|baat|baatein)|previous chats?|past conversations?|last chat|pehle (?:ki|wali) (?:chat|baat)/i;
+  const askedRecords = (q) => READ_VERB.test(q) && /\b(?:mere|meri|mera|my|apne)\b/i.test(q) && /\b(?:tasks?|work|notes?|alarms?|memor(?:y|ies)|records?|projects?|drawer)\b/i.test(q);
+  const askedOldChats = (q) => OLD_CHAT_RE.test(q) && READ_VERB.test(q);
   function modelContext(query, chatId) {
     const a = access();
-    if (!a.localRead || !a.personalOnline) return undefined;
+    const askedR = askedRecords(query), askedC = askedOldChats(query);
+    if (!a.localRead || (!a.personalOnline && !askedR && !askedC)) return undefined;
     const low = query.toLowerCase();
     const relevant = /\b(my|mera|mere|meri|apne|apna|today|aaj|progress|brief|summary|summari[sz]e|plan|analy[sz]e|records?|tasks?|work|notes?|reminders?|memor(?:y|ies)|projects?|kaam|padhai)\b|old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query);
-    if (!relevant) return undefined;
+    if (!relevant && !askedC) return undefined;
     if (!sync()) return undefined;
     const kinds = [];
     if (/task|plan|today|aaj|brief/i.test(low)) kinds.push('task');
@@ -262,17 +269,22 @@ const Productivity = (() => {
     });
     const redact = v => v.replace(/\b(?:api[_ -]?key|password|secret|token|pin)\s*[:=]\s*\S+|\b(?:sk-|AIza)[\w-]{12,}/gi, '[redacted]');
     const selected = []; let size = 0;
-    for (const r of rows.slice(0, 12)) {
+    for (const r of (a.personalOnline || askedR ? rows : []).slice(0, 12)) {
       const out = {};
       onlineFields.forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
       if (r.kind === 'work') out.entries = (r.entries || []).slice(-3).map(e => ({ date: e.date, minutes: e.minutes, text: redact(String(e.text || '')).slice(0, 160), progress: e.progress, outcome: redact(String(e.outcome || '')).slice(0, 160) }));
       const len = JSON.stringify(out).length; if (size + len > 2300) break; selected.push(out); size += len;
     }
     const old = [];
-    if (a.oldChats && /old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query)) {
+    if (((a.oldChats && a.personalOnline) || askedC) && (OLD_CHAT_RE.test(query) || /old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query))) {
       const chats = S.chats.filter(c => c.id !== chatId);
-      const matches = chats.flatMap(c => c.msgs || []).filter(m => !m.localOnly && !(m.reply && (m.reply.origin === 'local-rule' || ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)))).filter(m => tokens.some(w => (m.text || (m.reply ? speechOf(m.reply) : '')).toLowerCase().includes(w))).slice(-3);
-      matches.forEach(m => old.push({ role: m.role === 'user' ? 'user' : 'assistant', text: redact(m.text || (m.reply ? speechOf(m.reply) : '')).slice(0, 180) }));
+      const usable = m => !m.localOnly && !(m.reply && (m.reply.origin === 'local-rule' || ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)));
+      const say = m => (m.text || (m.reply ? speechOf(m.reply) : '')).toLowerCase();
+      /* topic words only: "purani chat padho" alone means the latest other chat */
+      const topic = tokens.filter(w => !/^(?:old|chats?|purane|purani|pichli|previous|past|last|conversations?|baat|baatein|pehle|wali|padho|padh|parho|dekho|dekh|check|batao|bata|read|look|review|kya|kaha|bola|likha|mein|maine|mene|the|what|did|say)$/.test(w));
+      let matches = topic.length ? chats.flatMap(c => c.msgs || []).filter(usable).filter(m => topic.some(w => say(m).includes(w))).slice(-6) : [];
+      if (!topic.length) { const last = chats.filter(c => (c.msgs || []).length).sort((x, y) => (y.ts || 0) - (x.ts || 0))[0]; matches = last ? last.msgs.filter(usable).slice(-6) : []; }
+      matches.forEach(m => old.push({ role: m.role === 'user' ? 'user' : 'assistant', text: redact(m.text || (m.reply ? speechOf(m.reply) : '')).slice(0, 400) }));
     }
     return selected.length || old.length ? { records: selected, oldChats: old } : undefined;
   }

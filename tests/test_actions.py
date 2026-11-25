@@ -25,11 +25,11 @@ def test_relative_and_absolute_time():
 
 def test_reminder():
     p, s = one("10 minute baad paani peene ka reminder lagao")
-    assert s["action"] == "reminder.add" and s["args"]["text"] == "paani peene"
+    assert s["action"] == "task.add" and s["args"]["title"] == "paani peene"   # reminder = task with time
     assert s["args"]["at"] == NOW + 600_000 and s["risk"] == "safe"
     assert p["type"] == "actions" and p["text"].startswith("Ji Sir")
     p, s = one("remind me in 20 minutes to call mom")
-    assert s["args"]["text"] == "call mom"
+    assert s["args"]["title"] == "call mom"
     p, s = one("reminder lagao")                       # no time: 10 minute default, said out loud
     assert s["args"]["at"] == NOW + 600_000 and "default" in s["detail"]
 
@@ -76,8 +76,8 @@ def test_standard_mode_only():
 
 def test_multi_step_and_coreference():
     p = plan("reminder lagao aur isi baat ka note bhi bana do", "standard", NOW)
-    assert [s["action"] for s in p["steps"]] == ["reminder.add", "note.add"]
-    assert p["steps"][1]["args"]["text"] == p["steps"][0]["args"]["text"]
+    assert [s["action"] for s in p["steps"]] == ["task.add", "note.add"]
+    assert p["steps"][1]["args"]["text"] == p["steps"][0]["args"]["title"]
     p = plan("wifi band karo aur bluetooth band karo", "standard", NOW)
     assert p["type"] == "blocked" and not p["steps"]
 
@@ -133,10 +133,10 @@ def test_task_and_notification_wording():
     assert s["action"] == "task.add" and "exam" in s["args"]["title"]
     # "mujhe notification bhej dena" is still a reminder, not a chat question
     p, s = one("mujhe notification bhej dena 10 minute baad paani ke liye")
-    assert s["action"] == "reminder.add" and s["args"]["at"] == NOW + 600_000
+    assert s["action"] == "task.add" and s["args"]["at"] == NOW + 600_000
     # a bare command leaves a usable text instead of the filler word
     p, s = one("kaam yaad dila do 2 ghante baad")
-    assert s["action"] == "reminder.add" and s["args"]["text"] == "yaad dilana"
+    assert s["action"] == "task.add" and s["args"]["title"] == "yaad dilana"
 
 
 def test_own_code_is_blocked_and_architecture_is_conversation():

@@ -48,10 +48,10 @@ def test_natural_task_time_edit_and_hindi_task_add():
 def test_notes_reminders_and_alarms_are_separate():
     assert step("note banao ki kal exam hai")["action"] == "note.add"
     assert step("notes list dikhao")["action"] == "note.list"
-    assert step("reminders list dikhao")["action"] == "reminder.list"
+    assert step("reminders list dikhao")["action"] == "task.list"   # reminders live in Tasks
     assert step("alarms list dikhao")["action"] == "alarm.list"
     edited = step("reminder edit paani kal 8 baje")
-    assert edited["action"] == "reminder.edit" and edited["args"]["query"] == "paani"
+    assert edited["action"] == "task.edit" and edited["args"]["query"] == "paani"
     assert step("alarm edit wake kal 6 baje")["action"] == "alarm.edit"
 
 

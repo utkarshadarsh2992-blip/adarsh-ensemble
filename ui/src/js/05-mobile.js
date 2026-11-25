@@ -86,7 +86,7 @@ const BackgroundVoice = (() => {
     return {
       chatId: c ? c.id : uid('c'), mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
       access, history: c && access.currentChat ? Chat.history(c) : [],
-      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on' },
+      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', ...(S.philosophy ? { philosophy: String(S.philosophy).slice(0, 3000) } : {}) },
       voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
     };
   }

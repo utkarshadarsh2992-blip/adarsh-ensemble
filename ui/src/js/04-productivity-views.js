@@ -207,7 +207,7 @@ function tasksView(st, redraw) {
     const ok = await finishMutation('task.add', { title: value, at: time }, redraw, 'Task added');
     if (ok) { title.value = ''; at.value = ''; }
   };
-  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, '')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Due (optional)', at), actionButtons('Add task', add)));
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, '')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Time / reminder (optional)', at), actionButtons('Add task', add)));
   const list = h('div', { class: 'pv-list-wrap' });
   const render = (query) => {
     list.textContent = '';
@@ -235,6 +235,9 @@ function tasksView(st, redraw) {
   };
   st.append(h('div', { class: 'pv-search-row' }, searchControl('Search tasks', render)), list);
   render('');
+  /* Reminders page removed (v1.0.71): reminders are tasks with a time. Records saved by older builds stay editable here. */
+  const legacy = productivityList('reminder').slice().sort(sortNewest);
+  if (legacy.length) st.append(h('div', { class: 'sech' }, 'Purane reminders'), h('div', { class: 'pv-list-wrap' }, legacy.map(r => scheduleRow('reminder', r, redraw))));
 }
 
 function scheduleView(kind, st, redraw) {

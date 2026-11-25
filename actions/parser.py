@@ -363,17 +363,17 @@ def one(text: str, now: int) -> dict | None:
     setting = _parse_settings(source) if re.search(r"\b(?:theme|font|rate|speed|lang|language|voice|engine|speak|haptics|name)\b", padded) and not _is_question(t) else None
     if setting: return setting
 
-    # Scheduled reminders/alarms: list and edit before add.
+    # Reminders are now tasks with a scheduled time (v1.0.71).
     if re.search(r"\b(?:scheduled reminders?|reminders?)\b", padded) and re.search(r"\b(?:list|show|read|dikhao|dekhao|saare|all)\b", padded):
-        return _step("reminder.list")
+        return _step("task.list")
     if re.search(r"\b(?:reminder|remind|yaad dila|yaad dilao|yaad dilana)\b", padded) and re.search(r"\b(?:edit|update|change|badal)\b", padded):
         query, value = _parse_ref_and_value(source, "reminder")
         at = tp.when(t, now); args = {"query": query}
-        cleaned_value = _clean(tp.strip_time(value)) if value else ""
-        if cleaned_value: args["text"] = cleaned_value
+        cleaned_title = _clean(tp.strip_time(value)) if value else ""
+        if cleaned_title: args["title"] = cleaned_title
         if at: args["at"] = at[0]
-        if not query or ("text" not in args and "at" not in args): return _clarify("Reminder edit ke liye reminder aur naya text/time batao.")
-        return _step("reminder.edit", **args)
+        if not query or ("title" not in args and "at" not in args): return _clarify("Reminder/task edit ke liye naam aur naya title/time batao.")
+        return _step("task.edit", **args)
     if re.search(r"\b(?:scheduled alarms?|alarms?)\b", padded) and re.search(r"\b(?:list|show|read|dikhao|dekhao|saare|all)\b", padded):
         return _step("alarm.list")
     if re.search(r"\balarm\b", padded) and re.search(r"\b(?:edit|update|change|badal)\b", padded):
@@ -390,6 +390,7 @@ def one(text: str, now: int) -> dict | None:
         label = _clean(tp.strip_time(re.sub(r"\b(?:alarm|lagao|set|karo|laga|do)\b", " ", source, flags=re.I))) or "Alarm"
         return _step("alarm.add", at=at[0], text=label[:120], human=at[1])
     notification_reminder = bool(re.search(r"\b(?:notification|notify|alert)\b", padded)) and bool(re.search(r"\b(?:bhej|bhejo|dena|do|kar)\b", padded))
+    # reminder words → task.add with time (v1.0.71)
     if re.search(r"\b(?:reminder|remind|yaad dila|yaad dilao|yaad dilana|yaad karna)\b", padded) or notification_reminder:
         at = tp.when(t, now)
         if at is None: at = (now + 600_000, tp.clock(now + 600_000) + " (default 10 min)")
@@ -397,7 +398,7 @@ def one(text: str, now: int) -> dict | None:
         body = _clean(tp.strip_time(body))
         body = _clean(re.sub(r"^(?:\s*(?:set|lagao|laga|banao|bana|add|karo|kar|do|ke liye|liye|ka|ki|ek|naya|nayi|new)\b)+", " ", body, flags=re.I))
         if len(body) < 3 or body.lower() in {"task", "kaam", "reminder", "note", "yaad"}: body = "yaad dilana"
-        return _step("reminder.add", at=at[0], text=body, human=at[1])
+        return _step("task.add", title=body, at=at[0], human=at[1])
 
     # Calendar, communication, apps, and search legacy commands.
     if re.search(r"\b(?:calendar|meeting|appointment|event)\b", padded) and re.search(r"\b(?:add|banao|create|schedule|lagao|set)\b", padded):

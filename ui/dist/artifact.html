@@ -829,12 +829,10 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
   <section class="view" id="v-today"></section>
   <section class="view" id="v-tasks"></section>
   <section class="view" id="v-work"></section>
-  <section class="view" id="v-reminders"></section>
   <section class="view" id="v-alarms"></section>
   <section class="view" id="v-notes"></section>
-  <section class="view" id="v-missions"></section>
   <section class="view" id="v-library"></section>
-  <section class="view" id="v-abilities"></section>
+  <section class="view" id="v-philosophy"></section>
   <section class="view" id="v-settings"></section>
   <div class="scrim" id="scrim"></div>
   <aside class="drawer" id="drawer" aria-label="Menu"></aside>
@@ -1078,7 +1076,7 @@ const Bus = (() => {
 /* ---------- state ---------- */
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
-  chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [],
+  chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [], philosophy: '',
   settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, bootAnim: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
@@ -2903,12 +2901,19 @@ const Productivity = (() => {
     rows.forEach(r => { if (r.kind === 'task') r.due = r.at || null; const a = list(r.kind), i = a.findIndex(x => x.id === r.id); if (i >= 0) a[i] = r; else a.push(r); armWeb(r); }); changed(); return result(true, 'Records restore ho gaye');
   }
   const onlineFields = ['id', 'kind', 'title', 'text', 'at', 'done', 'category', 'goal', 'progress', 'minutes', 'outcome'];
+  /* "mere tasks padho", "purani chat dekho": the user asked in words, so that one request may carry those records
+     even when automatic sharing is off. Nothing is sent without such words or the toggle. */
+  const READ_VERB = /\b(?:padho|padh|parho|dekho|dekh|check|batao|bata|read|look|summari[sz]e|analy[sz]e|review|kya (?:kaha|bola|likha|baat))\b/i;
+  const OLD_CHAT_RE = /old chats?|purani? chats?|purane chats?|pichli (?:chat|baat|baatein)|previous chats?|past conversations?|last chat|pehle (?:ki|wali) (?:chat|baat)/i;
+  const askedRecords = (q) => READ_VERB.test(q) && /\b(?:mere|meri|mera|my|apne)\b/i.test(q) && /\b(?:tasks?|work|notes?|alarms?|memor(?:y|ies)|records?|projects?|drawer)\b/i.test(q);
+  const askedOldChats = (q) => OLD_CHAT_RE.test(q) && READ_VERB.test(q);
   function modelContext(query, chatId) {
     const a = access();
-    if (!a.localRead || !a.personalOnline) return undefined;
+    const askedR = askedRecords(query), askedC = askedOldChats(query);
+    if (!a.localRead || (!a.personalOnline && !askedR && !askedC)) return undefined;
     const low = query.toLowerCase();
     const relevant = /\b(my|mera|mere|meri|apne|apna|today|aaj|progress|brief|summary|summari[sz]e|plan|analy[sz]e|records?|tasks?|work|notes?|reminders?|memor(?:y|ies)|projects?|kaam|padhai)\b|old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query);
-    if (!relevant) return undefined;
+    if (!relevant && !askedC) return undefined;
     if (!sync()) return undefined;
     const kinds = [];
     if (/task|plan|today|aaj|brief/i.test(low)) kinds.push('task');
@@ -2925,17 +2930,22 @@ const Productivity = (() => {
     });
     const redact = v => v.replace(/\b(?:api[_ -]?key|password|secret|token|pin)\s*[:=]\s*\S+|\b(?:sk-|AIza)[\w-]{12,}/gi, '[redacted]');
     const selected = []; let size = 0;
-    for (const r of rows.slice(0, 12)) {
+    for (const r of (a.personalOnline || askedR ? rows : []).slice(0, 12)) {
       const out = {};
       onlineFields.forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
       if (r.kind === 'work') out.entries = (r.entries || []).slice(-3).map(e => ({ date: e.date, minutes: e.minutes, text: redact(String(e.text || '')).slice(0, 160), progress: e.progress, outcome: redact(String(e.outcome || '')).slice(0, 160) }));
       const len = JSON.stringify(out).length; if (size + len > 2300) break; selected.push(out); size += len;
     }
     const old = [];
-    if (a.oldChats && /old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query)) {
+    if (((a.oldChats && a.personalOnline) || askedC) && (OLD_CHAT_RE.test(query) || /old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query))) {
       const chats = S.chats.filter(c => c.id !== chatId);
-      const matches = chats.flatMap(c => c.msgs || []).filter(m => !m.localOnly && !(m.reply && (m.reply.origin === 'local-rule' || ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)))).filter(m => tokens.some(w => (m.text || (m.reply ? speechOf(m.reply) : '')).toLowerCase().includes(w))).slice(-3);
-      matches.forEach(m => old.push({ role: m.role === 'user' ? 'user' : 'assistant', text: redact(m.text || (m.reply ? speechOf(m.reply) : '')).slice(0, 180) }));
+      const usable = m => !m.localOnly && !(m.reply && (m.reply.origin === 'local-rule' || ['actions', 'blocked', 'clarification', 'task', 'memory'].includes(m.reply.type)));
+      const say = m => (m.text || (m.reply ? speechOf(m.reply) : '')).toLowerCase();
+      /* topic words only: "purani chat padho" alone means the latest other chat */
+      const topic = tokens.filter(w => !/^(?:old|chats?|purane|purani|pichli|previous|past|last|conversations?|baat|baatein|pehle|wali|padho|padh|parho|dekho|dekh|check|batao|bata|read|look|review|kya|kaha|bola|likha|mein|maine|mene|the|what|did|say)$/.test(w));
+      let matches = topic.length ? chats.flatMap(c => c.msgs || []).filter(usable).filter(m => topic.some(w => say(m).includes(w))).slice(-6) : [];
+      if (!topic.length) { const last = chats.filter(c => (c.msgs || []).length).sort((x, y) => (y.ts || 0) - (x.ts || 0))[0]; matches = last ? last.msgs.filter(usable).slice(-6) : []; }
+      matches.forEach(m => old.push({ role: m.role === 'user' ? 'user' : 'assistant', text: redact(m.text || (m.reply ? speechOf(m.reply) : '')).slice(0, 400) }));
     }
     return selected.length || old.length ? { records: selected, oldChats: old } : undefined;
   }
@@ -3152,7 +3162,7 @@ function tasksView(st, redraw) {
     const ok = await finishMutation('task.add', { title: value, at: time }, redraw, 'Task added');
     if (ok) { title.value = ''; at.value = ''; }
   };
-  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, '')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Due (optional)', at), actionButtons('Add task', add)));
+  st.append(h('div', { class: 'pv-intro' }, h('b', {}, 'Tasks'), h('span', {}, '')), h('div', { class: 'pv-form pv-form-card' }, field('Task', title), field('Time / reminder (optional)', at), actionButtons('Add task', add)));
   const list = h('div', { class: 'pv-list-wrap' });
   const render = (query) => {
     list.textContent = '';
@@ -3180,6 +3190,9 @@ function tasksView(st, redraw) {
   };
   st.append(h('div', { class: 'pv-search-row' }, searchControl('Search tasks', render)), list);
   render('');
+  /* Reminders page removed (v1.0.71): reminders are tasks with a time. Records saved by older builds stay editable here. */
+  const legacy = productivityList('reminder').slice().sort(sortNewest);
+  if (legacy.length) st.append(h('div', { class: 'sech' }, 'Purane reminders'), h('div', { class: 'pv-list-wrap' }, legacy.map(r => scheduleRow('reminder', r, redraw))));
 }
 
 function scheduleView(kind, st, redraw) {
@@ -3362,25 +3375,24 @@ const ProductivityViews = {
 if (typeof window !== 'undefined') window.ProductivityViews = ProductivityViews;
 
 'use strict';
-/* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Missions, Memory, Abilities, Settings */
+/* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Memory, Philosophy, Settings */
 
 const ABILITIES = [
   { id: 'research', ic: 'globe', name: 'Research & verify', desc: 'Kai sources dekhkar har claim check karta hai.', try: 'Research whether intermittent fasting really improves focus' },
   { id: 'debate', ic: 'chat', name: 'Debate', desc: 'Dono paksh, phir faisla.', try: 'Debate: should I learn Rust or Go first?' },
   { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Notes, chats aur memory mein pattern dhoondta hai.', try: 'What patterns do you see in my last week of notes?' },
-  { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Bada kaam stages mein, background mein chalta hai.', try: 'Start a mission: compare the best budget laptops for coding' },
   { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Batayi baatein yaad rakhta hai.', try: 'Remember that I prefer short answers in Hinglish' },
-  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Tasks, Reminders, Alarms, Notes aur Work.', try: 'task add karo kal 11 baje bank jana' },
+  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Tasks (time ke saath reminder), Alarms, Notes aur Work.', try: 'task add karo kal 11 baje bank jana' },
   { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Subah ki briefing aur due-task alerts.', try: 'Brief me on today' },
   { id: 'selfeng', ic: 'code', name: 'Architecture (read-only)', desc: 'Apna architecture samjhata hai; code nahi badalta.', try: 'Tumhara architecture kaise kaam karta hai?' }
 ];
-const isOn = (id) => S.abilities[id] !== false;
+const isOn = () => true;  // Abilities page removed (v1.0.71): every ability stays on
 const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
-  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['library', 'brain', 'Memory'], ['philosophy', 'sparkle', 'Philosophy']];
+  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', alarms: 'Alarms & timers', notes: 'Notes', library: 'Memory', philosophy: 'Philosophy', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -3419,7 +3431,7 @@ const App = (() => {
     };
     draw();
     const nav = h('nav', { class: 'd-nav pad' }, NAV.map(([id, ic, t]) => h('button', { 'data-nav': id, on: { click: () => show(id) } }, icon(ic), t,
-      id === 'tasks' ? h('span', { class: 'badge', id: 'bg-tasks' }) : id === 'missions' ? h('span', { class: 'badge', id: 'bg-ms' }) : null)));
+      id === 'tasks' ? h('span', { class: 'badge', id: 'bg-tasks' }) : null)));
     d.append(top, nav, h('div', { class: 'rule pad' }), h('div', { class: 'd-list pad', id: 'd-list' }),
       h('div', { class: 'd-foot pad' },
         h('button', { class: 'acct', 'aria-label': 'Settings', on: { click: () => show('settings') } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()),
@@ -3459,7 +3471,7 @@ const App = (() => {
     const Q = (ic, t, fn) => h('button', { class: 'qbtn', on: { click: fn } }, icon(ic), h('b', {}, t));
     st.append(h('div', { class: 'qgrid' },
       Q('sun', 'Brief me', () => ask('Brief me on today')), Q('cal', 'Plan my day', () => ask('Plan my day around my open tasks')),
-      Q('globe', 'Research', () => draft('Research ')), Q('flag', 'New mission', () => draft('Start a mission: '))));
+      Q('globe', 'Research', () => draft('Research ')), Q('book', 'Work', () => show('work'))));
     const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)).slice(0, 4);
     st.append(h('div', { class: 'sech' }, 'Due soon', h('button', { on: { click: () => show('tasks') } }, 'See all')));
     st.append(open.length ? h('div', { class: 'grp' }, open.map(t => { const f = fmtDue(t.due); return h('button', { class: 'item', on: { click: () => show('tasks') } }, icon('tasks'), h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, t.title), f.t ? h('small', {}, f.t) : null)); }))
@@ -3474,15 +3486,10 @@ const App = (() => {
   };
 
   /* ================= Tasks ================= */
-  ['tasks', 'work', 'reminders', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
-  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'reminders', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
+  ['tasks', 'work', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
+  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
 
-  /* ================= Missions ================= */
-  BUILD.missions = (st, redraw) => {
-    if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'Abhi koi mission nahi.'), h('div', { class: 'muted' }, 'Chat mein goal batao.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
-    S.missions.forEach(m => st.append(renderReply({ type: 'mission', ...m }, { msg: {}, redraw })));
-  };
-  Bus.on('missions:changed', () => { if (view === 'missions') build('missions'); if (view === 'tasks') build('tasks'); });
+  Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks'); });
 
   /* ================= Memory ================= */
   BUILD.library = (st, redraw) => {
@@ -3498,14 +3505,20 @@ const App = (() => {
       h('button', { 'aria-label': 'Delete memory', on: { click: () => { const k = S.memories.indexOf(m); S.memories.splice(k, 1); save(); redraw(); toast('Memory deleted', { action: () => { S.memories.splice(k, 0, m); save(); if (view === 'library') redraw(); } }); } } }, icon('trash', 's')))));
   };
 
-  /* ================= Abilities ================= */
-  BUILD.abilities = (st, redraw) => {
-    st.append(h('div', { class: 'grp' }, ABILITIES.map(a => {
-      const on = isOn(a.id);
-      return h('div', { class: 'item abil col2' },
-        h('div', { class: 'tt' }, h('span', { class: 'ico' }, icon(a.ic)), h('span', { class: 't', style: 'padding:0' }, h('b', {}, a.name, a.approval ? h('span', { class: 'tag' }, 'PEHLE PUCHHTA') : null), h('small', {}, a.desc)),
-          h('button', { class: 'swb', role: 'switch', 'aria-checked': String(on), 'aria-label': a.name, on: { click: () => { S.abilities[a.id] = !on; save(); redraw(); } } }, h('span', { class: 'sw' }))));
-    })));
+  /* ================= Philosophy =================
+     The user's own principles. Saved only on this phone; sent with every answer request (all modes, live voice and
+     background voice) so the model follows it. Never edited by the AI. */
+  const PHILOSOPHY_MAX = 3000;
+  BUILD.philosophy = (st) => {
+    const ta = h('textarea', { rows: '12', maxlength: String(PHILOSOPHY_MAX), 'aria-label': 'Meri philosophy', placeholder: 'Apne usool, soch aur priorities likho…',
+      style: 'width:100%;min-height:260px;padding:14px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;line-height:1.5;resize:vertical' });
+    ta.value = S.philosophy || '';
+    const count = h('small', { class: 'muted' });
+    const paint = () => { count.textContent = ta.value.length + ' / ' + PHILOSOPHY_MAX; };
+    ta.addEventListener('input', paint); paint();
+    const saveIt = () => { S.philosophy = ta.value.trim().slice(0, PHILOSOPHY_MAX); save(); toast(S.philosophy ? 'Philosophy save ho gayi' : 'Philosophy khaali hai'); };
+    st.append(h('p', { class: 'muted' }, 'Har jawab mein AI ise follow karega.'), ta,
+      h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:12px' }, count, h('button', { class: 'btn pri', on: { click: saveIt } }, 'Save')));
   };
 
   /* ================= Settings ================= */
@@ -3560,15 +3573,15 @@ const App = (() => {
     sheet({ title: 'AI access', tall: true, build(b) {
       b.append(h('p', { class: 'muted' }, 'Local commands phone par chalte hain. Online sharing on karne se sirf relevant, limited records selected mode ke model providers ko ja sakte hain. Keys, PIN aur connection credentials include nahi hote. Mic recognizer aur online TTS ki privacy alag hai.'));
       const rows = [
-        ['localRead', 'Local records read', 'Tasks, Work, Notes, Reminders aur Memory dekhna'],
+        ['localRead', 'Local records read', 'Tasks, Work, Notes aur Memory dekhna'],
         ['localEdit', 'Local add / edit', 'Standard commands se save, edit aur task completion; no delete/security'],
-        ['personalOnline', 'Share relevant context online', 'Default Off. Sirf sawaal se relevant entries, poora database nahi'],
-        ['oldChats', 'Old chats context', 'Alag opt-in; online sharing bhi On hona chahiye'],
+        ['personalOnline', 'Share relevant context online', 'Har sawaal par apne aap. Off ho tab bhi "mere tasks padho" bolne par us sawaal ke liye jata hai'],
+        ['oldChats', 'Old chats context', 'Apne aap. Off ho tab bhi "purani chat padho" bolne par milta hai'],
         ['currentChat', 'Current conversation context', 'Follow-up answers ke liye isi chat ke limited earlier messages'],
         ['architecture', 'Read-only architecture', 'App modules/model chains ka safe reference; source editing nahi']
       ];
       b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
-      b.append(h('p', {}, 'Bolne par AI app ki settings badal sakta hai (theme, mode, voice, web search, animation, notifications, depth, council...). Teen cheezein kabhi nahi: API keys, chat delete aur PIN/password. Ye access toggles bhi AI khud On nahi kar sakta. Mode sirf aapke kehne par badalta hai.'));
+      b.append(h('p', {}, 'Bolne par AI purani chats aur drawer ke records (Tasks, Work, Notes, Alarms, Memory) padh aur edit kar sakta hai, settings bhi badal sakta hai. Kabhi nahi: koi delete, API keys, chat delete aur PIN/password. Mode sirf aapke kehne par badalta hai.'));
     } });
   }
   function architectureSheet() {
@@ -4568,7 +4581,7 @@ const HttpBackend = {
     const url = connUrl(); if (!url) throw new Error('Backend URL must use HTTPS (or localhost HTTP for development).');
     const headers = backendHeaders(url);
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
+    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard', philosophy: req.philosophy || undefined }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
@@ -4610,7 +4623,7 @@ const Backend = (() => {
     /* natural voice from the engine; null when this backend has none (demo, custom without tts) */
     canTts() { const b = impl(); return !!(b && b.tts); },
     tts(req, ms) { const b = impl(); return b && b.tts ? b.tts(req, ms) : Promise.resolve(null); },
-    send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; return impl().send(req, o); },
+    send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; if (S.philosophy && req.philosophy === undefined && req.text) req.philosophy = String(S.philosophy).slice(0, 3000); return impl().send(req, o); },
     async lessons(op) { const b = impl(); return b.lessons ? b.lessons(op) : { ok: false, error: 'Demo mode me lessons nahi hote.' }; },
     missionAction(id, a) { const b = impl(); return b.missionAction ? b.missionAction(id, a) : Promise.resolve(null); },
     suggestions() { const b = impl(); return b.suggestions ? b.suggestions() : []; },
@@ -4723,7 +4736,7 @@ const BackgroundVoice = (() => {
     return {
       chatId: c ? c.id : uid('c'), mode: Modes.current().id, source: S.settings.source || 'auto', lang: S.settings.lang,
       access, history: c && access.currentChat ? Chat.history(c) : [],
-      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on' },
+      reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', ...(S.philosophy ? { philosophy: String(S.philosophy).slice(0, 3000) } : {}) },
       voice: { engine: S.settings.voiceEngine || 'auto', name: S.settings.voiceName || 'Orus', deviceVoice: S.settings.deviceVoice || '', rate: S.settings.rate || 1 }
     };
   }

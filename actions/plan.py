@@ -8,7 +8,7 @@ from . import parser, schema
 PENDING = {
     "task.add": "task save kar raha hoon", "task.edit": "task update kar raha hoon", "task.done": "task completion update kar raha hoon",
     "task.list": "tasks dikha raha hoon", "note.add": "note save kar raha hoon", "note.edit": "note update kar raha hoon", "note.list": "notes dikha raha hoon",
-    "reminder.add": "reminder laga raha hoon", "reminder.edit": "reminder update kar raha hoon", "reminder.list": "reminders dikha raha hoon",
+    "reminder.add": "task with reminder laga raha hoon", "reminder.edit": "reminder update kar raha hoon", "reminder.list": "reminders dikha raha hoon",
     "alarm.add": "alarm set kar raha hoon", "alarm.edit": "alarm update kar raha hoon", "alarm.list": "alarms dikha raha hoon",
     "work.add": "work project bana raha hoon", "work.edit": "work project update kar raha hoon", "work.log": "work log save kar raha hoon", "work.list": "work projects dikha raha hoon",
     "memory.add": "memory save kar raha hoon", "memory.edit": "memory update kar raha hoon", "memory.list": "memories dikha raha hoon",
@@ -29,7 +29,9 @@ def _detail(action: str, a: dict) -> str:
     if action == "app.open": return a["app"]
     if action == "web.search": return a["query"]
     if action == "calendar.add": return (a.get("title") or "") + (" · " + (a.get("human") or "") if a.get("human") else "")
-    if action in ("task.add", "work.add"): return a.get("title", "")[:60]
+    if action == "task.add":  # a reminder is a task with a time
+        return a.get("title", "")[:60] + (" · " + a["human"] if a.get("human") else "")
+    if action == "work.add": return a.get("title", "")[:60]
     if action in ("note.add", "memory.add", "work.log"): return a.get("text", "")[:60]
     if action in ("task.edit", "task.done", "note.edit", "reminder.edit", "alarm.edit", "work.edit", "memory.edit"): return a.get("query") or a.get("id") or ""
     if action == "settings.update": return f"{a.get('key')}={a.get('value')}"

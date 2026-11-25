@@ -41,6 +41,19 @@ def clean_record(raw: dict) -> dict | None:
     return out
 
 
+def philosophy(body: dict) -> str:
+    """The user's own saved principles (Philosophy page). Followed, never treated as a command source for actions."""
+    raw = body.get("philosophy")
+    if not isinstance(raw, str):  # background voice sends it inside `reply`
+        rp = body.get("reply") if isinstance(body.get("reply"), dict) else {}
+        raw = rp.get("philosophy") if isinstance(rp.get("philosophy"), str) else ""
+    raw = raw.strip()
+    if not raw:
+        return ""
+    cleaned = SECRET.sub("[redacted]", raw)[:3000]
+    return "\n\n[User's personal philosophy: follow its values and priorities in every answer unless it conflicts with facts or safety; do not repeat it unless asked]\n" + cleaned
+
+
 def context(body: dict, text: str) -> str:
     perms = access(body)
     if not perms["personalOnline"] or not perms["localRead"] or not relevant(text):

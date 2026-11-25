@@ -139,7 +139,7 @@ const HttpBackend = {
     const url = connUrl(); if (!url) throw new Error('Backend URL must use HTTPS (or localhost HTTP for development).');
     const headers = backendHeaders(url);
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard' }) });
+    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard', philosophy: req.philosophy || undefined }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };
@@ -181,7 +181,7 @@ const Backend = (() => {
     /* natural voice from the engine; null when this backend has none (demo, custom without tts) */
     canTts() { const b = impl(); return !!(b && b.tts); },
     tts(req, ms) { const b = impl(); return b && b.tts ? b.tts(req, ms) : Promise.resolve(null); },
-    send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; return impl().send(req, o); },
+    send(req, o) { req.abilities = enabledAbilities(); req.lang = S.settings.lang; if (S.philosophy && req.philosophy === undefined && req.text) req.philosophy = String(S.philosophy).slice(0, 3000); return impl().send(req, o); },
     async lessons(op) { const b = impl(); return b.lessons ? b.lessons(op) : { ok: false, error: 'Demo mode me lessons nahi hote.' }; },
     missionAction(id, a) { const b = impl(); return b.missionAction ? b.missionAction(id, a) : Promise.resolve(null); },
     suggestions() { const b = impl(); return b.suggestions ? b.suggestions() : []; },

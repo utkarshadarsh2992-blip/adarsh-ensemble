@@ -143,11 +143,11 @@ def _is_casual(text: str) -> bool:
     return bool(_CASUAL.match(t)) or (len(t) <= 4 and not any(c.isdigit() for c in t) and "?" not in t)
 
 
-async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "normal") -> dict | None:
+async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "normal", body: dict | None = None) -> dict | None:
     """Standard small talk: one Groq gpt-oss-120b call, no tools. None means: use the normal Standard path."""
     try:
         out = await standard_agent.answer(
-            [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text, reply_lang)},
+            [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text, reply_lang) + app_context.philosophy(body or {})},
              {"role": "user", "content": text}],
             tools=False, max_tokens=500, temperature=0.7, budget=30,
         )
@@ -315,7 +315,7 @@ async def handle(body: dict) -> dict | list[dict]:
 
     ui_mode = str(body.get("mode") or "standard")
     if source == "auto" and ui_mode == "standard" and _is_casual(text):
-        quick = await _casual_reply(text, reply_lang, depth)
+        quick = await _casual_reply(text, reply_lang, depth, body)
         if quick:
             return [quick]
 
@@ -325,7 +325,8 @@ async def handle(body: dict) -> dict | list[dict]:
     extra += app_context.context(body, text)
     private_context = private_context or "[Permitted relevant app records;" in extra
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
-    extra = extra[:6000]
+    # Philosophy page: first, so the 6000-char cap never cuts it
+    extra = (app_context.philosophy(body) + extra)[:6000]
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra

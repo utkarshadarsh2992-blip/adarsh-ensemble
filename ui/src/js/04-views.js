@@ -1,23 +1,22 @@
 'use strict';
-/* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Missions, Memory, Abilities, Settings */
+/* 04-views.js : App shell (navigation, drawer, theme) + Today, Tasks, Memory, Philosophy, Settings */
 
 const ABILITIES = [
   { id: 'research', ic: 'globe', name: 'Research & verify', desc: 'Kai sources dekhkar har claim check karta hai.', try: 'Research whether intermittent fasting really improves focus' },
   { id: 'debate', ic: 'chat', name: 'Debate', desc: 'Dono paksh, phir faisla.', try: 'Debate: should I learn Rust or Go first?' },
   { id: 'patterns', ic: 'search2', name: 'Patterns & connections', desc: 'Notes, chats aur memory mein pattern dhoondta hai.', try: 'What patterns do you see in my last week of notes?' },
-  { id: 'missions', ic: 'flag', name: 'Missions', desc: 'Bada kaam stages mein, background mein chalta hai.', try: 'Start a mission: compare the best budget laptops for coding' },
   { id: 'memory', ic: 'brain', name: 'Memory', desc: 'Batayi baatein yaad rakhta hai.', try: 'Remember that I prefer short answers in Hinglish' },
-  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Tasks, Reminders, Alarms, Notes aur Work.', try: 'task add karo kal 11 baje bank jana' },
+  { id: 'tasks', ic: 'tasks', name: 'Local productivity', desc: 'Tasks (time ke saath reminder), Alarms, Notes aur Work.', try: 'task add karo kal 11 baje bank jana' },
   { id: 'proactive', ic: 'bell', name: 'Proactive briefings', desc: 'Subah ki briefing aur due-task alerts.', try: 'Brief me on today' },
   { id: 'selfeng', ic: 'code', name: 'Architecture (read-only)', desc: 'Apna architecture samjhata hai; code nahi badalta.', try: 'Tumhara architecture kaise kaam karta hai?' }
 ];
-const isOn = (id) => S.abilities[id] !== false;
+const isOn = () => true;  // Abilities page removed (v1.0.71): every ability stays on
 const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
-  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['library', 'brain', 'Memory'], ['philosophy', 'sparkle', 'Philosophy']];
+  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', alarms: 'Alarms & timers', notes: 'Notes', library: 'Memory', philosophy: 'Philosophy', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -56,7 +55,7 @@ const App = (() => {
     };
     draw();
     const nav = h('nav', { class: 'd-nav pad' }, NAV.map(([id, ic, t]) => h('button', { 'data-nav': id, on: { click: () => show(id) } }, icon(ic), t,
-      id === 'tasks' ? h('span', { class: 'badge', id: 'bg-tasks' }) : id === 'missions' ? h('span', { class: 'badge', id: 'bg-ms' }) : null)));
+      id === 'tasks' ? h('span', { class: 'badge', id: 'bg-tasks' }) : null)));
     d.append(top, nav, h('div', { class: 'rule pad' }), h('div', { class: 'd-list pad', id: 'd-list' }),
       h('div', { class: 'd-foot pad' },
         h('button', { class: 'acct', 'aria-label': 'Settings', on: { click: () => show('settings') } }, h('span', { class: 'avatar' }, (S.settings.name || 'A')[0].toUpperCase()),
@@ -96,7 +95,7 @@ const App = (() => {
     const Q = (ic, t, fn) => h('button', { class: 'qbtn', on: { click: fn } }, icon(ic), h('b', {}, t));
     st.append(h('div', { class: 'qgrid' },
       Q('sun', 'Brief me', () => ask('Brief me on today')), Q('cal', 'Plan my day', () => ask('Plan my day around my open tasks')),
-      Q('globe', 'Research', () => draft('Research ')), Q('flag', 'New mission', () => draft('Start a mission: '))));
+      Q('globe', 'Research', () => draft('Research ')), Q('book', 'Work', () => show('work'))));
     const open = S.tasks.filter(t => !t.done).sort((a, b) => (a.due || 9e15) - (b.due || 9e15)).slice(0, 4);
     st.append(h('div', { class: 'sech' }, 'Due soon', h('button', { on: { click: () => show('tasks') } }, 'See all')));
     st.append(open.length ? h('div', { class: 'grp' }, open.map(t => { const f = fmtDue(t.due); return h('button', { class: 'item', on: { click: () => show('tasks') } }, icon('tasks'), h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, t.title), f.t ? h('small', {}, f.t) : null)); }))
@@ -111,15 +110,10 @@ const App = (() => {
   };
 
   /* ================= Tasks ================= */
-  ['tasks', 'work', 'reminders', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
-  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'reminders', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
+  ['tasks', 'work', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
+  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
 
-  /* ================= Missions ================= */
-  BUILD.missions = (st, redraw) => {
-    if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'Abhi koi mission nahi.'), h('div', { class: 'muted' }, 'Chat mein goal batao.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
-    S.missions.forEach(m => st.append(renderReply({ type: 'mission', ...m }, { msg: {}, redraw })));
-  };
-  Bus.on('missions:changed', () => { if (view === 'missions') build('missions'); if (view === 'tasks') build('tasks'); });
+  Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks'); });
 
   /* ================= Memory ================= */
   BUILD.library = (st, redraw) => {
@@ -135,14 +129,20 @@ const App = (() => {
       h('button', { 'aria-label': 'Delete memory', on: { click: () => { const k = S.memories.indexOf(m); S.memories.splice(k, 1); save(); redraw(); toast('Memory deleted', { action: () => { S.memories.splice(k, 0, m); save(); if (view === 'library') redraw(); } }); } } }, icon('trash', 's')))));
   };
 
-  /* ================= Abilities ================= */
-  BUILD.abilities = (st, redraw) => {
-    st.append(h('div', { class: 'grp' }, ABILITIES.map(a => {
-      const on = isOn(a.id);
-      return h('div', { class: 'item abil col2' },
-        h('div', { class: 'tt' }, h('span', { class: 'ico' }, icon(a.ic)), h('span', { class: 't', style: 'padding:0' }, h('b', {}, a.name, a.approval ? h('span', { class: 'tag' }, 'PEHLE PUCHHTA') : null), h('small', {}, a.desc)),
-          h('button', { class: 'swb', role: 'switch', 'aria-checked': String(on), 'aria-label': a.name, on: { click: () => { S.abilities[a.id] = !on; save(); redraw(); } } }, h('span', { class: 'sw' }))));
-    })));
+  /* ================= Philosophy =================
+     The user's own principles. Saved only on this phone; sent with every answer request (all modes, live voice and
+     background voice) so the model follows it. Never edited by the AI. */
+  const PHILOSOPHY_MAX = 3000;
+  BUILD.philosophy = (st) => {
+    const ta = h('textarea', { rows: '12', maxlength: String(PHILOSOPHY_MAX), 'aria-label': 'Meri philosophy', placeholder: 'Apne usool, soch aur priorities likho…',
+      style: 'width:100%;min-height:260px;padding:14px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;line-height:1.5;resize:vertical' });
+    ta.value = S.philosophy || '';
+    const count = h('small', { class: 'muted' });
+    const paint = () => { count.textContent = ta.value.length + ' / ' + PHILOSOPHY_MAX; };
+    ta.addEventListener('input', paint); paint();
+    const saveIt = () => { S.philosophy = ta.value.trim().slice(0, PHILOSOPHY_MAX); save(); toast(S.philosophy ? 'Philosophy save ho gayi' : 'Philosophy khaali hai'); };
+    st.append(h('p', { class: 'muted' }, 'Har jawab mein AI ise follow karega.'), ta,
+      h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:12px' }, count, h('button', { class: 'btn pri', on: { click: saveIt } }, 'Save')));
   };
 
   /* ================= Settings ================= */
@@ -197,15 +197,15 @@ const App = (() => {
     sheet({ title: 'AI access', tall: true, build(b) {
       b.append(h('p', { class: 'muted' }, 'Local commands phone par chalte hain. Online sharing on karne se sirf relevant, limited records selected mode ke model providers ko ja sakte hain. Keys, PIN aur connection credentials include nahi hote. Mic recognizer aur online TTS ki privacy alag hai.'));
       const rows = [
-        ['localRead', 'Local records read', 'Tasks, Work, Notes, Reminders aur Memory dekhna'],
+        ['localRead', 'Local records read', 'Tasks, Work, Notes aur Memory dekhna'],
         ['localEdit', 'Local add / edit', 'Standard commands se save, edit aur task completion; no delete/security'],
-        ['personalOnline', 'Share relevant context online', 'Default Off. Sirf sawaal se relevant entries, poora database nahi'],
-        ['oldChats', 'Old chats context', 'Alag opt-in; online sharing bhi On hona chahiye'],
+        ['personalOnline', 'Share relevant context online', 'Har sawaal par apne aap. Off ho tab bhi "mere tasks padho" bolne par us sawaal ke liye jata hai'],
+        ['oldChats', 'Old chats context', 'Apne aap. Off ho tab bhi "purani chat padho" bolne par milta hai'],
         ['currentChat', 'Current conversation context', 'Follow-up answers ke liye isi chat ke limited earlier messages'],
         ['architecture', 'Read-only architecture', 'App modules/model chains ka safe reference; source editing nahi']
       ];
       b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
-      b.append(h('p', {}, 'Bolne par AI app ki settings badal sakta hai (theme, mode, voice, web search, animation, notifications, depth, council...). Teen cheezein kabhi nahi: API keys, chat delete aur PIN/password. Ye access toggles bhi AI khud On nahi kar sakta. Mode sirf aapke kehne par badalta hai.'));
+      b.append(h('p', {}, 'Bolne par AI purani chats aur drawer ke records (Tasks, Work, Notes, Alarms, Memory) padh aur edit kar sakta hai, settings bhi badal sakta hai. Kabhi nahi: koi delete, API keys, chat delete aur PIN/password. Mode sirf aapke kehne par badalta hai.'));
     } });
   }
   function architectureSheet() {
