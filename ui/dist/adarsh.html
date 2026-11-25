@@ -107,7 +107,8 @@ details[open]>summary svg.i.chev{transform:rotate(90deg)}
 input[type=range]{width:100%;accent-color:var(--accent)}
 
 /* ---------- chat ---------- */
-.thread{scroll-behavior:smooth;display:flex;flex-direction:column}
+/* no scroll-behavior here: 01-motion.js glides the thread itself, and a native smooth scroll fights the chase */
+.thread{display:flex;flex-direction:column}
 .col{display:flex;flex-direction:column;gap:26px;padding:14px 0 36px;width:100%}
 .col.empty{flex:1;justify-content:center;gap:0;padding:0 0 4vh;color:var(--fg)}
 
@@ -529,7 +530,8 @@ button.item:active{background:var(--card2)}
 @keyframes wave{from{transform:scale(.97)}to{transform:scale(1.07)}}
 .v-state{font:500 24px/1.2 var(--serif);margin:0;text-align:center}
 .v-cap{max-width:36ch;text-align:center;color:var(--muted);min-height:64px;max-height:28vh;overflow-y:auto;font-size:16px;display:flex;flex-direction:column;gap:8px}
-.v-cap .u{color:var(--fg)}
+.v-cap .u{color:var(--muted)}
+.v-cap .a{color:var(--fg);line-height:1.45;min-height:1.45em;text-wrap:pretty}
 .v-foot{display:flex;flex-direction:column;gap:12px;padding-top:8px;padding-bottom:14px}
 .v-type{display:flex;gap:8px;align-items:center}
 .v-type input{flex:1;min-width:0;border:0;outline:0;background:var(--card);border-radius:999px;padding:13px 18px}
@@ -1387,6 +1389,117 @@ const Tex = (() => {
 })();
 
 'use strict';
+/* 01-motion.js : the two motions the app uses for text that arrives while someone is talking.
+   Motion.reveal(host)  types an answer out one word at a time, so a spoken reply appears with the voice
+                        instead of landing as a finished block. The text can keep growing while the model
+                        streams; the revealer only ever moves forward, and it speeds up when it falls behind.
+   Motion.glide(el)     scrolls a container to its end with easing instead of a jump, and keeps following
+                        while new text is still arriving.
+   prefers-reduced-motion: both become instant. */
+
+const Motion = (() => {
+  const reduced = () => { try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; } };
+  /* requestAnimationFrame that never re-enters: a synchronous rAF (jsdom in tests) falls back to a timer */
+  const next = (fn) => { let sync = true; requestAnimationFrame(() => { if (sync) setTimeout(fn, 16); else fn(); }); sync = false; };
+
+  /* ---------- glide: chase the end of a scroller ---------- */
+  const chases = new WeakMap();
+  function glide(el, opts = {}) {
+    if (!el) return;
+    const st = chases.get(el) || { token: 0, running: false };
+    chases.set(el, st);
+    st.until = Date.now() + (opts.hold || 1400);     // keep following while text is still arriving
+    if (reduced()) { el.scrollTop = el.scrollHeight; return; }
+    if (st.running) return;                          // the running chase re-reads the height every frame
+    st.running = true;
+    const token = ++st.token;
+    let guard = 0;
+    const step = () => {
+      if (token !== st.token) { st.running = false; return; }
+      if (Date.now() > st.until || ++guard > 400) { st.running = false; return; }
+      const dest = Math.max(0, el.scrollHeight - el.clientHeight);
+      const dist = dest - el.scrollTop;
+      if (Math.abs(dist) < 1.5) { st.running = false; return; }
+      /* ease out: big steps far away, a few pixels at the end, capped so a long jump never snaps */
+      const move = Math.min(Math.abs(dist), Math.max(1.5, Math.abs(dist) * 0.22), 150);
+      el.scrollTop = el.scrollTop + (dist > 0 ? move : -move);
+      next(step);
+    };
+    next(step);
+  }
+  /* the user grabbed the scroller: stop following until the next glide call */
+  function release(el) { const st = chases.get(el); if (st) { st.token++; st.running = false; } }
+
+  /* ---------- reveal: one word at a time ---------- */
+  function reveal(host, opts = {}) {
+    const node = document.createTextNode('');
+    host.append(node);
+    const pace = opts.pace || 230;      // ms per word while the voice is talking
+    const quick = opts.quick || 70;     // ms per word when nothing is spoken
+    const fast = opts.fast || 14;       // ms per word after the voice stopped, or on flush
+    const onTick = opts.onTick || null;
+    /* quick until the voice actually starts: text that arrives while nobody is talking should not crawl */
+    let target = '', shown = 0, mode = 'quick', timer = 0, alive = true;
+
+    const stopTimer = () => { if (timer) { clearTimeout(timer); timer = 0; } };
+    /* end index of the next word, including the spaces that follow it */
+    function boundary() {
+      let i = shown;
+      while (i < target.length && /\s/.test(target[i])) i++;
+      while (i < target.length && !/\s/.test(target[i])) i++;
+      while (i < target.length && /\s/.test(target[i])) i++;
+      return i;
+    }
+    /* how long to wait for the next word: calm at reading pace, quicker when the voice is far ahead */
+    function wait() {
+      if (mode === 'fast') return fast;
+      if (mode === 'quick') return quick;
+      const wordsLeft = Math.max(1, Math.round((target.length - shown) / 6));
+      return Math.round(Math.max(55, Math.min(pace, (pace * 9) / wordsLeft)));
+    }
+    function step() {
+      timer = 0;
+      if (!alive) return;
+      const end = boundary();
+      if (end <= shown) return;
+      shown = Math.min(end, target.length);
+      node.data = target.slice(0, shown);
+      if (onTick) { try { onTick(); } catch (e) {} }
+      if (shown < target.length) timer = setTimeout(step, wait());
+    }
+    /* the first word lands at once, so the caption never looks empty after a reply; the rest follows on the clock */
+    function kick() {
+      if (!alive || timer || shown >= target.length) return;
+      if (shown === 0) step(); else timer = setTimeout(step, wait());
+    }
+
+    return {
+      /* new full text (may grow); a different answer resets the reveal */
+      set(t) {
+        if (!alive) return;
+        t = String(t == null ? '' : t);
+        if (!t.startsWith(target.slice(0, Math.min(shown, target.length)))) { stopTimer(); shown = 0; node.data = ''; }
+        target = t;
+        if (shown > target.length) { shown = target.length; node.data = target; }
+        kick();
+      },
+      pace() { mode = 'pace'; kick(); },
+      quick() { mode = 'quick'; kick(); },
+      /* the voice has stopped: finish the rest quickly, still word by word */
+      flush() { mode = 'fast'; kick(); },
+      /* reveal everything now (screen closing, or the user interrupted) */
+      finish() { stopTimer(); shown = target.length; node.data = target; if (onTick) { try { onTick(); } catch (e) {} } },
+      stop() { alive = false; stopTimer(); if (node.parentNode) node.remove(); },
+      get busy() { return shown < target.length; },
+      get text() { return node.data; },
+      get full() { return target; }
+    };
+  }
+
+  return { glide, release, reveal, reduced };
+})();
+
+'use strict';
 /* 02-render.js : reply-type renderers. One function per reply type.
    Contract: RENDER[type](data, ctx) -> Node.  ctx = { msg, redraw() }.  See ARCHITECTURE.md for each shape. */
 
@@ -2186,6 +2299,8 @@ const Chat = (() => {
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
     thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
+    /* the moment the user takes the scroll, stop following: no fight between the finger and the ease */
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(t => thread.addEventListener(t, () => Motion.release(thread), { passive: true }));
     ta = h('textarea', { rows: 1, placeholder: Modes.current().placeholder, 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
     drawAtts();
@@ -2235,6 +2350,8 @@ const Chat = (() => {
   /* ---------- thread ---------- */
   function renderThread() {
     const c = cur(); col.textContent = '';
+    /* only follow the newest line when the reader is already at the bottom; a page they scrolled up to stays put */
+    const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260;
     const has = !!(c && c.msgs.length);
     titleEl.className = has ? '' : 'wm'; titleEl.textContent = has ? (c.title || 'New chat') : 'ADARSH';
     if (!has) {
@@ -2249,9 +2366,10 @@ const Chat = (() => {
       c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
     }
     if (busy && thinkEl) col.append(thinkEl);
-    scroll();
+    if (near) scroll();
   }
-  const scroll = () => requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
+  /* eased, not a jump: the thread glides to the newest line and keeps following while it grows */
+  const scroll = () => Motion.glide(thread);
 
   function msgEl(m, isLast) {
     if (m.role === 'user') {
@@ -4246,18 +4364,39 @@ const Live = (() => {
 })();
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
+  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
   let session = 0, releasePrompt = null, releaseAsk = null;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
   let liveOn = false, liveUser = '', liveModel = '';
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
-  const caption = (u, a) => { cap.textContent = ''; if (u) cap.append(h('div', { class: 'u' }, u)); if (a) cap.append(h('div', {}, a)); cap.scrollTop = cap.scrollHeight; };
+  /* The caption is the user's line, then the answer typed out one word at a time at speaking pace, so nothing
+     runs ahead of the voice; once the voice stops the rest follows quickly. */
+  function capBuild() {
+    if (!cap) return;
+    cap.textContent = '';
+    capU = h('div', { class: 'u' });
+    capA = h('div', { class: 'a' });
+    capRev = Motion.reveal(capA, { pace: 240, quick: 70, fast: 14, onTick: () => Motion.glide(cap) });
+    cap.append(capU, capA);
+  }
+  function caption(u, a) {
+    if (!capRev) capBuild();
+    if (!capRev) return;
+    if (u !== undefined) capU.textContent = u || '';
+    if (a === undefined) { capRev.finish(); capRev.set(''); }   /* a new turn: the old answer goes at once */
+    else capRev.set(a);
+    Motion.glide(cap);
+  }
+  const capFlush = () => { if (capRev) capRev.flush(); };
+  const capNow = () => { if (capRev) capRev.finish(); };   /* errors and closures read at once, no typing */
+  const capPace = () => { if (capRev) capRev.pace(); };
 
   function build() {
     el = $('#voice'); el.textContent = '';
     orb = h('button', { class: 'orb', 'aria-label': 'Talk to Adarsh', on: { click: toggle } }, h('span', { class: 'r r3' }), h('span', { class: 'r r2' }), h('span', { class: 'r r1' }), h('span', { class: 'arc' }), h('span', { class: 'core' }));
     stateEl = h('p', { class: 'v-state', 'aria-live': 'polite' }, LABEL.idle); cap = h('div', { class: 'v-cap' });
+    capRev = null; capU = null; capA = null;   /* the reveal is rebuilt with the screen */
     inp = h('input', { type: 'text', placeholder: 'Or type here', 'aria-label': 'Type a message', on: { keydown: (e) => { if (e.key === 'Enter') typed(); } } });
     micBtn = h('button', { class: 'chipbtn', on: { click: toggle } }, 'Talk');
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
@@ -4287,8 +4426,8 @@ const Voice = (() => {
     const ok = Live.start({
       onState: (s, m, ev) => {
         if (!active(token)) return;
-        if (s === 'speaking') setState('speaking');
-        else if (s === 'listening') { setState('listening'); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
+        if (s === 'speaking') { setState('speaking'); capPace(); }
+        else if (s === 'listening') { setState('listening'); capFlush(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
         else if (s === 'connecting') {
           setState('connecting');
           /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
@@ -4313,11 +4452,11 @@ const Voice = (() => {
       onError: (m) => {
         if (!active(token)) return;
         liveOn = false;
-        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.');
+        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
         setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
       },
-      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); } }
+      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
     });
     if (!ok) { liveOn = false; setState('idle'); return false; }
     liveOn = true; setState('connecting');
@@ -4328,7 +4467,7 @@ const Voice = (() => {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
-    liveOn = false; Live.stop();
+    liveOn = false; if (capRev) capRev.stop(); capRev = null; Live.stop();
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
@@ -4413,7 +4552,7 @@ const Voice = (() => {
       const a = risky[0];
       const q = 'Sir, ' + ((a.steps.find(s => s.risk !== 'safe') || {}).detail || 'ye kaam') + ' ke liye confirm chahiye. Haan bolo to kar dunga.';
       caption(text, q);
-      if (speakOn && TTS.ok()) { setState('speaking'); await prompt(q, token); }
+      if (speakOn && TTS.ok()) { setState('speaking'); capPace(); await prompt(q, token); capFlush(); }
       if (!active(token)) return;
       const ans = (await askOnce(7000, token)).trim().replace(/[.!?।]+$/g, '').toLowerCase();
       if (!active(token)) return;
@@ -4428,11 +4567,11 @@ const Voice = (() => {
     const spoken = collected.map(r => (r && r.type === 'text' ? voiceText(r.text) : speechOf(r))).filter(Boolean).join(' ');
     caption(text, spoken || 'Done.');
     if (structured) {
-      if (speakOn) TTS.speak(spoken); toast('Adarsh needs your answer in chat');
+      if (speakOn) { capPace(); TTS.speak(spoken, capFlush); } toast('Adarsh needs your answer in chat');
       setTimeout(() => { if (active(token)) close(); }, speakOn ? 1800 : 400); return;
     }
-    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
-    else { setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
+    if (speakOn && spoken && TTS.ok()) { setState('speaking'); capPace(); TTS.speak(spoken, () => { capFlush(); if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
+    else { capFlush(); setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
   }
   /* Settings > Speak replies: read every new chat answer aloud (voice mode speaks on its own) */
   Bus.on('reply', ({ msg }) => {

@@ -102,7 +102,8 @@ details[open]>summary svg.i.chev{transform:rotate(90deg)}
 input[type=range]{width:100%;accent-color:var(--accent)}
 
 /* ---------- chat ---------- */
-.thread{scroll-behavior:smooth;display:flex;flex-direction:column}
+/* no scroll-behavior here: 01-motion.js glides the thread itself, and a native smooth scroll fights the chase */
+.thread{display:flex;flex-direction:column}
 .col{display:flex;flex-direction:column;gap:26px;padding:14px 0 36px;width:100%}
 .col.empty{flex:1;justify-content:center;gap:0;padding:0 0 4vh;color:var(--fg)}
 
@@ -524,7 +525,8 @@ button.item:active{background:var(--card2)}
 @keyframes wave{from{transform:scale(.97)}to{transform:scale(1.07)}}
 .v-state{font:500 24px/1.2 var(--serif);margin:0;text-align:center}
 .v-cap{max-width:36ch;text-align:center;color:var(--muted);min-height:64px;max-height:28vh;overflow-y:auto;font-size:16px;display:flex;flex-direction:column;gap:8px}
-.v-cap .u{color:var(--fg)}
+.v-cap .u{color:var(--muted)}
+.v-cap .a{color:var(--fg);line-height:1.45;min-height:1.45em;text-wrap:pretty}
 .v-foot{display:flex;flex-direction:column;gap:12px;padding-top:8px;padding-bottom:14px}
 .v-type{display:flex;gap:8px;align-items:center}
 .v-type input{flex:1;min-width:0;border:0;outline:0;background:var(--card);border-radius:999px;padding:13px 18px}
