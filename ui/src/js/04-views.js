@@ -185,6 +185,10 @@ const App = (() => {
       navItem('download', 'Export data', '', exportSheet),
       navItem('upload', 'Import data', '', () => $('#f-import').click()),
       navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Saari chats clear karein?', text: 'Memory aur tasks rahenge.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
+    /* which build is running: one mono line, nothing else */
+    let build = '';
+    try { if (window.AdarshNative && AdarshNative.appVersion) build = AdarshNative.appVersion(); } catch (e) {}
+    if (build) st.append(h('div', { class: 'buildline' }, 'ADARSH v' + build));
 
   };
   function nameSheet() {
@@ -278,27 +282,31 @@ const App = (() => {
         if (TTS.info.last === 'device' && TTS.info.why) status.textContent = 'Phone voice · natural fail (' + TTS.info.why + ')';
       };
       note();
-      /* Adarsh Live: Gemini Live socket on the voice screen only (never background, never Standard text chat). */
-      const liveNative = !!(window.AdarshNative && window.AdarshNative.liveStart);
+      /* Adarsh Live: Gemini Live socket on the voice screen only (never background, never Standard text chat).
+         The row is always shown, so a build that cannot reach the native bridge still shows the switch and says why. */
+      const liveNative = !!(window.AdarshNative && (window.AdarshNative.liveStart || window.AdarshNative.liveProbe));
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
         on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
         (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
-      const liveBlock = liveNative ? [
+      const liveOut = h('p', { class: 'muted' }, liveNative ? '' : 'Sirf Android app mein');
+      const liveTest = h('button', { class: 'btn ghost', on: { click: () => {
+        if (!liveNative) { liveOut.textContent = 'Adarsh Live sirf Android app mein chalta hai.'; return; }
+        liveOut.textContent = 'Testing…';
+        const lines = [];
+        Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) liveOut.textContent = 'Connecting ' + ev.attempt + '/' + ev.total; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); liveOut.textContent = lines.join(' · '); } },
+          onProbe: (m) => { lines.push('Key: ' + m); liveOut.textContent = lines.join(' · '); },
+          onNotice: (m) => { lines.push(m); liveOut.textContent = lines.join(' · '); },
+          onRole: (r, l) => { if (r && l) { lines.push(l); liveOut.textContent = lines.join(' · '); } },
+          onError: (m) => { lines.push('Live: ' + m); liveOut.textContent = lines.join(' · '); Live.stop(); },
+          onClosed: () => {} });
+        Live.probe({ onProbe: (m) => { lines.push('Key: ' + m); liveOut.textContent = lines.join(' · '); } });
+        setTimeout(() => { if (Live.isOn) { Live.stop(); if (!liveOut.textContent || /Testing/.test(liveOut.textContent)) liveOut.textContent = 'Live connected.'; } }, 8000);
+      } } }, 'Test');
+      const liveBlock = [
         h('div', { class: 'grp' },
-          swItem('voice', 'Adarsh Live', 'Live voice', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
-        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick,
-          (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn ghost', on: { click: () => {
-            out.textContent = 'Testing…';
-            const lines = [];
-            Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) out.textContent = 'Connecting ' + ev.attempt + '/' + ev.total; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); out.textContent = lines.join(' · '); } },
-              onProbe: (m) => { lines.push('Key: ' + m); out.textContent = lines.join(' · '); },
-              onNotice: (m) => { lines.push(m); out.textContent = lines.join(' · '); },
-              onError: (m) => { lines.push('Live: ' + m); out.textContent = lines.join(' · '); Live.stop(); },
-              onClosed: () => {} });
-            Live.probe({ onProbe: (m) => { lines.push('Key: ' + m); out.textContent = lines.join(' · '); } });
-            setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /Testing/.test(out.textContent)) out.textContent = 'Live connected.'; } }, 8000);
-          } } }, 'Test'); return h('div', { class: 'inline' }, btn, out); })()) : null
-      ] : [];
+          swItem('voice', 'Adarsh Live', 'Live voice', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && typeof Live !== 'undefined' && Live) Live.stop(); })),
+        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick, h('div', { class: 'inline' }, liveTest, liveOut)) : null
+      ];
       const kids = [
         swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
         ...liveBlock,

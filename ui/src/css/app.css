@@ -603,6 +603,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 
 /* ---------- settings groups ---------- */
 .glabel{display:flex;align-items:center;gap:7px;font:500 10.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 2px 0;margin-bottom:-8px}
+.buildline{text-align:center;font:500 10.5px var(--mono);letter-spacing:.12em;color:var(--muted);opacity:.75;padding:6px 0 2px}
 .glabel::before{content:"";width:3px;height:9px;border-radius:1px;background:var(--accent);flex:none}
 .stack>.glabel:first-child{padding-top:0}
 
