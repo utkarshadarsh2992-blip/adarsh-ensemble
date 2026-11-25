@@ -262,7 +262,7 @@ const Live = (() => {
     if (!ev || typeof ev !== 'object') return;
     const h = handlers; if (!h) return;
     try {
-      if (ev.type === 'state' && h.onState) h.onState(ev.state, ev.model);
+      if (ev.type === 'state' && h.onState) h.onState(ev.state, ev.model, ev);
       else if (ev.type === 'notice' && h.onNotice) h.onNotice(ev.message);
       else if (ev.type === 'probe' && h.onProbe) h.onProbe(ev.message);
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
@@ -314,11 +314,16 @@ const Voice = (() => {
     setState('connecting');
     caption('', 'Adarsh Live jud raha hai…');
     const ok = Live.start({
-      onState: (s, m) => {
+      onState: (s, m, ev) => {
         if (!active(token)) return;
         if (s === 'speaking') setState('speaking');
         else if (s === 'listening') { setState('listening'); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
-        else if (s === 'connecting') setState('connecting');
+        else if (s === 'connecting') {
+          setState('connecting');
+          /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
+          const n = ev && ev.attempt ? ' ' + ev.attempt + '/' + ev.total : '';
+          stateEl.textContent = 'Connecting…' + n;
+        }
       },
       onNotice: (m) => { if (active(token)) caption(liveUser, m); },
       onUser: (t) => { if (!active(token)) return; liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel); },

@@ -291,7 +291,7 @@ const App = (() => {
           (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn', on: { click: () => {
             out.textContent = 'Live test chal raha hai…';
             const lines = [];
-            Live.start({ onState: (s, m) => { if (s === 'listening') { lines.push('Live chalu hai' + (m ? ' (' + m + ')' : '')); out.textContent = lines.join(' · ') + ' — ab voice screen kholo.'; } },
+            Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) out.textContent = 'Connecting… ' + ev.attempt + '/' + ev.total + (ev.endpoint ? ' · ' + ev.endpoint : ''); if (s === 'listening') { lines.push('Live chalu hai' + (m ? ' (' + m + ')' : '')); out.textContent = lines.join(' · ') + ' — ab voice screen kholo.'; } },
               onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); },
               onNotice: (m) => { lines.push(m); out.textContent = lines.join(' · '); },
               onError: (m) => { lines.push('Live: ' + m); out.textContent = lines.join(' · '); Live.stop(); },

@@ -47,13 +47,15 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         /** Tried in order when the chosen model is refused for this key. Each is a normal Live dialogue model. */
         private val FALLBACK = listOf("gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview")
         /** Note the trailing dot: the service name is "google.ai.generativelanguage.<api>.GenerativeService". */
-        private const val HOST = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage."
+        private const val HOST_NAME = "generativelanguage.googleapis.com"
+        private const val HOST = "wss://$HOST_NAME/ws/google.ai.generativelanguage."
         private const val METHOD = ".GenerativeService.BidiGenerateContent"
         private const val IN_RATE = 16000
         private const val OUT_RATE = 24000
         private const val CHUNK_SAMPLES = IN_RATE / 10          // 100 ms
         private const val MAX_PROMPT = 6000
-        private const val SETUP_TIMEOUT_MS = 12_000L
+        private const val SETUP_TIMEOUT_MS = 8_000L
+        private const val DNS_TIMEOUT_MS = 6_000L
 
         /** Plain HTTPS check of the same host and key: tells a bad key or blocked network apart from a socket problem. */
         fun probe(ctx: Context, emit: (JSONObject) -> Unit) {
@@ -97,6 +99,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private var step = 0
     private var gotSetup = false
     private var lastWhy = ""
+    @Volatile private var dnsDone = false
     private val trace = ArrayList<String>()
 
     private var recorder: AudioRecord? = null
@@ -122,6 +125,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         while (trace.size > 6) trace.removeAt(0)
     }
 
+    private fun isNetwork(t: Throwable): Boolean =
+        t is java.net.UnknownHostException || t is java.net.ConnectException ||
+            t is java.net.SocketTimeoutException || t is javax.net.ssl.SSLException || t is java.net.SocketException
+
     fun active(): Boolean = !closed.get()
 
     /** cfg: {key, model, voice, prompt}. Returns a status object for the UI; never throws. */
@@ -139,8 +146,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             Variant("v1beta", true), Variant("v1alpha", true),
             Variant("v1beta", false), Variant("v1alpha", false)
         )
-        // chosen model on every endpoint first, then the fallback models; at most 8 attempts (~12 s each at worst)
-        plans = (listOf(model) + FALLBACK).flatMap { m -> variants.map { v -> v to m } }.take(8)
+        // chosen model on every endpoint, then the fallback models on the documented endpoint only: six attempts,
+        // and a network failure ends the sweep at once, so the screen never sits on "Connecting…" for a minute.
+        plans = variants.map { v -> v to model } + FALLBACK.map { m -> variants.first() to m }
         step = 0
         gotSetup = false
         lastWhy = ""
@@ -153,8 +161,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .pingInterval(20, TimeUnit.SECONDS)
             .build()
-        say(JSONObject().put("type", "state").put("state", "connecting").put("model", model))
-        connect()
+        dnsDone = false
+        say(JSONObject().put("type", "state").put("state", "connecting").put("model", model)
+            .put("attempt", 1).put("total", plans.size))
+        preflight()
         return JSONObject().put("ok", true).put("state", "connecting").put("model", model)
     }
 
@@ -171,6 +181,37 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         return JSONObject().put("setup", setup).toString()
     }
 
+    /**
+     * Resolve the host before opening a socket. A dead resolver otherwise costs a full timeout on every attempt and
+     * the user just watches "Connecting…", so it is answered in a few seconds with a plain "internet/DNS" message.
+     */
+    private fun preflight() {
+        val watchdog = Runnable {
+            if (closed.get() || dnsDone) return@Runnable
+            dnsDone = true
+            fail("Internet/DNS theek nahi — host resolve nahi hua. Net check karke dobara try karein.")
+        }
+        main.postDelayed(watchdog, DNS_TIMEOUT_MS)
+        Thread {
+            val why = try {
+                val addrs = java.net.InetAddress.getAllByName(HOST_NAME)
+                if (addrs.isEmpty()) "koi address nahi mila" else null
+            } catch (e: Exception) { (e.message ?: "DNS").take(90) }
+            main.post {
+                main.removeCallbacks(watchdog)
+                if (closed.get() || dnsDone) return@post
+                dnsDone = true
+                if (why == null) connect()
+                else fail("Internet/DNS theek nahi — " + why + ". Net check karke dobara try karein.")
+            }
+        }.also { it.isDaemon = true; it.start() }
+    }
+
+    /** Stops everything with one plain sentence (used when retrying other endpoints cannot possibly help). */
+    private fun fail(message: String) {
+        finish(message)
+    }
+
     private fun connect() {
         val plan = plans.getOrNull(step)
         if (plan == null) { finish(); return }
@@ -183,6 +224,8 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         val socket = try { client!!.newWebSocket(request, listener) } catch (_: Exception) { null }
         if (socket == null) { note("socket"); next(); return }
         ws = socket
+        say(JSONObject().put("type", "state").put("state", "connecting").put("model", model)
+            .put("endpoint", variant.label).put("attempt", step + 1).put("total", plans.size))
         socket.send(setupJson(model))
         main.removeCallbacks(setupTimeout)
         main.postDelayed(setupTimeout, SETUP_TIMEOUT_MS)
@@ -203,13 +246,13 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         }
     }
 
-    private fun finish() {
+    private fun finish(message: String? = null) {
         if (closed.getAndSet(true)) return
         main.removeCallbacks(setupTimeout)
         stopAudio()
         try { ws?.close(1000, "bye") } catch (_: Exception) { }
         ws = null
-        val detail = if (trace.isEmpty()) (lastWhy.ifBlank { "koi jawab nahi aaya" })
+        val detail = message ?: if (trace.isEmpty()) (lastWhy.ifBlank { "koi jawab nahi aaya" })
         else trace.takeLast(3).joinToString(" | ")
         say(JSONObject().put("type", "error").put("message", "Live nahi chala — " + detail.take(600)))
     }
@@ -228,6 +271,11 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (closed.get() || webSocket !== ws) return
             lastWhy = (t.message ?: "network").take(160)
+            // no endpoint can help when the network itself is down: say it now instead of timing out five more times
+            if ((response == null || response.code <= 0) && isNetwork(t)) {
+                main.post { if (!closed.get()) fail("Internet/DNS theek nahi — " + lastWhy.take(90) + ". Net check karke dobara try karein.") }
+                return
+            }
             note("fail " + (response?.code?.takeIf { it > 0 }?.toString() ?: lastWhy))
             next()
         }
