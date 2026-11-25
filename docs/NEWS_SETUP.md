@@ -22,6 +22,14 @@
 
 11. **Free project note.** Supabase free project lagbhag 7 idle days ke baad pause ho sakta hai. Kabhi-kabhi app kholkar `ping` kijiye aur Supabase dashboard ka warning email check kijiye.
 
+## GitHub Actions workflow
+
+`.github/workflows/news-backend.yml` mein workflow pull request/push par Edge Function TypeScript checks, Deno tests, aur migration/seed files ke basic checks chalata hai. Supabase deployment **automatic nahi** hai; Actions tab se `News backend checks and deploy` ko manually run karna hota hai. Default mein functions deploy hote hain aur migrations apply nahi hoti.
+
+Repo Settings > Secrets and variables > Actions mein `SUPABASE_ACCESS_TOKEN` ko secret aur `SUPABASE_PROJECT_REF` ko variable ke roop mein set kijiye. Migration apply karne ke liye `SUPABASE_DB_PASSWORD` secret bhi zaroori hai. `APP_SECRET`, `CRON_SECRET`, Groq/Tavily keys, Telegram token, aur FCM service-account JSON Supabase ke Edge Function Secrets/Vault mein hi rahne dein; workflow in secrets ko copy ya overwrite nahi karta.
+
+Manual run ke `apply_migrations` option ko tabhi on kijiye jab remote migration history verify ho aur aap pending SQL migrations chalana chahte hon. Agar SQL Editor se migration pehle hi manually chalayi thi, ise off rakhein: direct SQL Editor changes Supabase migration history mein automatically register nahi hote, aur `db push` sync/re-apply problem de sakta hai. Pehle `supabase migration list --remote` se state check kijiye; actual schema verify karne ke baad hi zaroorat pade to missing migration ko `supabase migration repair --status applied <timestamp> --remote` se register karein. Is command se pehle SQL dobara apply nahi hota. [Supabase migration deployment guide](https://supabase.com/docs/guides/deployment/database-migrations).
+
 ## Troubleshooting
 
 | Problem | Kya dekhein |
