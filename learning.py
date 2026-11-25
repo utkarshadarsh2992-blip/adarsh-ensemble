@@ -47,8 +47,8 @@ STD_STYLES = {
         "STANDARD 2.9 (short first): explain exactly ONE concept, the core one this question needs. If the question "
         "holds several concepts, take the first and name the next ones in one closing line. 90-160 words: the core "
         "idea in one or two sentences, one 'imagine this' picture that makes it felt, and one line on why it matters. "
-        "No derivation and no history section here: the app shows a 'Gehrai mein jao' button for the deep version, "
-        "so do not ask whether to go deeper."
+        "No derivation and no history section here: Sir switches to Standard 9.2 himself when he wants depth, "
+        "so do not ask whether to go deeper and do not mention any button."
     ),
     "9.2": (
         "STANDARD 9.2 (deep, the discoverer's way): explain exactly ONE concept in full depth. If the question holds "

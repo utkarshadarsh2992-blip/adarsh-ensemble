@@ -107,19 +107,13 @@ test('check card: MCQ tap and fill-in are checked without any backend call', asy
   } finally { app.close(); }
 });
 
-test('"Gehrai mein jao" asks the same question again in 9.2 through Standard', async () => {
+test('no "Gehrai mein jao" / "Samajh gaya" buttons under a Standard 2.9 answer', async () => {
   const app = mount({ settings: { mode: 'standard', stdStyle: '2.9' }, reply: stdReply });
   try {
     await app.Chat.submit('Inertia kya hai?');
-    await until(() => !app.Chat.isBusy() && app.document.querySelector('.ldeep .btn'));
-    app.document.querySelector('.ldeep .btn').click();
-    await until(() => app.sent.length === 2 && !app.Chat.isBusy());
-    const req = app.sent[1];
-    assert.equal(req.text, 'Gehrai mein samjhao: Inertia kya hai?');
-    assert.equal(req.meta.deeper, true);
-    assert.equal(req.mode, 'standard');
-    const first = app.S.chats[0].msgs.find(m => m.reply && m.reply.deeper);
-    assert.equal(first.reply.deeper.used, true);
+    await until(() => !app.Chat.isBusy() && app.document.querySelector('.msg'));
+    assert.equal(app.document.querySelector('.ldeep'), null);
+    assert.doesNotMatch(app.document.body.textContent, /Gehrai mein jao|Samajh gaya/);
   } finally { app.close(); }
 });
 

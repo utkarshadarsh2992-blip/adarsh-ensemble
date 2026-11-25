@@ -114,7 +114,7 @@ const Learn = (() => {
     return box;
   }
 
-  /* ---------- under the answer: new words + "Gehrai mein jao" ---------- */
+  /* ---------- under the answer: new words + check question ---------- */
   function extras(m, ctx) {
     const r = m.reply, out = [];
     const L = r.learn;
@@ -123,15 +123,6 @@ const Learn = (() => {
         h('span', { class: 'lw-k' }, 'NAYE SHABD'), h('span', { class: 'lw-t' }, L.words.map(w => w.w).join(' · ')), h('span', { class: 'lw-s' }, 'saved')));
     }
     const c = card(r, ctx); if (c) out.push(c);
-    if (r.deeper && r.deeper.q) {
-      out.push(h('div', { class: 'ldeep' },
-        h('button', { class: 'btn ' + (r.deeper.used ? 'ghost' : 'pri'), disabled: !!r.deeper.used, on: { click: () => {
-          if (Chat.isBusy()) return toast('Pehle current jawab aane do.');
-          r.deeper.used = true; save(); ctx.redraw();
-          Chat.submit('Gehrai mein samjhao: ' + r.deeper.q, { deeper: true });
-        } } }, icon('arrowdown', 's'), r.deeper.used ? 'Gehrai wala jawab maanga' : 'Gehrai mein jao · 9.2'),
-        r.deeper.used ? null : h('button', { class: 'link', on: { click: () => { r.deeper.used = true; save(); ctx.redraw(); toast('Theek hai, agla concept.'); } } }, 'Samajh gaya')));
-    }
     return out;
   }
 

@@ -15,7 +15,7 @@ const Modes = (() => {
     { id: 'standard', how: 'Instant: ONE fast model answers straight away. No council, no falsifiers. Use a mode below for deep checking', name: 'Standard', ic: 'sparkle', desc: 'Everyday questions, writing and quick help.',
       /* change 1.2: two Standard styles, both one concept per answer (learning.py on the backend) */
       variants: [
-        { std: '2.9', name: 'Standard 2.9', desc: 'Pehle chhota jawab, phir "Gehrai mein jao"', how: '1 concept · short core + imagine-this · check question · Groq only' },
+        { std: '2.9', name: 'Standard 2.9', desc: 'Pehle chhota jawab (gehra chahiye to 9.2 chuno)', how: '1 concept · short core + imagine-this · check question · Groq only' },
         { std: '9.2', name: 'Standard 9.2', desc: 'Seedha poora gehra jawab, discoverer ke tareeke se', how: '1 concept · problem → trigger → mechanism → limits · check questions · Groq only' }
       ],
       placeholder: 'Message Adarsh', hello: 'What are we working on?',
