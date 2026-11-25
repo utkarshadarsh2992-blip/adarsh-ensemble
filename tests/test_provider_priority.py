@@ -240,7 +240,7 @@ def test_original_chain_is_stably_grouped_by_provider_not_quota_balance(monkeypa
         ("openrouter", "nemotron-ultra", "gemini-3.8-flash"),
         ("gemini", "gemini-3.8-flash", "gpt-oss-120b"),
         ("cloudflare", "cf-gpt-oss-120b", "gemini-3.8-flash"),
-        ("nvidia", "mistral-large-4", "gemini-3.8-flash"),
+        ("nvidia", "kimi-k3.1-pro", "gemini-3.8-flash"),
     ],
 )
 def test_every_provider_exhausts_two_server_slots_before_successful_third(

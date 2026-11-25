@@ -52,8 +52,8 @@ def test_modes_have_separate_combinations():
             for m, p in mode_plans.PLANS.items()}
     assert len(set(sigs.values())) == len(sigs)  # no two modes share the same combination
     P = mode_plans.PLANS
-    assert P["coding"].spec("empiricist").label == "qwen3.8-27b" and P["coding"].spec("specialist").label == "glm-5-3-flash"
-    assert P["business"].spec("specialist").label == "mistral-large-4"
+    assert P["coding"].spec("empiricist").label == "qwen3.8-27b" and P["coding"].spec("specialist").label == "glm-5.3-flash"
+    assert P["business"].spec("specialist").label == "kimi-k3.1-pro"
     assert P["math"].spec("specialist").label == "nemotron-ultra"
     assert P["standard"].spec("theorist").label == "gpt-oss-20b"  # lite models for everyday chat
 
@@ -114,7 +114,7 @@ def test_business_always_researches_and_checks_numbers(script, seen):
     assert script["queries"] and script["queries"][0][0].startswith("Should I price")  # SEARCH: none, still searched
     assert "specialist" in c and "evidence" in c                  # specialist + evidence reviewer even in fast
     assert "BUSINESS MODE" in script["systems"]["judge"][0] and "BUSINESS MODE" in script["systems"]["falsifier"][0]
-    assert res["combo"]["models"]["specialist"] == "mistral-large-4"
+    assert res["combo"]["models"]["specialist"] == "kimi-k3.1-pro"
 
 
 def test_math_runs_pattern_finder_and_method_review_in_fast(script, seen):

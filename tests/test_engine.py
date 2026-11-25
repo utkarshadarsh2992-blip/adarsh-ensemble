@@ -707,7 +707,7 @@ def test_cloudflare_needs_token_and_account_id(monkeypatch):
 
 def test_new_models_registered_and_chat_models_only():
     for label in ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "cf-gpt-oss-120b", "cf-gemma-4-26b",
-                  "mistral-large-4", "laguna-xs-2.1", "glm-5-3-flash", "inkling-2-small"):
+                  "kimi-k3.1-pro", "laguna-xs-2.1", "glm-5.3-flash", "inkling-2-small"):
         assert label in config.REGISTRY, label
     # retired by Google for new users (HTTP 404 "use gemini-3.5-flash-lite"): must not be called any more
     assert "gemini-2.5-flash-lite" not in config.REGISTRY

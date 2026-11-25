@@ -106,7 +106,7 @@ def test_dead_role_emits_a_dead_event():
     seen = collect()
     health.set_stage("judge")
     c = Client({"gemini-3.8-flash": QUOTA_429, "nvidia/nemotron-3-ultra-550b-a55b:free": QUOTA_429,
-                "openai/gpt-oss-120b": QUOTA_429, "mistralai/mistral-large-4-1t-a52b": QUOTA_429,
+                "openai/gpt-oss-120b": QUOTA_429, "moonshotai/kimi-k3.1-pro": QUOTA_429, "nvidia/nemotron-3-ultra-550b-a55b": QUOTA_429,
                 "openrouter/free": QUOTA_429})
     with pytest.raises(llm.LLMError):
         asyncio.run(llm.chat(c, config.SYNTHESIZER, SMALL))

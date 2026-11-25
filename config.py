@@ -174,19 +174,35 @@ _reg("gemini-3.5-flash-lite", "gemini", "gemini-3.5-flash-lite", {"reasoning_eff
 # (Nov 2026). Its chain places now use gemini-3.5-flash-lite, or gemini-3.1-flash-lite where 3.5 lite is already there.
 
 # Cloudflare Workers AI (10,000 neurons/day, resets 00:00 UTC; neurons are not tokens, so no local cap:
-# real 429s move the chain on). bge-m3 is an embedding model, not a chat model, so it is not used here.
-# IDs below follow the "@cf/<maker>/<model>" pattern; only gpt-oss-120b is confirmed in Cloudflare's docs.
+# real 429s move the chain on). IDs below are from the account's own catalog list ("@cf/<maker>/<model>").
 _reg("cf-gpt-oss-120b", "cloudflare", "@cf/openai/gpt-oss-120b")
+_reg("cf-gpt-oss-20b", "cloudflare", "@cf/openai/gpt-oss-20b")
+_reg("cf-glm-5.3", "cloudflare", "@cf/zai-org/glm-5.3")
+_reg("cf-glm-4.7-flash", "cloudflare", "@cf/zai-org/glm-4.7-flash")
+_reg("cf-llama-3.3-70b", "cloudflare", "@cf/meta/llama-3.3-70b-instruct-fp8-fast")
+_reg("cf-qwen3.8-27b", "cloudflare", "@cf/qwen/qwen3.8-27b")
 _reg("cf-gemma-4-26b", "cloudflare", "@cf/google/gemma-4-26b-a4b-it")
+_reg("cf-mistral-small-3.1", "cloudflare", "@cf/mistralai/mistral-small-3.1-24b-instruct")
 
-# NVIDIA NIM. mistralai/mistral-large-4-1t-a52b is confirmed on build.nvidia.com (Nov 2026). The other IDs are best guesses ("<maker>/<model>"); z-ai/glm-5-3 is confirmed.
-# Settings > API keys > Test connection lists the IDs that do not exist and suggests the closest real ones.
-_reg("mistral-large-4", "nvidia", "mistralai/mistral-large-4-1t-a52b")
+# NVIDIA NIM free endpoint. Every ID below is in the live list at https://integrate.api.nvidia.com/v1/models (checked
+# 25 Nov 2026). mistral-large-4 was removed on purpose: it never answered (timeouts / ReadError).
+_reg("kimi-k3.1-pro", "nvidia", "moonshotai/kimi-k3.1-pro")
+_reg("nv-nemotron-ultra", "nvidia", "nvidia/nemotron-3-ultra-550b-a55b")
+_reg("nv-nemotron-super-vl", "nvidia", "nvidia/nemotron-3.5-super-vl-120b-a12b")
+_reg("minimax-m3.1-flash", "nvidia", "minimaxai/minimax-m3.1-flash")
 _reg("laguna-xs-2.1", "nvidia", "poolside/laguna-xs-2.1")
-_reg("glm-5-3-flash", "nvidia", "z-ai/glm-5-3-flash")
+_reg("glm-5.3-flash", "nvidia", "z-ai/glm-5.3-flash")
 
 # one more OpenRouter free model (ID unverified, same note as above)
 _reg("inkling-2-small", "openrouter", "thinkingmachines/inkling-2-small:free")
+
+# ---------------------------------------------------------------------------------------------------------------
+# SWAP POINTS: to change the model behind a job, change ONE line here (a registry label from above). To move a model
+# to another provider, change its _reg line (provider + id). Chains below refer to these names, never to the old model.
+WRITER = "kimi-k3.1-pro"            # long final writer (Manual master answer, business specialist): was mistral-large-4
+PATTERN = "cf-gpt-oss-120b"         # pattern finder (names the known pattern / theorem / classic mistake)
+HEAVY_FALLBACK = "nv-nemotron-ultra"  # big free model used as a late fallback where mistral-large-4 used to be
+CODER = "glm-5.3-flash"             # coding specialist on NVIDIA
 
 
 def use(label: str, role: str, fallbacks=(), extra: dict | None = None) -> ModelSpec:
@@ -213,18 +229,18 @@ PANEL: list[ModelSpec] = [
     # strict derivations: fast reasoning model
     use("gpt-oss-120b", "logic_math", ["gemini-3.8-flash", "nemotron-ultra", "qwen3.8-27b", "cf-gpt-oss-120b"]),
     # broad / research angle, long context
-    use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", "mistral-large-4"]),
+    use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", HEAVY_FALLBACK]),
     # algorithmic / boundary view: best coder on the list (LiveCodeBench v6 90.3)
     use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "flint", "laguna-xs-2.1"]),
     # first principles: biggest brain (550B MoE; multi-step reasoning + planning)
-    use("nemotron-ultra", "first_principles", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", "glm-5-3-flash"]),
+    use("nemotron-ultra", "first_principles", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", CODER]),
     # business: knowledge work + deep research tuned
     use("ernie-5.5-flash", "business", ["gemma-4-26b-g", "gpt-oss-20b", "gemini-3.1-flash-lite", "ling-3.2-flash", "cf-gemma-4-26b"]),
     # planner: dense reasoning model with good instruction following
     use("gemma-4-31b-g", "planner", ["gpt-oss-20b", "gemma-4-31b", "gemini-3.1-flash-lite", "nemotron-lightning", "gemini-3.5-flash-lite"]),
     # pattern finder: names the known pattern / theorem / classic mistake the question matches, then solves with it.
     # LAST on purpose: "fast" mode uses only the first 3 panel members, so it never runs there.
-    use("mistral-large-4", "pattern_finder", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"]),
+    use(PATTERN, "pattern_finder", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-glm-5.3"]),
 ]
 
 # Popper falsifiers (first 2 are used in "fast" mode). Different families on purpose.
@@ -248,8 +264,8 @@ STRIPPER = use("gemini-3.1-flash-lite", "judge", ["nemotron-lightning", "gpt-oss
 # writes the Python verification scripts: strongest coder.
 VERIFIER = use("qwen3.8-27b", "coder_edge", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "flint"])
 # final judge / synthesizer: big context (claims + reports + proofs) -> Gemini first, not Groq (8K TPM).
-JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
-SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
+JUDGE = use("gemini-3.8-flash", "judge", ["nemotron-ultra", "gpt-oss-120b", HEAVY_FALLBACK, "or-free-router"])
+SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss-120b", HEAVY_FALLBACK, "or-free-router"])
 # Standard mode: ONE fast call, no council. Groq first (fastest), then Gemini, then OpenRouter.
 QUICK = use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "nemotron-lightning", "gpt-oss-20b", "gemini-3.8-flash"],
             {"reasoning_effort": "low"})
@@ -259,13 +275,13 @@ QUICK = use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "nemotron-l
 # the two Groq models are then skipped at once (8K tokens/min) and the Gemini lite models take over. They have their own
 # quota, unlike gemini-3.8-flash which has just written the answer. nemotron-ultra (slow reasoning model, often an empty
 # answer on a small token budget) comes late, gemini-3.8-flash last.
-AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "mistral-large-4", "nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"])
+AUDITOR = use("gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", HEAVY_FALLBACK, "nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"])
 
 # MANUAL MODE ONLY (master.py): the writer and the grounding check start on NVIDIA / Cloudflare so the Gemini and Groq
 # free quotas are kept for Auto. The two are different model families (Mistral vs gpt-oss), like judge vs auditor.
 # If a key is missing, an ID is wrong (404) or a quota is gone, the chain moves on to Gemini / Groq on its own.
-MASTER_WRITER = use("mistral-large-4", "synthesizer", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"])
-MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "mistral-large-4", "gpt-oss-120b", "nemotron-lightning"])
+MASTER_WRITER = use(WRITER, "synthesizer", ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra", "cf-gpt-oss-120b"])
+MASTER_AUDITOR = use("cf-gpt-oss-120b", "judge", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", HEAVY_FALLBACK, "gpt-oss-120b", "nemotron-lightning"])
 
 # NOTE: the roles engine now takes its chains PER CHAT MODE from mode_plans.py (Standard, V, Physics, Math, Business,
 # Coding each have their own combination). The chains below are the defaults kept for the other engines / tools.
@@ -277,18 +293,18 @@ THEORIST = use("gpt-oss-120b", "theorist", ["gemini-3.8-flash", "nemotron-ultra"
 EMPIRICIST = use("qwen3.8-27b", "empiricist", ["gemini-3.8-flash", "particle-1", "gpt-oss-120b", "laguna-xs-2.1"])
 # deep mode only: one domain specialist picked by the chat mode, plus the pattern finder (PANEL[-1])
 SPECIALISTS = {
-    "standard": use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", "mistral-large-4"]),
-    "verified": use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", "mistral-large-4"]),
-    "physics": use("nemotron-ultra", "logic_math", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", "glm-5-3-flash"]),
-    "math": use("nemotron-ultra", "logic_math", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", "glm-5-3-flash"]),
+    "standard": use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", HEAVY_FALLBACK]),
+    "verified": use("gemini-3.8-flash", "researcher", ["gpt-oss-120b", "nemotron-super-vl", "gemma-4-31b-g", HEAVY_FALLBACK]),
+    "physics": use("nemotron-ultra", "logic_math", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", CODER]),
+    "math": use("nemotron-ultra", "logic_math", ["gpt-oss-120b", "gemini-3.8-flash", "gemma-4-31b-g", CODER]),
     "business": use("ernie-5.5-flash", "business", ["gemma-4-26b-g", "gpt-oss-20b", "gemini-3.1-flash-lite", "ling-3.2-flash"]),
     "coding": use("nemotron-ultra", "coder_edge", ["qwen3.8-27b", "gemini-3.8-flash", "particle-1", "laguna-xs-2.1"]),
 }
 SKEPTIC = use("gpt-oss-20b", "skeptic", ["gemini-3.1-flash-lite", "nemotron-lightning", "gemma-4-26b-g"])
-DEBATER = use("gpt-oss-120b", "debater", ["gemini-3.8-flash", "nemotron-ultra", "mistral-large-4"])
+DEBATER = use("gpt-oss-120b", "debater", ["gemini-3.8-flash", "nemotron-ultra", HEAVY_FALLBACK])
 METHOD_REVIEWER = use("qwen3.8-27b", "method_reviewer", ["gemini-3.5-flash-lite", "nemotron-ultra", "gpt-oss-120b"])
-EVIDENCE_REVIEWER = use("gpt-oss-120b", "evidence_reviewer", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "mistral-large-4", "nemotron-ultra", "gemini-3.8-flash"])
-REFINER = use("gemini-3.8-flash", "refiner", ["nemotron-ultra", "gpt-oss-120b", "mistral-large-4", "or-free-router"])
+EVIDENCE_REVIEWER = use("gpt-oss-120b", "evidence_reviewer", ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", HEAVY_FALLBACK, "nemotron-ultra", "gemini-3.8-flash"])
+REFINER = use("gemini-3.8-flash", "refiner", ["nemotron-ultra", "gpt-oss-120b", HEAVY_FALLBACK, "or-free-router"])
 
 # Reserved (no text role yet): nemotron-super-vl / nemotron-nano-omni / qwen3.8-27b can read
 # images; the tts / live / translate / lyria / recraft / rerank models are not chat models.
@@ -482,7 +498,8 @@ MODEL_GONE_SKIP_S = float(os.getenv("MODEL_GONE_SKIP_S", str(24 * 3600)))
 
 MODEL_TIMEOUT_S: dict[str, float] = {
     "gemini-3.8-flash": 200.0,  # long Judge / Synthesizer / Refiner answers: 120 s cut it off while it was still writing
-    "mistral-large-4": 300.0,  # 1T-parameter NVIDIA model: long queue + slow writing
+    "kimi-k3.1-pro": 300.0,  # big NVIDIA reasoning model: long queue + slow writing
+    "nv-nemotron-ultra": 300.0,  # 550B on NVIDIA: same as its OpenRouter twin
     "nemotron-ultra": 300.0,  # 550B free OpenRouter model: often queued before the first token
     **_timeouts(os.getenv("MODEL_TIMEOUTS", "")),
 }

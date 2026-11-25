@@ -53,8 +53,8 @@ def test_council_question_keeps_the_message_first(monkeypatch, quick):
 
 
 def test_heavy_models_get_300s_and_stage_total_480():
-    assert config.model_timeout(config.REGISTRY["mistral-large-4"]) == 300.0
+    assert config.model_timeout(config.REGISTRY["kimi-k3.1-pro"]) == 300.0
     assert config.model_timeout(config.REGISTRY["nemotron-ultra"]) == 300.0
     assert config.model_timeout(config.REGISTRY["gemini-3.8-flash"]) == 200.0
     assert config.PANEL_TIMEOUT_S >= 480.0
-    assert config.PANEL_TIMEOUT_S > config.model_timeout(config.REGISTRY["mistral-large-4"])
+    assert config.PANEL_TIMEOUT_S > config.model_timeout(config.REGISTRY["kimi-k3.1-pro"])

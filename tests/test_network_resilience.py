@@ -30,7 +30,7 @@ ENVS = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "NVIDIA_API_KEY"
 Q = [{"role": "user", "content": "claims nikalo"}]
 NEMO = config.REGISTRY["nemotron-lightning"].model
 LING = config.REGISTRY["ling-3.2-flash"].model
-MISTRAL = config.REGISTRY["mistral-large-4"].model
+MISTRAL = config.REGISTRY["kimi-k3.1-pro"].model
 
 
 @pytest.fixture(autouse=True)
@@ -116,7 +116,7 @@ def test_openrouter_is_streamed_and_the_deltas_become_one_answer():
 
 def test_nvidia_mistral_is_streamed_and_thinking_deltas_are_dropped():
     s = Server({(MISTRAL, k("nvidia", 1)): [sse(delta(reasoning="lamba soch"), delta("pattern mila"), delta(finish="stop"))]})
-    assert run(ask(s, config.use("mistral-large-4", "pattern_finder", ["gpt-oss-120b"]))) == "pattern mila"
+    assert run(ask(s, config.use("kimi-k3.1-pro", "pattern_finder", ["gpt-oss-120b"]))) == "pattern mila"
     assert s.calls[0]["body"]["stream"] is True
 
 
@@ -221,7 +221,7 @@ def test_a_caller_timeout_still_wins_for_every_model():
 def test_model_timeouts_setting_is_parsed_per_label_and_shared_by_all_keys(monkeypatch):
     assert config._timeouts("mistral-large-4=300, nemotron-ultra = 240,bad,x=abc,y=0,=5") == {
         "mistral-large-4": 300.0, "nemotron-ultra": 240.0}
-    monkeypatch.setitem(config.MODEL_TIMEOUT_S, "mistral-large-4", 300.0)
-    assert config.model_timeout(config.keyed(config.REGISTRY["mistral-large-4"], 2)) == 300.0
+    monkeypatch.setitem(config.MODEL_TIMEOUT_S, "kimi-k3.1-pro", 300.0)
+    assert config.model_timeout(config.keyed(config.REGISTRY["kimi-k3.1-pro"], 2)) == 300.0
     assert config.model_timeout(config.REGISTRY["gemini-3.8-flash"]) == 200.0
     assert config.model_timeout(config.REGISTRY["gpt-oss-120b"]) == config.LLM_TIMEOUT_S
