@@ -288,6 +288,14 @@ const App = (() => {
       const liveBlock = liveNative ? h('div', {}, h('div', { class: 'grp' },
         swItem('voice', 'Adarsh Live', 'Live voice · jarvis jaisi', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
         S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,
+          (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn', on: { click: () => {
+            out.textContent = 'Live test chal raha hai…';
+            Live.start({ onState: (s, m) => { if (s === 'listening') out.textContent = 'Live chalu hai' + (m ? ' (' + m + ')' : '') + '. Ab voice screen kholo.'; },
+              onNotice: (m) => { out.textContent = m; },
+              onError: (m) => { out.textContent = 'Live nahi chala: ' + m; Live.stop(); },
+              onClosed: () => {} });
+            setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /chal raha/.test(out.textContent)) out.textContent = 'Live chalu ho gaya (test band kar diya).'; } }, 8000);
+          } } }, 'Test Adarsh Live'); return h('div', {}, btn, out); })(),
           h('p', { class: 'muted' }, 'Sirf live voice screen par. Awaaz aur mic seedhe Google Gemini ko jaate hain; koi recording save nahi hoti. Fail ho to purani voice chalti hai.')) : null)
         : h('p', { class: 'muted' }, 'Adarsh Live sirf Android app mein chalta hai.');
       b.append(swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),

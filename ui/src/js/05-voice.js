@@ -261,7 +261,8 @@ const Live = (() => {
     if (!ev || typeof ev !== 'object') return;
     const h = handlers; if (!h) return;
     try {
-      if (ev.type === 'state' && h.onState) h.onState(ev.state);
+      if (ev.type === 'state' && h.onState) h.onState(ev.state, ev.model);
+      else if (ev.type === 'notice' && h.onNotice) h.onNotice(ev.message);
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
       else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
       else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
@@ -311,19 +312,19 @@ const Voice = (() => {
     setState('connecting');
     caption('', 'Adarsh Live jud raha hai…');
     const ok = Live.start({
-      onState: (s) => {
+      onState: (s, m) => {
         if (!active(token)) return;
         if (s === 'speaking') setState('speaking');
-        else if (s === 'listening') setState('listening');
+        else if (s === 'listening') { setState('listening'); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
         else if (s === 'connecting') setState('connecting');
-        if (s === 'listening' && liveOn) stateEl.textContent = 'Live · just speak';
       },
+      onNotice: (m) => { if (active(token)) caption(liveUser, m); },
       onUser: (t) => { if (!active(token)) return; liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel); },
       onModel: (t) => { if (!active(token)) return; liveModel = (liveModel + ' ' + t).trim().slice(-1200); caption(liveUser, liveModel); },
       onError: (m) => {
         if (!active(token)) return;
         liveOn = false;
-        caption('', 'Adarsh Live nahi chala: ' + m + ' — normal voice par ja raha hoon.');
+        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.');
         toast('Adarsh Live off: ' + m);
         setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
       },

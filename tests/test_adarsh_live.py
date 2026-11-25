@@ -27,7 +27,7 @@ def test_endpoint_and_audio_format():
 
 def test_setup_message_shape():
     for part in ('put("model", "models/$model")',
-                 'put("responseModalities", org.json.JSONArray().put("AUDIO"))',
+                 'put("responseModalities", JSONArray().put("AUDIO"))',
                  'put("prebuiltVoiceConfig"',
                  'put("systemInstruction"',
                  'put("inputAudioTranscription"',
@@ -35,14 +35,19 @@ def test_setup_message_shape():
         assert part in LIVE, part
     # barge-in: the model's queued audio is dropped when the user speaks
     assert 'optBoolean("interrupted")' in LIVE
+    # the real reason arrives in the close frame, so it must reach the page (this is what looked like "connect nahi hua")
+    assert 'override fun onClosing(webSocket: WebSocket, code: Int, reason: String)' in LIVE
+    assert 'put("type", "error").put("message", message)' in LIVE
+    # a refused model falls back instead of leaving the screen on "Connecting…"
+    assert "FALLBACK" in LIVE and "tryNext(" in LIVE
 
 
 def test_key_is_never_placed_in_the_url_first():
     # header first, documented ?key= form only as a fallback, and the key is read on the device
-    assert 'b.header("x-goog-api-key", key)' in LIVE
-    assert '"?key=" + key' in LIVE
+    assert 'b.header("x-goog-api-key", k)' in LIVE
+    assert '"?key=" + k' in LIVE
     assert 'AdarshApp).keys.first("GEMINI_API_KEY")' in ACTIVITY
-    assert "key" in ACTIVITY and "SecureKeys" not in ACTIVITY.split("fun liveStart")[1][:600]
+    assert "keys.first(\"GEMINI_API_KEY\")" in ACTIVITY
 
 
 def test_models_match_between_kotlin_and_the_ui():
