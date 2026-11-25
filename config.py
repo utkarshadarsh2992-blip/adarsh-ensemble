@@ -455,7 +455,7 @@ TCP_KEEPALIVE_S = int(os.getenv("TCP_KEEPALIVE_S", "15"))
 # MODEL_TIMEOUT_S overrides the default per registry label (all keys of that model); MODEL_TIMEOUTS="label=secs,..."
 # adds or changes entries. A caller that passes its own short timeout (guard, grounding check, Standard agent,
 # classifier) keeps it: those steps must fail fast. Every stage still has its own total limit (PANEL_TIMEOUT_S).
-LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "200"))
+LLM_TIMEOUT_S = float(os.getenv("LLM_TIMEOUT_S", "120"))
 
 
 def _timeouts(raw: str) -> dict[str, float]:
