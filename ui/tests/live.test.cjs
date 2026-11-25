@@ -73,7 +73,7 @@ test('a live session sends the model, the chosen voice and the saved philosophy'
   // the socket pushes transcripts back into the captions
   app.window.__adarshLive({ type: 'user', text: 'kal ka mausam' });
   app.window.__adarshLive({ type: 'model', text: 'Sir, kal dhoop rahegi.' });
-  await settle(10);
+  await settle(400);   // the caption is typed out word by word, so give the reveal a moment
   const cap = text(app.document.querySelector('#voice .v-cap'));
   assert.match(cap, /kal ka mausam/);
   assert.match(cap, /dhoop rahegi/);

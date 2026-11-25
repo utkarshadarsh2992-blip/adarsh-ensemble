@@ -58,6 +58,8 @@ const Chat = (() => {
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
     thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
+    /* the moment the user takes the scroll, stop following: no fight between the finger and the ease */
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(t => thread.addEventListener(t, () => Motion.release(thread), { passive: true }));
     ta = h('textarea', { rows: 1, placeholder: Modes.current().placeholder, 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
     drawAtts();
@@ -108,6 +110,8 @@ const Chat = (() => {
   /* ---------- thread ---------- */
   function renderThread() {
     const c = cur(); col.textContent = '';
+    /* only follow the newest line when the reader is already at the bottom; a page they scrolled up to stays put */
+    const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260;
     const has = !!(c && c.msgs.length);
     titleEl.className = has ? '' : 'wm'; titleEl.textContent = has ? (c.title || 'New chat') : 'ADARSH';
     if (!has) {
@@ -122,9 +126,10 @@ const Chat = (() => {
       c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
     }
     if (busy && thinkEl) col.append(thinkEl);
-    scroll();
+    if (near) scroll();
   }
-  const scroll = () => requestAnimationFrame(() => { thread.scrollTop = thread.scrollHeight; });
+  /* eased, not a jump: the thread glides to the newest line and keeps following while it grows */
+  const scroll = () => Motion.glide(thread);
 
   function msgEl(m, isLast) {
     if (m.role === 'user') {

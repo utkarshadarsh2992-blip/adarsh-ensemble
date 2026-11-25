@@ -313,18 +313,39 @@ const Live = (() => {
 })();
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
+  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
   let session = 0, releasePrompt = null, releaseAsk = null;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
   let liveOn = false, liveUser = '', liveModel = '';
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
-  const caption = (u, a) => { cap.textContent = ''; if (u) cap.append(h('div', { class: 'u' }, u)); if (a) cap.append(h('div', {}, a)); cap.scrollTop = cap.scrollHeight; };
+  /* The caption is the user's line, then the answer typed out one word at a time at speaking pace, so nothing
+     runs ahead of the voice; once the voice stops the rest follows quickly. */
+  function capBuild() {
+    if (!cap) return;
+    cap.textContent = '';
+    capU = h('div', { class: 'u' });
+    capA = h('div', { class: 'a' });
+    capRev = Motion.reveal(capA, { pace: 240, quick: 70, fast: 14, onTick: () => Motion.glide(cap) });
+    cap.append(capU, capA);
+  }
+  function caption(u, a) {
+    if (!capRev) capBuild();
+    if (!capRev) return;
+    if (u !== undefined) capU.textContent = u || '';
+    if (a === undefined) { capRev.finish(); capRev.set(''); }   /* a new turn: the old answer goes at once */
+    else capRev.set(a);
+    Motion.glide(cap);
+  }
+  const capFlush = () => { if (capRev) capRev.flush(); };
+  const capNow = () => { if (capRev) capRev.finish(); };   /* errors and closures read at once, no typing */
+  const capPace = () => { if (capRev) capRev.pace(); };
 
   function build() {
     el = $('#voice'); el.textContent = '';
     orb = h('button', { class: 'orb', 'aria-label': 'Talk to Adarsh', on: { click: toggle } }, h('span', { class: 'r r3' }), h('span', { class: 'r r2' }), h('span', { class: 'r r1' }), h('span', { class: 'arc' }), h('span', { class: 'core' }));
     stateEl = h('p', { class: 'v-state', 'aria-live': 'polite' }, LABEL.idle); cap = h('div', { class: 'v-cap' });
+    capRev = null; capU = null; capA = null;   /* the reveal is rebuilt with the screen */
     inp = h('input', { type: 'text', placeholder: 'Or type here', 'aria-label': 'Type a message', on: { keydown: (e) => { if (e.key === 'Enter') typed(); } } });
     micBtn = h('button', { class: 'chipbtn', on: { click: toggle } }, 'Talk');
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
@@ -354,8 +375,8 @@ const Voice = (() => {
     const ok = Live.start({
       onState: (s, m, ev) => {
         if (!active(token)) return;
-        if (s === 'speaking') setState('speaking');
-        else if (s === 'listening') { setState('listening'); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
+        if (s === 'speaking') { setState('speaking'); capPace(); }
+        else if (s === 'listening') { setState('listening'); capFlush(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
         else if (s === 'connecting') {
           setState('connecting');
           /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
@@ -380,11 +401,11 @@ const Voice = (() => {
       onError: (m) => {
         if (!active(token)) return;
         liveOn = false;
-        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.');
+        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
         setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
       },
-      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); } }
+      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
     });
     if (!ok) { liveOn = false; setState('idle'); return false; }
     liveOn = true; setState('connecting');
@@ -395,7 +416,7 @@ const Voice = (() => {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
-    liveOn = false; Live.stop();
+    liveOn = false; if (capRev) capRev.stop(); capRev = null; Live.stop();
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
@@ -480,7 +501,7 @@ const Voice = (() => {
       const a = risky[0];
       const q = 'Sir, ' + ((a.steps.find(s => s.risk !== 'safe') || {}).detail || 'ye kaam') + ' ke liye confirm chahiye. Haan bolo to kar dunga.';
       caption(text, q);
-      if (speakOn && TTS.ok()) { setState('speaking'); await prompt(q, token); }
+      if (speakOn && TTS.ok()) { setState('speaking'); capPace(); await prompt(q, token); capFlush(); }
       if (!active(token)) return;
       const ans = (await askOnce(7000, token)).trim().replace(/[.!?।]+$/g, '').toLowerCase();
       if (!active(token)) return;
@@ -495,11 +516,11 @@ const Voice = (() => {
     const spoken = collected.map(r => (r && r.type === 'text' ? voiceText(r.text) : speechOf(r))).filter(Boolean).join(' ');
     caption(text, spoken || 'Done.');
     if (structured) {
-      if (speakOn) TTS.speak(spoken); toast('Adarsh needs your answer in chat');
+      if (speakOn) { capPace(); TTS.speak(spoken, capFlush); } toast('Adarsh needs your answer in chat');
       setTimeout(() => { if (active(token)) close(); }, speakOn ? 1800 : 400); return;
     }
-    if (speakOn && spoken && TTS.ok()) { setState('speaking'); TTS.speak(spoken, () => { if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
-    else { setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
+    if (speakOn && spoken && TTS.ok()) { setState('speaking'); capPace(); TTS.speak(spoken, () => { capFlush(); if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
+    else { capFlush(); setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
   }
   /* Settings > Speak replies: read every new chat answer aloud (voice mode speaks on its own) */
   Bus.on('reply', ({ msg }) => {
