@@ -41,7 +41,8 @@ def _today() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
 
 
-def _fresh(learned: dict | None = None, old: dict | None = None) -> dict:
+HIST_DAYS = 14  # usage screen: daily totals per provider survive the day roll this long
+def _fresh(learned: dict | None = None, old: dict | None = None, hist: list | None = None) -> dict:
     # out:  quota key -> unix time a DAILY 429 said it is empty until (that model on that key).
     # gone: "provider:model" -> {"until", "why"}: the model does not exist / was retired (404), on every key.
     # Both are kept on disk (an app restart does not spend a request just to hear the same error again) and survive
@@ -52,7 +53,31 @@ def _fresh(learned: dict | None = None, old: dict | None = None) -> dict:
     out = {k: v for k, v in (old.get("out") or {}).items() if isinstance(v, (int, float)) and v > now}
     gone = {k: v for k, v in (old.get("gone") or {}).items()
             if isinstance(v, dict) and isinstance(v.get("until"), (int, float)) and v["until"] > now}
-    return {"day": _today(), "req": {}, "tok": {}, "out": out, "gone": gone, "learned": dict(learned or {})}
+    return {"day": _today(), "req": {}, "tok": {}, "out": out, "gone": gone, "learned": dict(learned or {}),
+            "feat": {}, "truth": {}, "hist": list(hist or [])[-HIST_DAYS:]}
+def _provider_of(qkey: str) -> str:
+    return qkey.split(":", 1)[0].split("#", 1)[0]
+
+
+def _day_summary(data: dict) -> dict:
+    """One finished day for the history: totals per provider + per feature + fact-check counts."""
+    req: dict[str, int] = {}
+    tok: dict[str, int] = {}
+    for k, v in (data.get("req") or {}).items():
+        p = _provider_of(k)
+        req[p] = req.get(p, 0) + int(v or 0)
+    for k, v in (data.get("tok") or {}).items():
+        p = _provider_of(k)
+        tok[p] = tok.get(p, 0) + int(v or 0)
+    return {"day": str(data.get("day") or ""), "req": req, "tok": tok,
+            "feat": dict(data.get("feat") or {}), "truth": dict(data.get("truth") or {})}
+
+
+def _rolled_hist(data: dict) -> list:
+    hist = [h for h in (data.get("hist") or []) if isinstance(h, dict)]
+    if data.get("day") and (data.get("req") or data.get("tok")):
+        hist.append(_day_summary(data))
+    return hist[-HIST_DAYS:]
 
 
 def _load() -> dict:
@@ -62,9 +87,12 @@ def _load() -> dict:
         if isinstance(data, dict):
             learned = data.get("learned") if isinstance(data.get("learned"), dict) else {}
             if data.get("day") != _today():
-                return _fresh(learned, data)
-            for k in ("req", "tok", "out", "gone"):
-                data.setdefault(k, {})
+                return _fresh(learned, data, _rolled_hist(data))
+            for k in ("req", "tok", "out", "gone", "feat", "truth"):
+                if not isinstance(data.get(k), dict):
+                    data[k] = {}
+            if not isinstance(data.get("hist"), list):
+                data["hist"] = []
             data["learned"] = learned
             return data
     except (OSError, ValueError):
@@ -83,8 +111,9 @@ def _roll() -> None:
         if _usage.get("day") != _today():
             learned = _usage.get("learned") or {}
             old = dict(_usage)
+            hist = _rolled_hist(_usage)
             _usage.clear()
-            _usage.update(_fresh(learned, old))
+            _usage.update(_fresh(learned, old, hist))
 
 
 def _save() -> None:
@@ -281,6 +310,32 @@ def note_request(spec: ModelSpec) -> None:
         _roll()
         key = quota_key(spec)
         _usage["req"][key] = _usage["req"].get(key, 0) + 1
+        feat = _usage.setdefault("feat", {})
+        f = feature(_stage.get())
+        feat[f] = feat.get(f, 0) + 1
+        _save()
+
+
+def feature(stage_name: str) -> str:
+    """Which app feature a model call belongs to (usage screen). Unknown stages count as council work."""
+    s = (stage_name or "").split(":", 1)[0]
+    named = {"standard": "standard", "briefing": "briefing", "checks": "checks", "factcheck": "factcheck",
+             "guard": "guard", "voice": "voice", "tts": "voice", "news": "news", "casual": "standard"}
+    if s in named:
+        return named[s]
+    return "council" if s else "other"
+
+
+def note_truth(res: dict) -> None:
+    """A finished fact-check (truth.py): today's counts for the usage screen."""
+    if not isinstance(res, dict):
+        return
+    with _usage_lock:
+        _roll()
+        t = _usage.setdefault("truth", {})
+        t["answers"] = t.get("answers", 0) + 1
+        for v in ("ok", "shak", "galat"):
+            t[v] = t.get(v, 0) + int(res.get(v) or 0)
         _save()
 
 
@@ -530,6 +585,198 @@ def snapshot() -> dict:
         "learned_daily_caps": dict(_usage.get("learned", {})),
         "cooling_down": cooling,
     }
+
+
+# ------------------------------------------------------------------ usage screen (change 1.4)
+PROVIDER_NAMES = {"groq": "Groq", "gemini": "Gemini", "openrouter": "OpenRouter", "nvidia": "NVIDIA", "cloudflare": "Cloudflare"}
+STANDARD_MODEL = "openai/gpt-oss-120b"  # Legacy fallback if no configured Standard Groq label resolves
+
+
+def _selected_standard_spec():
+    """Configured Standard primary, constrained to Groq; retain the legacy model as a safe fallback."""
+    labels = getattr(config, "STANDARD_CHAIN_LABELS", ()) or ()
+    for label in labels:
+        spec = config.REGISTRY.get(config.base_label(str(label)))
+        if spec and spec.provider == "groq":
+            return spec
+    return _spec_for("groq", STANDARD_MODEL)
+
+
+def _split_qkey(qkey: str) -> tuple[str, str, int]:
+    """'groq:openai/gpt-oss-120b#2' -> ('groq', 'openai/gpt-oss-120b', 2); 'openrouter#3' -> ('openrouter', '', 3)."""
+    base, slot = qkey, 1
+    head, sep, tail = qkey.rpartition("#")
+    if sep and tail.isdigit():
+        base, slot = head, int(tail)
+    prov, _, model = base.partition(":")
+    return prov, model, slot
+
+
+def _spec_for(prov: str, model: str):
+    for s in config.REGISTRY.values():
+        if s.provider == prov and (not model or s.model == model):
+            return s
+    return None
+
+
+def _minute(qkey: str, now: float) -> tuple[int, int]:
+    """Requests and tokens our own limiter booked for this quota key in the last 60 s (rate-limit view)."""
+    with _slots_lock:
+        ev = [e for e in _slots.get(qkey, []) if now - _WINDOW < e[0]]
+    return len(ev), sum(int(e[1]) for e in ev)
+
+
+def limits_text(prov: str) -> str:
+    stop = int(round(MARGIN * 100))
+    return {
+        "groq": (f"Har key alag account hai, sabki apni limit: har model {config.GROQ_RPD} req/din aur "
+                 f"{config.GROQ_TPD // 1000}K tokens/din; {config.GROQ_RPM} req/min (asli 30), "
+                 f"~{config.GROQ_TPM_DEFAULT // 1000}K tokens/min. {stop}% par app khud ruk kar agli key leta hai."),
+        "openrouter": (f"Free models ki ek hi din ki limit: {config.OPENROUTER_RPD} req/din per key (sab :free models milke), "
+                       f"{config.OPENROUTER_RPM} req/min."),
+        "gemini": (f"{config.GEMINI_RPM} req/min per model. Din ki limit Google batata nahi: pehle 429 se seekh kar "
+                   "yaad rakhi jaati hai."),
+        "nvidia": f"{config.NVIDIA_RPM} req/min. Din ki limit pehle 429 se seekhi jaati hai.",
+        "cloudflare": "Din ki limit account ke neurons par hai; 429 aaye to key 2, phir key 3.",
+    }.get(prov, "")
+
+
+def _model_row(prov: str, model: str, slot: int, qk: str, req: dict, tok: dict, out: dict, now: float) -> dict:
+    spec = _spec_for(prov, model)
+    pinned = config.keyed(spec, slot) if spec else None
+    rl = req_limit(pinned) if pinned else 0
+    tl = tok_limit(pinned) if pinned else 0
+    r, t = int(req.get(qk, 0)), int(tok.get(qk, 0))
+    out_s = max(0, int(out.get(qk, 0) - now))
+    frac = 1.0 if out_s else min(1.0, max(r / rl if rl else 0.0, t / tl if tl else 0.0))
+    m_req, m_tok = _minute(qk, now)
+    return {
+        "model": model or "sab :free models (shared)",
+        "label": config.base_label(spec.label) if spec and model else "",
+        "req": r, "tok": t, "req_limit": rl, "tok_limit": tl, "frac": round(frac, 3),
+        "out_s": out_s, "cool_s": max(0, int(_cool.get(pinned.label, 0) - now)) if pinned else 0,
+        "rpm": config.rpm_limit(pinned) if pinned else 0, "tpm": config.tpm_limit(pinned) if pinned else 0,
+        "min_req": m_req, "min_tok": m_tok,
+    }
+
+
+def _key_state(have: bool, cool_s: int, models: list[dict]) -> str:
+    if not have:
+        return "nokey"
+    if cool_s > 0:
+        return "cool"
+    capped_rows = [m for m in models if m["req_limit"] or m["tok_limit"] or m["out_s"]]
+    if capped_rows and all(m["out_s"] or m["frac"] >= MARGIN for m in capped_rows):
+        return "out"
+    if any(m["out_s"] or m["frac"] >= RESERVE_MARGIN for m in capped_rows):
+        return "low"
+    return "ok"
+
+
+def report() -> dict:
+    """Everything the API usage screen shows, from local counters only (no network, works with zero keys)."""
+    _roll()
+    now = time.time()
+    with _usage_lock:
+        req, tok = dict(_usage["req"]), dict(_usage["tok"])
+        out = dict(_usage.get("out") or {})
+        feat, truth = dict(_usage.get("feat") or {}), dict(_usage.get("truth") or {})
+        hist, day = list(_usage.get("hist") or []), _usage["day"]
+        today = _day_summary(_usage)
+    by_key: dict[tuple[str, int], dict[str, str]] = {}
+    for qk in set(req) | set(tok):
+        prov, model, slot = _split_qkey(qk)
+        if prov in PROVIDERS:
+            by_key.setdefault((prov, slot), {})[model] = qk
+    providers = []
+    order = [p for p in PROVIDER_NAMES if p in PROVIDERS] + [p for p in PROVIDERS if p not in PROVIDER_NAMES]
+    standard_spec = _selected_standard_spec()
+    for prov in order:
+        set_slots = PROVIDERS[prov].slots()
+        keys = []
+        for slot in range(1, config.KEY_SLOTS + 1):
+            have = slot in set_slots
+            models = dict(by_key.get((prov, slot), {}))
+            if prov == "groq" and have and standard_spec and standard_spec.model not in models:
+                models[standard_spec.model] = f"groq:{standard_spec.model}" + (f"#{slot}" if slot > 1 else "")
+            rows = sorted((_model_row(prov, m, slot, qk, req, tok, out, now) for m, qk in models.items()),
+                          key=lambda x: (-x["req"], x["model"]))
+            kid = prov if slot <= 1 else f"{prov}#{slot}"
+            cool_s = max(0, int(max(_key_cool.get(kid, 0), _prov_cool.get(prov, 0)) - now))
+            keys.append({"slot": slot, "set": have, "state": _key_state(have, cool_s, rows), "cool_s": cool_s,
+                         "req": sum(m["req"] for m in rows), "tok": sum(m["tok"] for m in rows), "models": rows})
+        providers.append({"id": prov, "name": PROVIDER_NAMES.get(prov, prov), "keys": keys,
+                          "set": len(set_slots), "limits": limits_text(prov),
+                          "req": sum(k["req"] for k in keys), "tok": sum(k["tok"] for k in keys)})
+    std = {"state": "nokey", "left": 0.0}
+    if PROVIDERS["groq"].slots() and standard_spec:
+        left = 1.0 - used_frac(standard_spec)
+        std = {"left": round(left, 3),
+               "state": "low" if left < config.QUOTA_LOW else "tight" if left < config.QUOTA_TIGHT else "ok"}
+    tomorrow = dt.datetime.now(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(days=1)
+    days = [{"day": h.get("day", ""), "req": sum((h.get("req") or {}).values()), "tok": sum((h.get("tok") or {}).values()),
+             "by": dict(h.get("req") or {})} for h in hist[-6:] if isinstance(h, dict)]
+    days.append({"day": day, "req": sum(today["req"].values()), "tok": sum(today["tok"].values()), "by": today["req"]})
+    return {
+        "day_utc": day,
+        "reset_in_s": max(0, int(tomorrow.timestamp() - now)),
+        "totals": {"req": sum(int(v) for v in req.values()), "tok": sum(int(v) for v in tok.values())},
+        "providers": providers,
+        "features": feat,
+        "days": days,
+        "truth": {k: int(truth.get(k, 0)) for k in ("answers", "ok", "shak", "galat")},
+        "standard": std,
+        "margin": MARGIN,
+        "reserve": RESERVE_MARGIN,
+    }
+
+
+def controller_reports() -> list[dict]:
+    """Prompt-free absolute per-day reports; historical rows expose aggregates, never invented model/key detail."""
+    current = report()
+    with _usage_lock:
+        history = [dict(row) for row in _usage.get("hist", []) if isinstance(row, dict)]
+    try:
+        current_day = dt.date.fromisoformat(str(current.get("day_utc") or ""))
+    except ValueError:
+        current_day = dt.datetime.now(dt.timezone.utc).date()
+    first_day = current_day - dt.timedelta(days=HIST_DAYS - 1)
+    history_by_day = {}
+    for row in history:
+        try:
+            hist_day = dt.date.fromisoformat(str(row.get("day") or ""))
+        except ValueError:
+            continue
+        if first_day <= hist_day < current_day:
+            history_by_day[hist_day] = row  # last stored copy wins if corrupted history repeats a date
+    reports = []
+    # The current day retains the precise provider/model/key-slot breakdown from health.report().
+    current = dict(current)
+    reports.append(current)
+    for hist_day in sorted(history_by_day, reverse=True)[:HIST_DAYS - 1]:
+        row = history_by_day[hist_day]
+        day = hist_day.isoformat()
+        req = {str(k): max(0, int(v or 0)) for k, v in (row.get("req") or {}).items() if str(k) in PROVIDERS}
+        tok = {str(k): max(0, int(v or 0)) for k, v in (row.get("tok") or {}).items() if str(k) in PROVIDERS}
+        providers = []
+        for provider in PROVIDER_NAMES:
+            if provider not in PROVIDERS:
+                continue
+            providers.append({"id": provider, "name": PROVIDER_NAMES[provider], "set": 0,
+                              "req": req.get(provider, 0), "tok": tok.get(provider, 0), "keys": []})
+        reports.append({
+            "day_utc": day,
+            "totals": {"req": sum(req.values()), "tok": sum(tok.values())},
+            "providers": providers,
+            "features": {str(k)[:60]: max(0, int(v or 0)) for k, v in (row.get("feat") or {}).items()},
+            "days": [{"day": day, "req": sum(req.values()), "tok": sum(tok.values()), "by": req}],
+            "truth": {k: max(0, int((row.get("truth") or {}).get(k, 0) or 0)) for k in ("answers", "ok", "shak", "galat")},
+            "standard": {"state": "unknown", "left": 0.0},
+            "margin": MARGIN,
+            "reserve": RESERVE_MARGIN,
+            "reset_in_s": 0,
+        })
+    return reports[:HIST_DAYS + 1]
 
 
 def reset(clear_usage: bool = False) -> None:

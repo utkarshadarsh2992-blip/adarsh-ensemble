@@ -1,0 +1,8 @@
+import type {FetchLike,NewsItem,Store,Settings,AlertLog} from './types.ts';
+import {localDay} from './budget.ts';
+export const htmlEscape=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+export function splitTelegram(s:string,max=3800):string[]{const out:string[]=[];let rest=s;while(rest.length>max){let at=rest.lastIndexOf('\n',max);if(at<100)at=rest.lastIndexOf(' ',max);if(at<100)at=max;out.push(rest.slice(0,at));rest=rest.slice(at).trimStart()}if(rest)out.push(rest);return out.slice(0,6)}
+export async function telegram(fetcher:FetchLike,token:string,chat:string,text:string,now=Date.now()):Promise<{ok:boolean;error?:string}>{if(!token||!chat)return {ok:false,error:'Telegram configured nahi hai'};const chunks=splitTelegram(text);for(let i=0;i<chunks.length;i++){if(i)await new Promise(r=>setTimeout(r,1100));const r=await fetcher(`https://api.telegram.org/bot${token}/sendMessage`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chat,text:chunks[i],parse_mode:'HTML'})});if(!r.ok)return {ok:false,error:`Telegram HTTP ${r.status}`}}return {ok:true}}
+export function alertThreshold(settings:Settings,alertsToday:number):number{return settings.alert_min_score+(alertsToday>=3?1:0)}
+export function canAlert(item:NewsItem,settings:Settings,alertsToday:number):boolean{return item.score!==null&&item.score>=alertThreshold(settings,alertsToday)&&item.verified==='confirmed'&&!item.state_media}
+export async function logDelivery(store:Store,newsId:string|null,channel:'telegram'|'fcm',kind:AlertLog['kind'],ok:boolean,error:string,day:string){await store.addAlert({news_id:newsId,channel,kind,ok,error,sent_at:new Date().toISOString(),day_local:day})}

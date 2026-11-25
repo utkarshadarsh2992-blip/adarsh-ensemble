@@ -128,6 +128,8 @@ if (sha256File(sherpaAar) != sherpaSha256) {
 }
 
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation(files(sherpaAar))
     implementation("io.grpc:grpc-okhttp:1.67.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")   // Adarsh Live WebSocket

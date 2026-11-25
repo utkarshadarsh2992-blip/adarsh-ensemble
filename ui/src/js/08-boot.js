@@ -21,5 +21,7 @@
   try { if (window.claude && claude.use) claude.use('dictation').then(d => { STT.dict = d || STT.dict || null; }).catch(() => {}); } catch (e) {}
   if (S.lock) Lock.lockNow();
   MobileUpdates.init();
+  try { Briefing.init(); } catch (e) { console.warn('briefing init', e); }   /* change 1.3 */
+  try { News.init(); } catch (e) { console.warn('news init', e); }   /* change 1.5 */
   BackgroundVoice.init();
 })();

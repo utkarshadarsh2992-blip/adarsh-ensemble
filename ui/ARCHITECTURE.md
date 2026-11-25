@@ -125,6 +125,44 @@ Tests: `pnpm install --frozen-lockfile && pnpm test` from `ui/` (pinned dev-only
 ## Reply field: `council` (optional)
 Backend may add `council` to the first text reply (see `council.py` for the shape). The UI then shows a "Thought for Ns" block instead of "Worked through N steps"; tapping it opens the full page (`js/03-council.js`). Live progress lines (`onProgress`) are stored as `thinkLines`. Only the newest 10 replies keep their `council`; it is left out of exports.
 
+## Learning seam (change 1.2: check questions, learned words, Standard 2.9 / 9.2)
+
+Request fields:
+* `learn: { known: ["word", …], checks: true|false }` on every typed request (`Learn.request()` in `js/03-learn.js`). `known` is the newest 150 learned words (max 1500 characters) so the AI never explains them again. `checks: false` means no check questions.
+* `reply.std: "2.9" | "9.2"` is the Standard style. `meta.deeper: true` (sent by the "Gehrai mein jao · 9.2" button) forces 9.2 for that one question and always goes to Standard.
+
+Reply fields (optional, on `text` replies):
+* `learn: { concept, heavy, checks: [mcq {q, options[], answer: index, why} | fill {q, answer, accept[], why}], words: [{w, m}] }`. The model writes it in a hidden block between `<<<ADARSH_CHECK` and `ADARSH_CHECK>>>`; `learning.split_checks()` strips the block and `learning.clean_checks()` forces this strict shape (max 5 questions, max 10 words, known words removed). Council modes get the block from one extra small `gpt-oss-20b` call (`learning.post_checks`, switch `CHECKS_POSTPASS=0` to turn it off).
+* `std: "2.9" | "9.2"` and, for 2.9 only, `deeper: { q }` (the question to ask again in 9.2; the UI marks it `used` after the tap).
+
+The UI checks answers on the phone (0 tokens): MCQ by index, fill-in by normalised text (Devanagari marks kept, numbers within 1 %, short contained phrases). Each answer is stored in `S.learnLog` (`{ts, concept, q, ok, mode}`), and reply words go into `S.vocab` (`{id, w, m, src, ts}`) as soon as the reply arrives. Both are exported and capped on import (vocab 5000, learnLog 3000). Settings > "Seekhna (learning)" has Standard style, Check questions and Seekhe shabd. Changing the style emits `std:changed`, not `mode:changed`, so background voice keeps running; background voice does not use `std`.
+
+
+## Mission and night briefing seam (change 1.3)
+
+**State (phone only).** `S.mission` (one line, max 400), `S.goals` (`{id, title, why, deadline 'YYYY-MM-DD'|'', status active|paused|done, milestones:[{id, t, done}]}`, max 30), `S.projects` (builder cycle: `{id, name, goalId, why, status, concepts[], versions:[{id, v, aim, built, learned, next, started, done}]}`, max 40), `S.briefings` (`{date, chatId, ts, saved}`, max 60). Days left and progress are computed on the phone (`Mission.daysLeft`, `Mission.progress`). "Upgrade" closes the current version and starts v+1 whose aim is the old "next". Drawer > Mission & goals (`js/04-mission.js`); the Today screen shows a small mission card. Export carries all four; import types and caps them (goals 200, projects 200, briefings 200 in the file; 30 / 40 / 60 kept).
+
+**Request.** `briefing` on the request body (`Briefing.request()` in `js/04-briefing.js`):
+* night call (`meta.briefing: true`, always mode `standard`): `{date, tomorrow, weekday, tomorrowDay, now, mission, goals[], projects[], today: {questions, concepts[], words[], right, total, weak[{concept, q}], done[], open[{title, due}], work[{title, minutes}]}, fixed[{title, time}], news[]}`. Before 4 am the day is still the previous day. `briefing.clean_context()` bounds every field again.
+* follow-up in the briefing chat: `{followup: true, goals[], projects[]}`; `chat_adapter` adds it as permitted app records, so Wikipedia and web search stay off for it. Follow-ups and Retry in that chat stay in Standard.
+
+**Reply.** One Groq call (`briefing.reply`, no tools, no web). The model writes a hidden `<<<ADARSH_PLAN {"focus", "plan":[{title, time, minutes, goal, project}]} ADARSH_PLAN>>>` block (max 8 items); the reply carries `briefing: {date, for, focus, plan[]}` and, when today had wrong check answers and checks are on, a normal `learn` block for revision. The UI draws a "KAL KA PLAN" card; the picked items become tasks through `Productivity.manual('task.add')` (a time is set only when it is still in the future, so the task alert rings then).
+
+**Android.** `Briefing.kt`: one daily alarm (exact when Android allows it, else inexact) that only posts a notification on channel `adarsh_briefing` and re-arms; boot, time / time-zone change and app update re-arm it. No engine, network or model call happens in the alarm. Bridge: `briefingSet({on, time, ask})`, `briefingStatus()`, `takeOpen()`; a notification tap calls `window.__adarshOpen('briefing')`, which waits for the lock screen. In a browser the page shows a banner once per night while it is open.
+
+**Privacy.** The night summary goes to Groq only after a one-time consent sheet (`S.settings.briefingConsent`, can be withdrawn in Settings > Mission & briefing). No chat text is sent in it; the Android path needs a Groq key and never falls back to other providers.
+
+## Usage and fact-check seam (change 1.4)
+
+**Usage screen (`js/04-usage.js`, drawer > API usage, also Settings > Privacy).** The request is `{usage: true}`; `chat_adapter.local_response` answers it before the key check, so it works with zero keys and costs no model call. Reply: `{type:'usage', usage: health.report()}`: per provider, per key slot (1-3), per model: `req, tok, limits, frac, out_s, cool_s, rpm, tpm, min_req, min_tok`; plus `totals`, `features` (request counts per stage: chat, standard, briefing, factcheck, ...), `days` (14-day history), `truth` counts and `reset_in_s`. All numbers are local counters kept in the usage JSON; the app day is UTC (00:00 UTC = 5:30 AM IST) and the provider's real reset can differ, which the screen says. The Standard model row is always shown for every Groq key. Keys are never sent to the page, only slot numbers and states (ok / limit khatam / cooldown).
+
+**Hallucination controls.** Request body `truth: {level: strict|balanced|creative, check: off|auto|always}` (`Usage.request()`; defaults balanced + auto in the UI, balanced + off when the field is missing). `truth.rules(level, web)` adds a HALLUCINATION CONTROL block to the system prompt (evidence vs assumption vs guess, "pata nahi" is allowed, no invented numbers or names or links) and `truth.temperature` is 0.2 / 0.5 / 0.8. Council modes receive the same rules through `learner_note`.
+
+**Fact-check.** After the answer (and after check questions are split off), `truth.check()` makes ONE small gpt-oss-20b call on Groq under stage `factcheck`: it gets the question, the answer and the evidence snippets that Standard already fetched (`standard_agent.answer()` returns `evidence[{title,url,text}]`, 6 items, 900 characters each). It returns claims `{c, v: ok|shak|galat, why, fix}` (the card shows PAKKA / SHAK / GALAT); `rep.truth = {checked, ok, shak, galat, claims, basis: sources|model}`. `basis: model` means no source was attached, so the card says it is the model's own second opinion. It is skipped for voice, for answers built from private records (research off), and in `auto` when Groq quota left is below 20%. The UI draws a collapsible FACT-CHECK card (open when something is shak or galat). Standard stays Groq-only; no other provider is called.
+
+**Quota hint.** When Groq has less than 30% left the reply carries `quota: {provider:'groq', left}`; the UI shows at most one toast per day (`S.settings.quotaWarnDay`).
+
+**Privacy.** Counters stay on the phone. The fact-check sends only the answer, the question and public evidence snippets to Groq, never goals, tasks, memory or keys. Settings (including truth level) are part of the export only; import restores lists, not settings.
 
 ## Android update and outside-app voice seam
 
@@ -133,3 +171,14 @@ Backend may add `council` to the first text reply (see `council.py` for the shap
 `BackgroundVoice` uses native backgroundVoiceStart/Stop/Status/Peek/Ack plus `window.__adarshBackgroundVoice(object)`. It starts only from a visible app and snapshots selected mode, Auto source, bounded current history and existing access/voice/reply settings. It never changes Manual/Hybrid to Auto. Settings/mode/source/PIN-lock/chat/dictation transitions stop active and permission-pending sessions. Permissions resume only after Activity RESUMED; cancellation uses Activity generation and native launch epoch. Reply events trigger inbox sync, never overwrite active status. The microphone/media foreground service owns recognition, Engine requests and existing speech fallbacks without requiring Activity/WebView execution. Stored personal records/old-chat model context is omitted in background; permitted native local commands remain available. The ongoing notification exposes Stop; there is no sticky/boot restart.
 
 Native inbox entries contain `{id,chatId,text,reply,mode,ts,localOnly,personalContext}`. Peek does not consume; `Chat.importBackground` deduplicates IDs and imports display-only results. `saveNow()` must succeed before Ack removes native inbox entries. No Actions.execute happens on import, callback, reload or resume. Local-only turns stay out of automatic history; online permission flags still govern context. Browser/demo/HTTP transports do not implement background Android capture. Real-phone mic/notification/audio tests remain separate from CI compilation.
+
+## News seam (change 1.5)
+
+News runs in the user's own Supabase project (pg_cron + edge functions: ingest, score, digest, clean, `news-api`). The phone polls nothing in the background.
+
+- `js/04-news.js` (`News`) only talks to `news-api` (one allow-listed action set). On Android it goes through `AdarshNative.newsCall(id, json)` and the callback `window.__adarshNews(id, result)`; the APP_SECRET is write-only (`newsSet`) in native encrypted storage, the page only sees `newsStatus()` = `{configured, url}`. In a browser or test it uses `fetch` with `x-app-secret` and `localStorage['adarsh.news.cfg']`, which is not part of the app state, so it is never exported.
+- News text is public internet data: rendered as text only, links pass `safeExternalUrl`, and the "Debate with AI" prompt marks it as data (not instructions). State-media items carry `SARKARI DAAVA`.
+- Push: FCM data-only messages, Firebase initialised manually from Settings values (no google-services plugin). A tap calls `window.__adarshOpen('news' | 'news:<id>' | 'news:budget')`; cold start uses `takeOpen()`.
+- Briefing: `News.prefetchTop` then `Briefing.context().news` (<= 5 lines, <= 240 chars); `Briefing.start` stays synchronous when news is not configured. The finished briefing may be copied to Telegram once a day (`telegram_copy`, switch in Settings). Digest time follows the briefing time (`News.syncTime`).
+- Budget: Groq/Tavily caps and alert limits are server settings (`budget`, `settings_set`); 80% and 100% notices come from the server.
+- Setup steps: `docs/NEWS_SETUP.md`. Tests: `ui/tests/news.test.cjs`, `tests/test_news_backend.py`, `supabase/tests/news.test.ts`.

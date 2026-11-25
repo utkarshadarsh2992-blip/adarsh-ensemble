@@ -13,6 +13,11 @@
 const Modes = (() => {
   const MODES = [
     { id: 'standard', how: 'Instant: ONE fast model answers straight away. No council, no falsifiers. Use a mode below for deep checking', name: 'Standard', ic: 'sparkle', desc: 'Everyday questions, writing and quick help.',
+      /* change 1.2: two Standard styles, both one concept per answer (learning.py on the backend) */
+      variants: [
+        { std: '2.9', name: 'Standard 2.9', desc: 'Pehle chhota jawab, phir "Gehrai mein jao"', how: '1 concept · short core + imagine-this · check question · Groq only' },
+        { std: '9.2', name: 'Standard 9.2', desc: 'Seedha poora gehra jawab, discoverer ke tareeke se', how: '1 concept · problem → trigger → mechanism → limits · check questions · Groq only' }
+      ],
       placeholder: 'Message Adarsh', hello: 'What are we working on?',
       starters: [
         { ic: 'sun', t: 'Brief me on today', p: 'Brief me on today', send: true },
@@ -62,6 +67,8 @@ const Modes = (() => {
 
   const get = (id) => MODES.find(m => m.id === id) || MODES[0];
   const current = () => get(S.settings.mode);
+  const variant = (m = current()) => (m.variants ? m.variants.find(v => v.std === (S.settings.stdStyle || '2.9')) || m.variants[0] : null);
+  const label = (m = current()) => { const v = variant(m); return v ? v.name : m.name; };
   function set(id) {
     const m = get(id); if (S.settings.mode === m.id) return;
     S.settings.mode = m.id; save(); vibe(); Bus.emit('mode:changed', m);
@@ -89,13 +96,20 @@ const Modes = (() => {
     anchorBtn = btn;
     const phone = $('#phone'), box = btn.closest('.box') || btn;
     const bottom = Math.max(8, Math.round(phone.getBoundingClientRect().bottom - box.getBoundingClientRect().top + 8));
-    const now = current().id;
+    const now = current().id, nowStd = S.settings.stdStyle || '2.9';
+    const item = (m, v) => {
+      const on = m.id === now && (!v || v.std === nowStd);
+      return h('button', { class: 'pop-item', role: 'menuitemradio', 'aria-checked': String(on), on: { click: () => {
+        if (v && S.settings.stdStyle !== v.std) { S.settings.stdStyle = v.std; save(); vibe(); Bus.emit('std:changed', v.std); }   /* style only: background voice keeps running */
+        set(m.id); close();
+      } } },
+        h('span', { class: 'pi-ic' }, v ? h('span', { class: 'pi-v' }, v.std) : icon(m.ic)),
+        h('span', { class: 'pi-t' }, h('b', {}, v ? v.name : m.name), h('small', {}, v ? v.desc : m.desc), (v ? v.how : m.how) ? h('small', { class: 'pi-how' }, v ? v.how : m.how) : null),
+        h('span', { class: 'pi-ck' }, on ? icon('check', 's') : null));
+    };
     const menu = h('div', { class: 'pop', role: 'menu', 'aria-label': 'Choose a mode', style: 'bottom:' + bottom + 'px' },
       h('div', { class: 'pop-h' }, 'Mode'),
-      MODES.map(m => h('button', { class: 'pop-item', role: 'menuitemradio', 'aria-checked': String(m.id === now), on: { click: () => { set(m.id); close(); } } },
-        h('span', { class: 'pi-ic' }, icon(m.ic)),
-        h('span', { class: 'pi-t' }, h('b', {}, m.name), h('small', {}, m.desc), m.how ? h('small', { class: 'pi-how' }, m.how) : null),
-        h('span', { class: 'pi-ck' }, m.id === now ? icon('check', 's') : null))));
+      MODES.flatMap(m => (m.variants ? m.variants.map(v => item(m, v)) : [item(m, null)])));
     layer = h('div', { class: 'pop-scrim', on: { click: (e) => { if (e.target === layer) close(); } } }, menu);
     phone.appendChild(layer);
     btn.setAttribute('aria-expanded', 'true');
@@ -103,5 +117,5 @@ const Modes = (() => {
     const first = $('.pop-item[aria-checked="true"]', menu) || $('.pop-item', menu); if (first) first.focus({ preventScroll: true });
   }
 
-  return { list: () => MODES, get, current, set, open, close, isOpen: () => !!layer };
+  return { list: () => MODES, get, current, variant, label, set, open, close, isOpen: () => !!layer };
 })();

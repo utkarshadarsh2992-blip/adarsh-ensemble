@@ -55,10 +55,21 @@
     pending[id] = { res: (v) => { clearTimeout(t); done.res(v); }, rej: (e) => { clearTimeout(t); done.rej(e); } };
     try { (N.sendQuiet || N.send).call(N, id, JSON.stringify(req)); } catch (e) { clearTimeout(t); delete pending[id]; rej(e); }
   });
+  const nativeJob = (method, ...args) => new Promise((res, rej) => {
+    const id = 'c' + (++seq) + '_' + Date.now();
+    const t = setTimeout(() => { if (pending[id]) { delete pending[id]; rej(new Error('Controller request timeout')); } }, 20000);
+    pending[id] = { res: v => { clearTimeout(t); res(v); }, rej: e => { clearTimeout(t); rej(e); } };
+    try { N[method](id, ...args); } catch (e) { clearTimeout(t); delete pending[id]; rej(new Error('Controller bridge unavailable')); }
+  });
   window.ADARSH_BACKEND = {
     native: true,
     /* {type:'audio', file} | {type:'error', error} */
     tts(req, ms) { return quiet({ tts: req }, ms); },
+    /* API usage screen: local counters only, no model call, no foreground service */
+    usage() { return quiet({ usage: true }, 15000); },
+    controllerStatus() { try { return JSON.parse(N.controllerStatus()); } catch (e) { return { linked: false, revision: 0 }; } },
+    controllerPair(code) { return nativeJob('controllerPair', code); },
+    controllerSync() { return nativeJob('controllerSync'); },
     status() { try { return JSON.parse(N.status()); } catch (e) { return { ready: false }; } },
     send(req, o) {
       return new Promise((res, rej) => {

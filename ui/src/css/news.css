@@ -1,0 +1,40 @@
+/* news.css : cloud news dashboard (change 1.5). Uses the theme variables only. */
+.nw-strip{margin:0 0 10px}
+.nw-bud{display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card,transparent);color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+.nw-bud .sp{flex:1}
+.nw-bt{font:500 12px var(--mono);color:var(--fg2);font-variant-numeric:tabular-nums}
+.nw-chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;margin:0 -2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.nw-chips::-webkit-scrollbar{display:none}
+.nw-chip{flex:none;padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg2);font:500 12.5px var(--mono);letter-spacing:.02em;cursor:pointer;white-space:nowrap}
+.nw-chip.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent,#fff)}
+.nw-list{display:flex;flex-direction:column;gap:12px}
+.nw-card{padding:14px;display:flex;flex-direction:column;gap:8px}
+.nw-card.read .nw-title{color:var(--fg2);font-weight:500}
+.nw-card.brk{border-left:3px solid var(--bad)}
+.nw-top{display:flex;align-items:center;gap:8px;min-width:0}
+.nw-top .sp{flex:1}
+.nw-meta{font:500 10.5px var(--mono);letter-spacing:.07em;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.nw-score{font:500 11px var(--mono);color:var(--fg2);font-variant-numeric:tabular-nums;flex:none}
+.nw-title{margin:0;font-size:16px;line-height:1.35;font-weight:600;cursor:pointer;overflow-wrap:anywhere}
+.nw-pts{margin:0;padding-left:18px;color:var(--fg2);font-size:13.5px;line-height:1.5}
+.nw-pts li{margin:2px 0}
+.nw-pr{display:flex;flex-wrap:wrap;gap:6px}
+.nw-pr:empty{display:none}
+.nw-src{font:500 11.5px var(--mono);color:var(--muted)}
+.nw-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.nw-b{padding:8px 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:4px;text-decoration:none;min-height:36px}
+.nw-more-b{margin:12px auto 4px;display:block}
+.nw-empty,.nw-note{margin:6px 2px}
+.nw-note.bad,.nw-out.bad{color:var(--bad)}
+.nw-sh{font:500 11px var(--mono);letter-spacing:.08em;color:var(--accent);margin:4px 0 2px}
+.nw-sec{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.nw-out{margin:4px 0;line-height:1.5;overflow-wrap:anywhere}
+.nw-paste{min-height:64px;font:12px var(--mono);resize:vertical}
+.nw-why{margin:6px 0;line-height:1.5}
+.nw-s{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:7px 0;border-top:1px dashed var(--line);font-size:13.5px;overflow-wrap:anywhere}
+.nw-s small{color:var(--muted)}
+.nw-det{display:flex;flex-direction:column;gap:10px}
+.nw-bbox{display:flex;flex-direction:column;gap:12px}
+.nw-note2{line-height:1.5;font-size:12.5px}
+.nw-setup .k{margin-bottom:6px}
+.nw-bbox .card{padding:12px 14px}

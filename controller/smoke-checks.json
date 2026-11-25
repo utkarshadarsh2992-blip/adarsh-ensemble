@@ -1,0 +1,55 @@
+[
+  {
+    "endpoint": "controller-admin",
+    "action": "state",
+    "status": 401,
+    "body": {
+      "ok": false,
+      "error": {
+        "code": "unauthorized",
+        "message": "Authentication required."
+      }
+    },
+    "cache_control": "no-store, no-cache, must-revalidate, private"
+  },
+  {
+    "endpoint": "controller-device",
+    "action": "sync",
+    "status": 401,
+    "body": {
+      "ok": false,
+      "error": {
+        "code": "unauthorized",
+        "message": "Authentication required."
+      }
+    },
+    "cache_control": "no-store, no-cache, must-revalidate, private"
+  },
+  {
+    "endpoint": "controller-device",
+    "action": "pair",
+    "status": 401,
+    "body": {
+      "ok": false,
+      "error": {
+        "code": "unauthorized",
+        "message": "Authentication required."
+      }
+    },
+    "cache_control": "no-store, no-cache, must-revalidate, private"
+  },
+  {
+    "endpoint": "controller-admin",
+    "action": "OPTIONS",
+    "status": 204,
+    "cache_control": "no-store, no-cache, must-revalidate, private",
+    "cors": "https://example.invalid"
+  },
+  {
+    "endpoint": "controller-device",
+    "action": "OPTIONS",
+    "status": 204,
+    "cache_control": "no-store, no-cache, must-revalidate, private",
+    "cors": "https://example.invalid"
+  }
+]

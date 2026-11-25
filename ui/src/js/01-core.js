@@ -37,7 +37,9 @@ const IC = {
   trend: 'M4 19V5M4 19h16M8 15l4-4 3 3 5-6',
   code: 'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14',
   caret: 'M6 9l6 6 6-6',
-  arrowdown: 'M12 5v14M6 13l6 6 6-6'
+  arrowdown: 'M12 5v14M6 13l6 6 6-6',
+  moon: 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z',
+  bars: 'M5 20V11M12 20V4M19 20v-6'
 };
 function icon(n, cls = '') {
   const s = document.createElementNS(SVGNS, 'svg');
@@ -112,8 +114,8 @@ const Bus = (() => {
 /* ---------- state ---------- */
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
-  chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [], philosophy: '',
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, research: true, bootAnim: true, adarshLive: false, liveModel: 'auto' },
+  chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [], philosophy: '', vocab: [], learnLog: [], goals: [], projects: [], mission: '', briefings: [],
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, research: true, bootAnim: true, adarshLive: false, liveModel: 'auto', stdStyle: '2.9', checks: true, briefingOn: true, briefingTime: '21:30', truthLevel: 'balanced', factCheck: 'auto', newsBriefing: true },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();

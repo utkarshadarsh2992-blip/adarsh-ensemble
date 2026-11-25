@@ -1,0 +1,22 @@
+project_id = "your-supabase-project-ref"
+
+[functions.news-api]
+verify_jwt = false
+
+[functions.news-ingest]
+verify_jwt = false
+
+[functions.news-score]
+verify_jwt = false
+
+[functions.news-digest]
+verify_jwt = false
+
+[functions.news-clean]
+verify_jwt = false
+
+[functions.controller-admin]
+verify_jwt = false
+
+[functions.controller-device]
+verify_jwt = false

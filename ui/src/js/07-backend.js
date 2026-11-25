@@ -139,7 +139,7 @@ const HttpBackend = {
     const url = connUrl(); if (!url) throw new Error('Backend URL must use HTTPS (or localhost HTTP for development).');
     const headers = backendHeaders(url);
     o.onProgress('Contacting Adarsh');
-    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard', philosophy: req.philosophy || undefined }) });
+    const r = await fetch(url, { method: 'POST', headers, signal: o.signal, body: JSON.stringify({ chat_id: req.chatId, text: req.text, attachments: req.attachments, history: req.history, access: req.access, app_context: req.app_context, architecture: req.architecture, meta: req.meta || null, source: req.source || 'auto', answers: req.answers || [], learn: req.learn || null, briefing: req.briefing || null, truth: req.truth || null, usage: req.usage === true ? true : null, reply: req.reply || null, abilities: req.abilities, lang: req.lang, mode: req.mode || 'standard', philosophy: req.philosophy || undefined }) });
     if (r.status === 401 || r.status === 403) throw new Error('The backend rejected the token (HTTP ' + r.status + '). Check Settings > Connection.');
     if (!r.ok) throw new Error('Backend error: HTTP ' + r.status);
     const ct = r.headers.get('content-type') || ''; if (!ct.includes('json')) return { type: 'text', text: await r.text() };

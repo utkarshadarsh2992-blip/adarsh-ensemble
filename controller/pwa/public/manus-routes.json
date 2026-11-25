@@ -1,0 +1,10 @@
+{
+  "routes": [
+    { "path": "/", "title": "Overview" },
+    { "path": "/#models", "title": "Model registry" },
+    { "path": "/#routing", "title": "Routing" },
+    { "path": "/#quality", "title": "Quality safeguards" },
+    { "path": "/#usage", "title": "Usage" },
+    { "path": "/#devices", "title": "Devices and changes" }
+  ]
+}

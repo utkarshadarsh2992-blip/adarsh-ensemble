@@ -55,5 +55,6 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != "android.intent.action.QUICKBOOT_POWERON") return
         try { ActionRunner(ctx).rearmAll() } catch (e: Exception) { Log.e("AdarshAction", "Could not rearm native records", e) }
+        try { BriefingScheduler.arm(ctx) } catch (e: Exception) { Log.e("AdarshBriefing", "Could not rearm the night briefing", e) }
     }
 }

@@ -185,6 +185,7 @@ async def run(
     mode: str = "standard",  # UI chat mode (standard | v | physics | math | business | coding): roles engine only
     web_research: bool = True,  # no web queries from permitted private app/chat context
     topics: list[dict] | None = None,  # sub-topic map of a big message (bigtask.py); roles engine answers each
+    learner_note: str = "",  # learned words the app sent (learning.known_note): never defined again
 ) -> dict:
     t0 = time.perf_counter()
     trace = health.start_trace(record)
@@ -194,6 +195,8 @@ async def run(
     lang_full = (lang + " " + prompts.DEPTH_HINTS.get(depth, "")).strip()  # + depth (drafters, judge, synthesizer)
     if config.LEARNER_PROFILE:  # + who the reader is (how to teach him); never goes to falsifiers / auditor
         lang_full = f"{lang_full}\n{prompts.LEARNER_PROFILE}"
+        if learner_note:
+            lang_full = f"{lang_full}\n{learner_note[:1800]}"
     rounds = max(0, min(debate_rounds, config.MAX_DEBATE_ROUNDS))
     errors: dict[str, str] = {}
     warnings: list[str] = []

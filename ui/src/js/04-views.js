@@ -15,8 +15,8 @@ const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['library', 'brain', 'Memory'], ['philosophy', 'sparkle', 'Philosophy']];
-  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', alarms: 'Alarms & timers', notes: 'Notes', library: 'Memory', philosophy: 'Philosophy', settings: 'Settings' };
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['goals', 'target', 'Mission & goals'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['library', 'brain', 'Memory'], ['philosophy', 'sparkle', 'Philosophy'], ['news', 'globe', 'News']];
+  const TITLES = { today: 'Today', goals: 'Mission & goals', usage: 'API usage', news: 'News', tasks: 'Tasks', work: 'Work', alarms: 'Alarms & timers', notes: 'Notes', library: 'Memory', philosophy: 'Philosophy', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -112,6 +112,16 @@ const App = (() => {
   /* ================= Tasks ================= */
   ['tasks', 'work', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
   Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
+  /* ================= Mission, retained local usage history, and news views ================= */
+  BUILD.goals = (st, redraw) => Mission.view(st, redraw);
+  BUILD.usage = (st, redraw) => Usage.view(st, redraw);
+  BUILD.news = (st, redraw) => News.view(st, redraw);
+  Bus.on('mission:changed', () => {
+    if (view === 'today') build('today');
+    if (view !== 'goals') return;
+    const y = ($('#v-goals .scroll') || {}).scrollTop || 0;
+    build('goals'); const sc = $('#v-goals .scroll'); if (sc) sc.scrollTop = y;
+  });
 
   Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks'); });
 
@@ -162,6 +172,21 @@ const App = (() => {
       swItem('search', 'Research sources', '14 providers', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
+    st.append(label('Seekhna (learning)'), h('div', { class: 'grp' },
+      navItem('sparkle', 'Standard style', Learn.styleName() + ' · dono mein 1 jawab = 1 concept', () => Learn.styleSheet(redraw)),
+      swItem('ask', 'Check questions', 'Har jawab ke baad MCQ ya fill-in; phone par check hota hai, 0 token', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
+      navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd · dobara nahi samjhaye jaate', () => Learn.vocabSheet())));
+    st.append(label('Mission & briefing'), h('div', { class: 'grp' },
+      navItem('target', 'Mission & goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
+      swItem('moon', 'Raat ki briefing', 'Roz tay time par notification; kholne par aaj ka hisaab + kal ka plan (1 Groq call)', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
+      navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
+      navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Summary Groq ko jata hai: haan (badal sakte ho)' : 'Pehli briefing par poochega', () => Briefing.privacySheet(() => redraw()))));
+    st.append(label('News (cloud)'), h('div', { class: 'grp' },
+      navItem('globe', 'News dashboard', News.summary(), () => show('news')),
+      navItem('link', 'News setup', 'Server URL, Telegram, push (Firebase), digest time', () => News.setupSheet(redraw)),
+      swItem('moon', 'Briefing mein news', 'Raat ki briefing mein top 5 khabar (sarkari daava alag tag ke saath)', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
+      swItem('send', 'Briefing ki copy Telegram par', 'Poori raat ki briefing tumhare apne bot ko (tumhare Supabase se). Roz 1 baar', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
+      navItem('bars', 'News AI budget', 'Groq / Tavily kitna chala, caps, alerts per din', () => News.budgetSheet(redraw))));
     st.append(label('System'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts'), h('div', { class: 'grp' },
@@ -180,6 +205,8 @@ const App = (() => {
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
+      window.AdarshNative && window.ADARSH_BACKEND && window.ADARSH_BACKEND.controllerStatus
+        ? navItem('server', 'ADARSH Control Center', controllerSummary(), controllerSheet) : null,
       navItem('server', 'Connection', Backend.isNative() ? 'On-device' : Backend.isDemo() ? 'Demo' : (S.conn.url || 'Server'), connSheet)));
     st.append(label('Data'), h('div', { class: 'grp' },
       navItem('download', 'Export data', '', exportSheet),
@@ -205,6 +232,50 @@ const App = (() => {
       ];
       b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
       b.append(h('p', { class: 'muted' }, 'AI edit kar sakta hai · delete, keys aur PIN kabhi nahi.'));
+    } });
+  }
+  function controllerState() {
+    try { return window.ADARSH_BACKEND.controllerStatus(); } catch (e) { return { linked: false, revision: 0 }; }
+  }
+  function controllerSummary() {
+    const state = controllerState();
+    return state.linked ? 'Paired · revision ' + (state.revision || 0) : 'Pair this phone with the owner console';
+  }
+  function controllerSheet() {
+    const native = window.ADARSH_BACKEND;
+    sheet({ title: 'ADARSH Control Center', tall: true, build(b) {
+      const status = h('p', { class: 'muted', role: 'status' });
+      const code = h('input', { type: 'text', maxlength: '128', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+        placeholder: 'One-time pairing code', 'aria-label': 'One-time pairing code' });
+      const pairButton = h('button', { class: 'btn pri', style: 'flex:1', on: { click: async () => {
+        const value = code.value.trim();
+        if (!value) { status.textContent = 'PWA se one-time pairing code paste karo.'; code.focus(); return; }
+        code.value = ''; pairButton.disabled = true; status.textContent = 'Secure pairing chal rahi hai…';
+        try {
+          const result = await native.controllerPair(value);
+          status.textContent = result && result.ok
+            ? 'Phone pair hua · config revision ' + (result.revision || 0) + ' agle request se apply hoga.'
+            : (result && result.error) || 'Pairing nahi hui.';
+        } catch (e) { status.textContent = 'Pairing nahi hui. Code expiry check karke dobara try karo.'; }
+        finally { pairButton.disabled = false; }
+      } } }, 'Pair phone');
+      const syncButton = h('button', { class: 'btn ghost', style: 'flex:1', on: { click: async () => {
+        syncButton.disabled = true; status.textContent = 'Config aur prompt-free usage sync ho raha hai…';
+        try {
+          const result = await native.controllerSync();
+          status.textContent = result && result.ok
+            ? 'Sync hua · revision ' + (result.revision || 0) + ' · controls active requests ke baad apply honge.'
+            : (result && result.error) || 'Sync fail hua; last-known-good config chalti rahegi.';
+        } catch (e) { status.textContent = 'Sync fail hua; last-known-good config chalti rahegi.'; }
+        finally { syncButton.disabled = false; }
+      } } }, 'Sync now');
+      const state = controllerState();
+      status.textContent = state.linked
+        ? 'Paired · revision ' + (state.revision || 0) + (state.config_cached ? ' · cached config ready' : '')
+        : 'PWA ke Devices page se one-time code banao. Pairing token is phone par encrypted rahega; provider API keys alag storage mein hain.';
+      b.append(h('p', { class: 'muted' }, 'Controller model routes aur quality safeguards manage karta hai. Pairing code sirf is screen mein daalo; provider keys yahan nahi jaati. Config remote se validate hokar apply hogi, aur offline hone par last good/bundled plan chalega.'),
+        status, code, h('div', { class: 'frow' }, pairButton, syncButton),
+        h('p', { class: 'muted' }, 'Usage snapshots mein sirf model/provider/key-slot counters aur feature totals jaate hain—chat, prompt, provider key ya personal records nahi. Usage uploads are throttled and run off the UI thread.'));
     } });
   }
   function architectureSheet() {

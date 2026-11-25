@@ -1,0 +1,122 @@
+name: News backend checks and deploy
+
+on:
+  pull_request:
+    paths:
+      - "supabase/**"
+      - ".github/workflows/news-backend.yml"
+      - "docs/NEWS_SETUP.md"
+  push:
+    branches:
+      - main
+      - new
+      - "adarsh-*"
+    paths:
+      - "supabase/**"
+      - ".github/workflows/news-backend.yml"
+      - "docs/NEWS_SETUP.md"
+  workflow_dispatch:
+    inputs:
+      deploy_functions:
+        description: "Deploy the five News Edge Functions to the configured Supabase project"
+        type: boolean
+        required: true
+        default: true
+      apply_migrations:
+        description: "Apply pending SQL migrations. Leave off if the migration was already run manually in the Dashboard."
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: news-backend-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Type-check and test News backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: "2.x"
+          cache: true
+
+      - name: Type-check all Edge Function entry points
+        run: |
+          set -euo pipefail
+          for entry in supabase/functions/*/index.ts; do
+            echo "Checking $entry"
+            deno check "$entry"
+          done
+
+      - name: Run Supabase backend tests
+        run: deno test -A supabase/tests
+
+      - name: Check migration and seed files are present
+        run: |
+          set -euo pipefail
+          for sql in supabase/migrations/*.sql supabase/seed.sql; do
+            test -s "$sql"
+            echo "Found $sql"
+          done
+
+  deploy:
+    name: Manually deploy News backend to Supabase
+    needs: checks
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.deploy_functions || inputs.apply_migrations) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    concurrency:
+      group: supabase-news-production-deploy
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3
+        with:
+          version: "^3"
+
+      - name: Validate deployment credentials
+        env:
+          APPLY_MIGRATIONS: ${{ inputs.apply_migrations }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_ACCESS_TOKEN" || { echo "::error::Add the SUPABASE_ACCESS_TOKEN Actions secret."; exit 1; }
+          test -n "$SUPABASE_PROJECT_REF" || { echo "::error::Add the SUPABASE_PROJECT_REF Actions variable."; exit 1; }
+          if [[ "$APPLY_MIGRATIONS" == "true" && -z "$SUPABASE_DB_PASSWORD" ]]; then
+            echo "::error::Add the SUPABASE_DB_PASSWORD Actions secret before applying migrations."
+            exit 1
+          fi
+
+      - name: Show remote migration history
+        if: ${{ inputs.apply_migrations }}
+        run: supabase migration list --remote="$SUPABASE_PROJECT_REF"
+
+      - name: Apply pending database migrations
+        if: ${{ inputs.apply_migrations }}
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push --yes --remote="$SUPABASE_PROJECT_REF"
+
+      - name: Deploy Edge Functions
+        if: ${{ inputs.deploy_functions }}
+        run: supabase functions deploy --yes --remote="$SUPABASE_PROJECT_REF"

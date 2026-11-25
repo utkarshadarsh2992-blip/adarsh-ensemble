@@ -1,0 +1,581 @@
+{
+  "mode:standard:architect": [
+    "gemini-3.1-flash-lite",
+    "gpt-oss-20b",
+    "nemotron-lightning",
+    "gemini-3.5-flash-lite"
+  ],
+  "mode:standard:theorist": [
+    "gpt-oss-20b",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-120b",
+    "ling-3.2-flash"
+  ],
+  "mode:standard:empiricist": [
+    "gemma-4-26b-g",
+    "qwen3.8-27b",
+    "ling-3.2-flash",
+    "gemini-3.5-flash-lite"
+  ],
+  "mode:standard:specialist": [
+    "gemini-3.8-flash",
+    "gpt-oss-120b",
+    "nemotron-super-vl",
+    "gemma-4-31b-g",
+    "mistral-large-4"
+  ],
+  "mode:standard:pattern": [
+    "mistral-large-4",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-120b",
+    "nemotron-lightning"
+  ],
+  "mode:standard:skeptic": [
+    "gemini-3.1-flash-lite",
+    "gpt-oss-20b",
+    "nemotron-lightning"
+  ],
+  "mode:standard:debater": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:standard:judge": [
+    "gemini-3.8-flash",
+    "gpt-oss-120b",
+    "nemotron-ultra",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "mode:standard:method": [
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:standard:evidence": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning",
+    "mistral-large-4"
+  ],
+  "mode:standard:refiner": [
+    "gemini-3.5-flash-lite",
+    "gpt-oss-120b",
+    "nemotron-ultra",
+    "gemini-3.8-flash"
+  ],
+  "mode:standard:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "mode:standard:falsifier1": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:standard:falsifier2": [
+    "gemma-4-31b-g",
+    "qwen3.8-27b",
+    "ernie-5.5-flash"
+  ],
+  "mode:standard:falsifier3": [
+    "nemotron-ultra",
+    "gpt-oss-20b",
+    "gemini-3.1-flash-lite"
+  ],
+  "mode:verified:architect": [
+    "gemma-4-31b-g",
+    "gpt-oss-120b",
+    "nemotron-super-vl",
+    "gemini-3.1-flash-lite"
+  ],
+  "mode:verified:theorist": [
+    "gpt-oss-120b",
+    "gemma-4-31b-g",
+    "nemotron-ultra",
+    "qwen3.8-27b",
+    "cf-gpt-oss-120b"
+  ],
+  "mode:verified:empiricist": [
+    "qwen3.8-27b",
+    "gemma-4-26b-g",
+    "particle-1",
+    "gpt-oss-120b"
+  ],
+  "mode:verified:specialist": [
+    "nemotron-ultra",
+    "gemma-4-26b-g",
+    "gpt-oss-20b",
+    "glm-5-3-flash"
+  ],
+  "mode:verified:pattern": [
+    "mistral-large-4",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-20b",
+    "nemotron-super-vl"
+  ],
+  "mode:verified:skeptic": [
+    "gpt-oss-20b",
+    "gemini-3.1-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:verified:debater": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:verified:judge": [
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "mode:verified:method": [
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "nemotron-ultra",
+    "gpt-oss-120b"
+  ],
+  "mode:verified:evidence": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "mistral-large-4",
+    "nemotron-ultra"
+  ],
+  "mode:verified:refiner": [
+    "mistral-large-4",
+    "gemini-3.8-flash",
+    "gpt-oss-120b",
+    "nemotron-ultra"
+  ],
+  "mode:verified:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "mode:verified:falsifier1": [
+    "gemma-4-31b-g",
+    "gpt-oss-20b",
+    "ernie-5.5-flash"
+  ],
+  "mode:verified:falsifier2": [
+    "ernie-5.5-flash",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-120b"
+  ],
+  "mode:verified:falsifier3": [
+    "glm-5-3-flash",
+    "gemini-3.5-flash-lite",
+    "qwen3.8-27b",
+    "ling-3.2-flash"
+  ],
+  "mode:physics:architect": [
+    "gemma-4-31b-g",
+    "gpt-oss-20b",
+    "nemotron-super-vl",
+    "gemini-3.1-flash-lite"
+  ],
+  "mode:physics:theorist": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "qwen3.8-27b",
+    "cf-gpt-oss-120b"
+  ],
+  "mode:physics:empiricist": [
+    "gemini-3.8-flash",
+    "qwen3.8-27b",
+    "nemotron-super-vl",
+    "gemma-4-31b-g"
+  ],
+  "mode:physics:specialist": [
+    "nemotron-ultra",
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "glm-5-3-flash"
+  ],
+  "mode:physics:pattern": [
+    "mistral-large-4",
+    "gemma-4-31b-g",
+    "gpt-oss-20b",
+    "nemotron-ultra"
+  ],
+  "mode:physics:skeptic": [
+    "gpt-oss-20b",
+    "gemini-3.1-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:physics:debater": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:physics:judge": [
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "mode:physics:method": [
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "nemotron-ultra",
+    "gpt-oss-120b"
+  ],
+  "mode:physics:evidence": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "mistral-large-4",
+    "nemotron-lightning"
+  ],
+  "mode:physics:refiner": [
+    "gemini-3.8-flash",
+    "gpt-oss-120b",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:physics:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "mode:physics:falsifier1": [
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "nemotron-ultra"
+  ],
+  "mode:physics:falsifier2": [
+    "gemma-4-31b-g",
+    "gpt-oss-20b",
+    "ernie-5.5-flash"
+  ],
+  "mode:physics:falsifier3": [
+    "glm-5-3-flash",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-120b",
+    "ling-3.2-flash"
+  ],
+  "mode:math:architect": [
+    "gpt-oss-20b",
+    "gemini-3.1-flash-lite",
+    "nemotron-lightning",
+    "gemma-4-31b-g"
+  ],
+  "mode:math:theorist": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "qwen3.8-27b",
+    "cf-gpt-oss-120b"
+  ],
+  "mode:math:empiricist": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "glm-5-3-flash"
+  ],
+  "mode:math:specialist": [
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "glm-5-3-flash"
+  ],
+  "mode:math:pattern": [
+    "gemini-3.5-flash-lite",
+    "gpt-oss-20b",
+    "mistral-large-4",
+    "nemotron-super-vl"
+  ],
+  "mode:math:skeptic": [
+    "gemini-3.1-flash-lite",
+    "gpt-oss-20b",
+    "nemotron-lightning"
+  ],
+  "mode:math:debater": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:math:judge": [
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "mode:math:method": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b"
+  ],
+  "mode:math:evidence": [
+    "gpt-oss-20b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:math:refiner": ["gemini-3.8-flash", "gpt-oss-120b", "nemotron-ultra"],
+  "mode:math:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "mode:math:falsifier1": ["nemotron-ultra", "qwen3.8-27b", "gemini-3.8-flash"],
+  "mode:math:falsifier2": [
+    "gpt-oss-20b",
+    "gemini-3.5-flash-lite",
+    "ling-3.2-flash"
+  ],
+  "mode:math:falsifier3": [
+    "glm-5-3-flash",
+    "gemma-4-31b-g",
+    "gpt-oss-120b",
+    "nemotron-super-vl"
+  ],
+  "mode:business:architect": [
+    "gemini-3.1-flash-lite",
+    "gpt-oss-20b",
+    "ernie-5.5-flash"
+  ],
+  "mode:business:theorist": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:business:empiricist": [
+    "gemini-3.8-flash",
+    "gpt-oss-20b",
+    "ernie-5.5-flash",
+    "gemma-4-31b-g"
+  ],
+  "mode:business:specialist": [
+    "mistral-large-4",
+    "gemma-4-26b-g",
+    "gpt-oss-20b",
+    "ernie-5.5-flash",
+    "gemini-3.1-flash-lite"
+  ],
+  "mode:business:pattern": [
+    "nemotron-ultra",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-120b"
+  ],
+  "mode:business:skeptic": [
+    "gpt-oss-20b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:business:debater": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:business:judge": [
+    "gemini-3.8-flash",
+    "mistral-large-4",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "or-free-router"
+  ],
+  "mode:business:method": [
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "nemotron-ultra"
+  ],
+  "mode:business:evidence": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "mistral-large-4",
+    "nemotron-ultra"
+  ],
+  "mode:business:refiner": [
+    "gemini-3.8-flash",
+    "gpt-oss-120b",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:business:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "mode:business:falsifier1": [
+    "qwen3.8-27b",
+    "gemini-3.5-flash-lite",
+    "ernie-5.5-flash"
+  ],
+  "mode:business:falsifier2": [
+    "gemma-4-31b-g",
+    "gpt-oss-120b",
+    "ling-3.2-flash"
+  ],
+  "mode:business:falsifier3": [
+    "glm-5-3-flash",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-20b",
+    "nemotron-lightning"
+  ],
+  "mode:coding:architect": [
+    "gemma-4-31b-g",
+    "gpt-oss-20b",
+    "particle-1",
+    "gemini-3.1-flash-lite"
+  ],
+  "mode:coding:theorist": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "cf-gpt-oss-120b"
+  ],
+  "mode:coding:empiricist": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "laguna-xs-2.1"
+  ],
+  "mode:coding:specialist": [
+    "glm-5-3-flash",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-20b",
+    "laguna-xs-2.1"
+  ],
+  "mode:coding:pattern": [
+    "mistral-large-4",
+    "gemini-3.5-flash-lite",
+    "gpt-oss-20b",
+    "flint"
+  ],
+  "mode:coding:skeptic": ["gpt-oss-20b", "gemini-3.1-flash-lite", "flint"],
+  "mode:coding:debater": [
+    "gpt-oss-120b",
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "mistral-large-4"
+  ],
+  "mode:coding:judge": [
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "mode:coding:method": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b"
+  ],
+  "mode:coding:evidence": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:coding:refiner": ["gemini-3.8-flash", "qwen3.8-27b", "nemotron-ultra"],
+  "mode:coding:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "mode:coding:falsifier1": ["qwen3.8-27b", "gemma-4-31b-g", "particle-1"],
+  "mode:coding:falsifier2": [
+    "laguna-xs-2.1",
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "nemotron-lightning"
+  ],
+  "mode:coding:falsifier3": ["gemma-4-26b-g", "gpt-oss-20b", "flint"],
+  "utility:quick": [
+    "gpt-oss-120b",
+    "gemini-3.1-flash-lite",
+    "nemotron-lightning",
+    "gpt-oss-20b",
+    "gemini-3.8-flash"
+  ],
+  "utility:auditor": [
+    "gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "mistral-large-4",
+    "nemotron-ultra",
+    "qwen3.8-27b",
+    "gemini-3.8-flash"
+  ],
+  "utility:master_writer": [
+    "mistral-large-4",
+    "gemini-3.8-flash",
+    "gpt-oss-120b",
+    "nemotron-ultra",
+    "cf-gpt-oss-120b"
+  ],
+  "utility:master_auditor": [
+    "cf-gpt-oss-120b",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "mistral-large-4",
+    "gpt-oss-120b",
+    "nemotron-lightning"
+  ],
+  "utility:classifier": [
+    "safeguard-20b",
+    "gemini-3.1-flash-lite",
+    "lfm-3-1.7b",
+    "gpt-oss-20b"
+  ],
+  "utility:stripper": [
+    "gemini-3.1-flash-lite",
+    "nemotron-lightning",
+    "gpt-oss-20b",
+    "gemini-3.8-flash",
+    "ling-3.2-flash",
+    "gemini-3.5-flash-lite"
+  ],
+  "utility:verifier": [
+    "qwen3.8-27b",
+    "gemini-3.8-flash",
+    "particle-1",
+    "gpt-oss-120b",
+    "flint"
+  ],
+  "utility:judge": [
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "utility:synthesizer": [
+    "gemini-3.8-flash",
+    "nemotron-ultra",
+    "gpt-oss-120b",
+    "mistral-large-4",
+    "or-free-router"
+  ],
+  "utility:guard_llm": [
+    "gemini-3.1-flash-lite",
+    "nemotron-lightning",
+    "gpt-oss-20b"
+  ]
+}

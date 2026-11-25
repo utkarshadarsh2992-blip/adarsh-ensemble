@@ -135,9 +135,42 @@ class AdarshBridge(
     fun saveFile(name: String, text: String) { if (ok()) MainActivity.saveFile(name, text) }
     @JavascriptInterface
     fun setNotify(on: Boolean): String = if (ok()) MainActivity.setNotify(on) else denied
+    /** Night briefing (change 1.3): daily notification time; the model call happens only when sir opens it. */
+    @JavascriptInterface
+    fun briefingSet(json: String): String = if (ok()) MainActivity.briefingSet(json) else denied
+    @JavascriptInterface
+    fun briefingStatus(): String = if (ok()) MainActivity.briefingStatus() else denied
+    @JavascriptInterface
+    fun takeOpen(): String = if (ok()) MainActivity.takeOpen() else ""
+    @JavascriptInterface
+    fun newsSet(json: String): String = if (ok()) MainActivity.newsSet(json) else denied
+    @JavascriptInterface
+    fun fcmSet(json: String): String = if (ok()) MainActivity.fcmSet(json) else denied
+    @JavascriptInterface
+    fun fcmStatus(): String = if (ok()) MainActivity.fcmStatus() else denied
+    @JavascriptInterface
+    fun newsStatus(): String = if (ok()) MainActivity.newsStatus() else denied
+    @JavascriptInterface
+    fun newsCall(id: String, json: String) { if (ok()) MainActivity.newsCall(id, json) }
 
     @JavascriptInterface
     fun status(): String = if (ok()) Engine.status() else denied
+
+    /** Pair code is accepted only from the in-app linking field; the encrypted token never returns to JS. */
+    @JavascriptInterface
+    fun controllerPair(id: String, code: String) {
+        if (ok()) Engine.controllerPair(id, code) { result, error -> deliver(id, result, error) }
+        else deliver(id, null, "Untrusted page")
+    }
+
+    @JavascriptInterface
+    fun controllerSync(id: String) {
+        if (ok()) Engine.controllerSync(id) { result, error -> deliver(id, result, error) }
+        else deliver(id, null, "Untrusted page")
+    }
+
+    @JavascriptInterface
+    fun controllerStatus(): String = if (ok()) Engine.controllerStatus() else denied
 
     @JavascriptInterface
     fun lessons(opJson: String): String = if (ok()) Engine.lessons(opJson) else denied
