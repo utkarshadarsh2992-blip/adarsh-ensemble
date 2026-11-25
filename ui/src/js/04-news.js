@@ -230,18 +230,34 @@ const News = (() => {
     paint(); refresh(); loadBudget();
   }
   /* ---------- google-services.json ---------- */
-  function parseGoogleServices(text) {
-    let j; try { j = JSON.parse(String(text || '')); } catch (e) { return null; }
-    if (!j || typeof j !== 'object' || !j.project_info) return null;
-    const cl = Array.isArray(j.client) ? j.client : [];
+  function firebaseJsonSyntaxHint(error) {
+    const message = String(error && error.message || '');
+    const lineColumn = message.match(/\bline\s+(\d+)\s+column\s+(\d+)\b/i);
+    if (lineColumn) return `JSON syntax galat (line ${lineColumn[1]}, column ${lineColumn[2]}). Firebase Console se fresh google-services.json download karke paste karo; file edit mat karo.`;
+    const position = message.match(/\bposition\s+(\d+)\b/i);
+    if (position) return `JSON syntax galat (character ${position[1]}). Firebase Console se fresh google-services.json download karke paste karo; file edit mat karo.`;
+    return 'JSON syntax galat hai. Firebase Console se fresh google-services.json download karke paste karo; file edit mat karo.';
+  }
+  function inspectGoogleServices(text) {
+    let raw = String(text || '').replace(/^\uFEFF/, '').trim();
+    const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (fenced) raw = fenced[1].trim();
+    let j;
+    try { j = JSON.parse(raw); } catch (e) { return { config: null, error: firebaseJsonSyntaxHint(e) }; }
+    if (!j || typeof j !== 'object' || !j.project_info || !Array.isArray(j.client)) {
+      return { config: null, error: 'Yeh Firebase Android google-services.json nahi lagti. Service-account/private-key JSON mat paste karo; Firebase Console > Project settings > Android app (' + PKG + ') se file lo.' };
+    }
+    const cl = j.client;
     const pkgOf = (c) => str(c && c.client_info && c.client_info.android_client_info && c.client_info.android_client_info.package_name, 120);
     const c = cl.find(x => pkgOf(x) === PKG) || cl[0];
-    if (!c) return null;
+    if (!c) return { config: null, error: 'Firebase file mein Android client nahi mila. Sahi Android app ke google-services.json ko use karo.' };
     const key = c.api_key && c.api_key[0] && c.api_key[0].current_key;
     const out = { apiKey: str(key, 200), appId: str(c.client_info && c.client_info.mobilesdk_app_id, 200), projectId: str(j.project_info.project_id, 120), senderId: str(String(j.project_info.project_number || ''), 40), pkg: pkgOf(c) };
     out.pkgOk = out.pkg === PKG;
-    return out.apiKey && out.appId && out.projectId && out.senderId ? out : null;
+    if (!out.apiKey || !out.appId || !out.projectId || !out.senderId) return { config: null, error: 'Firebase file mein apiKey/appId/projectId/senderId nahi mile. Firebase Console se original google-services.json lo.' };
+    return { config: out, error: '' };
   }
+  function parseGoogleServices(text) { return inspectGoogleServices(text).config; }
   /* ---------- setup sheet ---------- */
   function field(label, hint, attrs) {
     const inp = h('input', Object.assign({ class: 'pv-input', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', 'aria-label': label }, attrs));
@@ -291,7 +307,9 @@ const News = (() => {
       const paste = h('textarea', { class: 'pv-input nw-paste', rows: '3', placeholder: 'google-services.json yahan paste karo (optional, neeche ke 4 box bhar deta hai)', 'aria-label': 'google-services.json' });
       const f = { apiKey: field('apiKey', '', {}), appId: field('appId', '1:123456:android:abc…', {}), projectId: field('projectId', '', {}), senderId: field('senderId', 'project number', {}) };
       paste.addEventListener('input', () => {
-        const p = parseGoogleServices(paste.value); if (!p) { fcmOut.textContent = paste.value.trim() ? 'Ye google-services.json jaisa nahi lag raha.' : ''; return; }
+        if (!paste.value.trim()) { fcmOut.textContent = ''; fcmOut.classList.remove('bad'); return; }
+        const result = inspectGoogleServices(paste.value), p = result.config;
+        if (!p) { fcmOut.classList.add('bad'); fcmOut.textContent = result.error; return; }
         ['apiKey', 'appId', 'projectId', 'senderId'].forEach(k => { f[k].inp.value = p[k]; });
         fcmOut.classList.toggle('bad', !p.pkgOk);
         fcmOut.textContent = p.pkgOk ? 'Bhar diya. Ab Save Firebase dabao.' : 'Dhyan: is file ka package ' + (p.pkg || '?') + ' hai, app ka ' + PKG + ' hona chahiye. Firebase mein sahi Android app banao.';
@@ -306,7 +324,7 @@ const News = (() => {
         fcmOut.classList.remove('bad'); fcmOut.textContent = 'Save hua. Token aane mein kuch second lagte hain…'; setTimeout(fcmState, 2500);
       } } }, 'Save Firebase');
       b.append(h('div', { class: 'pv-form nw-sec' }, h('div', { class: 'nw-sh' }, '3 · PUSH (FIREBASE)'),
-        n ? h('p', { class: 'muted' }, 'Firebase console > Project settings > Android app (' + PKG + ') > google-services.json. Wo file paste karo ya 4 value haath se bharo.') : h('p', { class: 'muted' }, 'Push sirf Android app mein chalta hai. Browser mein Telegram kaam karega.'),
+        n ? h('p', { class: 'muted' }, 'Firebase Console > Project settings > Android app (' + PKG + ') se google-services.json lo. Service-account/private-key JSON nahi. File paste karo ya 4 value haath se bharo.') : h('p', { class: 'muted' }, 'Push sirf Android app mein chalta hai. Browser mein Telegram kaam karega.'),
         n ? paste : null, n ? f.apiKey.el : null, n ? f.appId.el : null, n ? f.projectId.el : null, n ? f.senderId.el : null,
         n ? h('div', { class: 'frow' }, fcmSave, h('button', { class: 'btn ghost', on: { click: () => { fcmState(); run('fcm_test', fcmOut, 'Push bhej raha hoon'); } } }, 'Test push')) : null, fcmOut));
       if (n) fcmState();
@@ -402,5 +420,5 @@ const News = (() => {
   }
   function init() { setTimeout(() => { syncTime(false); }, 6000); }
   const summary = () => (configured() ? 'Cloud news chalu · ' + (wants() ? 'briefing mein aati hai' : 'briefing mein band') : 'Setup baaki hai');
-  return { view, setupSheet, budgetSheet, open, init, syncTime, prefetchTop, briefingLines, copyBriefing, parseGoogleServices, debatePrompt, call, status, configured, wants, summary, friendly, norm };
+  return { view, setupSheet, budgetSheet, open, init, syncTime, prefetchTop, briefingLines, copyBriefing, parseGoogleServices, inspectGoogleServices, debatePrompt, call, status, configured, wants, summary, friendly, norm };
 })();

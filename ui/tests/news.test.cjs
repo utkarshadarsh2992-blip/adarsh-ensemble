@@ -152,6 +152,34 @@ test('google-services.json autofill picks the right client and warns on wrong pa
   assert.equal(m.News.parseGoogleServices('not json'), null);
   m.close();
 });
+test('Firebase JSON paste accepts BOM/fenced copies and reports syntax location without echoing config', () => {
+  const m = mount();
+  const gs = JSON.stringify({ project_info: { project_number: '123456789', project_id: 'my-proj' }, client: [{ client_info: { mobilesdk_app_id: '1:123456789:android:def', android_client_info: { package_name: 'app.adarsh.ensemble' } }, api_key: [{ current_key: 'AIzaDUMMY' }] }] });
+  const pasted = m.News.parseGoogleServices('\uFEFF```json\n' + gs + '\n```');
+  assert.equal(pasted.projectId, 'my-proj');
+  const broken = '{\n  "project_info": {"project_number":"123","project_id":"p"},\n  "client": [{"api_key":[{"current_key":"AIza-DO-NOT-ECHO"}],}]\n}';
+  const bad = m.News.inspectGoogleServices(broken);
+  assert.equal(bad.config, null);
+  assert.match(bad.error, /JSON syntax galat \(line \d+, column \d+\)/);
+  assert.doesNotMatch(bad.error, /AIza|DO-NOT-ECHO/);
+  const wrongFile = m.News.inspectGoogleServices(JSON.stringify({ type: 'service_account', private_key: 'PRIVATE-DO-NOT-ECHO' }));
+  assert.match(wrongFile.error, /Service-account\/private-key JSON mat paste karo/);
+  assert.doesNotMatch(wrongFile.error, /PRIVATE-DO-NOT-ECHO/);
+  m.close();
+});
+test('News setup displays a safe Firebase JSON syntax hint instead of the pasted contents', () => {
+  const native = { newsStatus: () => JSON.stringify({ configured: true, url: URLN }), newsCall() {}, fcmStatus: () => '{"configured":false}' };
+  const m = mount({ native });
+  try {
+    m.News.setupSheet(() => {});
+    const paste = m.document.querySelector('.nw-paste');
+    paste.value = '{\n  "project_info":{"project_number":"123","project_id":"p"},\n  "client":[{"api_key":[{"current_key":"AIza-DO-NOT-SHOW"}],}]\n}';
+    paste.dispatchEvent(new m.window.Event('input'));
+    const out = paste.closest('.nw-sec').querySelector('.nw-out');
+    assert.match(text(out), /JSON syntax galat \(line \d+, column \d+\)/);
+    assert.doesNotMatch(text(out), /AIza|DO-NOT-SHOW/);
+  } finally { m.close(); }
+});
 test('Android: secret is write-only, calls go through newsCall and the callback', async () => {
   const log = [];
   const native = {
