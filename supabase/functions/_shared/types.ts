@@ -20,8 +20,8 @@ export interface NewsItem {
   sources:Source[]; why:string; alerted_at:string|null; state_media:boolean; claim_tag:string; scored_at:string|null; tokens:number;
 }
 export interface Watch { keyword:string; kind:'company'|'topic'|'query'; region:Region; tag_hint?:Tag|null; active:boolean; }
-export interface Settings { digest_time:string; tz:string; alerts_per_day:number; alert_min_score:number; list_min_score:number; groq_tokens_cap:number; groq_calls_cap:number; tavily_month_cap:number; require_verify:boolean; }
-export const DEFAULT_SETTINGS:Settings = { digest_time:'21:30', tz:'Asia/Kolkata', alerts_per_day:5, alert_min_score:8, list_min_score:5, groq_tokens_cap:150000, groq_calls_cap:400, tavily_month_cap:700, require_verify:true };
+export interface Settings { digest_time:string; tz:string; alerts_per_day:number; alert_min_score:number; list_min_score:number; groq_tokens_cap:number; groq_calls_cap:number; tavily_month_cap:number; tavily_day_cap:number; require_verify:boolean; }
+export const DEFAULT_SETTINGS:Settings = { digest_time:'21:30', tz:'Asia/Kolkata', alerts_per_day:5, alert_min_score:8, list_min_score:5, groq_tokens_cap:150000, groq_calls_cap:400, tavily_month_cap:700, tavily_day_cap:20, require_verify:true };
 export interface Usage { day:string; provider:string; model:string; stage:string; calls:number; tokens_in:number; tokens_out:number; }
 export interface AlertLog { id?:number; news_id?:string|null; channel:'telegram'|'fcm'; kind:'alert'|'digest'|'budget'|'test'|'copy'; ok:boolean; error:string; sent_at:string; day_local:string; }
 export interface Device { device_id:string; fcm_token:string; platform:'android'; app_version:string; updated_at:string; }

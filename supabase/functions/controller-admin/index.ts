@@ -3,6 +3,7 @@ import {
   ControllerFault, fault, isObject, jsonResponse, readJsonBody, safeFaultResponse,
   sanitizeReport, secureRandomBase64Url, sha256Hex, validateConfig, validateName, validateReason,
 } from '../_shared/controller.ts';
+import { newsSettingsSet, newsState } from '../_shared/newsadmin.ts';
 
 function corsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get('origin');
@@ -140,6 +141,14 @@ async function handleAction(request: Request): Promise<Response> {
     return await getState(service, body.cursor);
   }
 
+  if (body.action === 'news_state') {
+    exactKeys(body, ['action']);
+    return jsonResponse(await newsState(service), 200);
+  }
+  if (body.action === 'news_settings') {
+    exactKeys(body, ['action', 'settings']);
+    return jsonResponse(await newsSettingsSet(service, body.settings), 200);
+  }
   if (body.action === 'save') {
     exactKeys(body, ['action', 'expected_revision', 'config', 'reason']);
     const expected = requiredInt(body.expected_revision);
