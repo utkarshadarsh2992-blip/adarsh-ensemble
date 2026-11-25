@@ -2200,7 +2200,7 @@ const Lessons = (() => {
         if (!r || !r.ok) { wrap.append(h('p', { class: 'warn' }, (r && r.error) || 'Lessons nahi khule.')); return; }
         const items = r.lessons || [];
         if (onChange) onChange(items.length);
-        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Upar khud likh kar jodo, ya Manual master answer par 👎 daba kar "kya galat tha" likho. Jab checks galti pakdenge to yahan apne aap bhi judega.')); return; }
+        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi.')); return; }
         items.forEach(x => wrap.append(h('div', { class: 'ccard' },
           h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), h('span', { class: 'chips' },
             h('span', { class: 'pill ' + (x.origin === 'user' ? 'info' : 'mute') }, x.origin === 'user' ? 'tumhara' : 'auto'),
@@ -2380,7 +2380,7 @@ const Learn = (() => {
         return h('button', { class: 'opt' + (on ? ' on' : ''), role: 'radio', 'aria-checked': String(on), on: { click: () => {
           S.settings.stdStyle = v; save(); Bus.emit('std:changed', v); close(); toast(name + ' on'); if (onDone) onDone();
         } } }, h('span', { class: 'mk' }, on ? icon('check') : null), h('span', { class: 'ot' }, h('b', {}, name), h('small', {}, sub)));
-      })), h('p', { class: 'muted' }, 'Dono mein ek jawab = ek concept. Formula/derivation ke liye Physics ya Math mode khud chuno.'));
+      })));
     } });
   }
   function vocabSheet() {
@@ -2390,7 +2390,7 @@ const Learn = (() => {
       const m = h('input', { type: 'text', placeholder: 'Matlab (optional)', 'aria-label': 'Meaning', maxlength: '160' });
       const add = () => { if (!w.value.trim()) return; if (!addWord(w.value, m.value || 'manually added', 'manual')) return toast('Ye shabd pehle se hai'); save(); w.value = ''; m.value = ''; draw(); Bus.emit('vocab:changed'); };
       const st = stats(7), list = h('div', { class: 'grp lvocab' }), count = h('p', { class: 'muted' });
-      b.append(h('p', { class: 'muted' }, 'Jo shabd ek baar samjhaya gaya, wo seekha hua maana jata hai. Latest ' + SEND + ' shabd har sawaal ke saath AI ko jaate hain, taaki dobara na samjhaye. Galti se save hua ho to delete karo.'),
+      b.append(h('p', { class: 'muted' }, 'Seekhe hue shabd dobara nahi samjhaye jaate.'),
         st.total ? h('div', { class: 'lstat' }, h('b', {}, st.ok + '/' + st.total), ' check questions sahi (pichhle 7 din)') : null,
         q, count, list, h('label', { class: 'l' }, 'Khud jodo'), h('div', { class: 'frow' }, w, m), h('button', { class: 'btn pri', on: { click: add } }, 'Save word'));
       function draw() {
@@ -4187,7 +4187,7 @@ const Briefing = (() => {
       b.append(h('div', { class: 'bp-consent' },
         h('p', {}, 'Briefing ke liye ek chhota summary Groq (Standard mode ka AI) ko jayega:'),
         h('ul', {}, ['Mission, goals (deadline, progress) aur projects (built / learned / next)', 'Aaj ke concepts, naye shabd, check score aur galat sawaal', 'Aaj ke done / open tasks, work minutes, kal ke fixed time'].map(t => h('li', {}, t))),
-        h('p', { class: 'muted' }, 'Chats ka text nahi jata. Is par web search aur Wikipedia band rehte hain. Briefing chat ke follow-up bhi sirf Standard (Groq) mein chalte hain.')),
+        h('p', { class: 'muted' }, 'Chats ka text nahi jata.')),
         h('div', { class: 'frow' },
           h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { if (S.settings.briefingConsent) { S.settings.briefingConsent = false; save(); toast('Consent hata diya. Agli briefing par phir poochega.'); } close(); if (then) then(false); } } }, S.settings.briefingConsent ? 'Consent hatao' : 'Abhi nahi'),
           h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { S.settings.briefingConsent = true; save(); close(); if (then) then(true); } } }, S.settings.briefingConsent ? 'Theek hai' : 'Theek hai, chalao')));
@@ -4728,8 +4728,7 @@ const News = (() => {
     more.addEventListener('click', () => refresh(true));
     if (!configured()) {
       st.append(h('div', { class: 'card nw-setup' }, h('div', { class: 'k' }, 'NEWS SETUP'),
-        h('p', {}, 'News cloud mein (tumhare Supabase par) chalti hai, phone par kuch poll nahi hota. Pehle ek baar setup karo: server URL + APP_SECRET, phir Telegram aur push.'),
-        h('p', { class: 'muted' }, 'Steps: docs/NEWS_SETUP.md'),
+        h('p', {}, 'Server URL + APP_SECRET daalo, phir Telegram aur push.'),
         h('button', { class: 'btn pri', on: { click: () => setupSheet(redraw) } }, 'Setup karo')));
       return;
     }
@@ -4834,12 +4833,12 @@ const News = (() => {
         fcmOut.classList.remove('bad'); fcmOut.textContent = 'Save hua. Token aane mein kuch second lagte hain…'; setTimeout(fcmState, 2500);
       } } }, 'Save Firebase');
       b.append(h('div', { class: 'pv-form nw-sec' }, h('div', { class: 'nw-sh' }, '3 · PUSH (FIREBASE)'),
-        n ? h('p', { class: 'muted' }, 'Firebase Console > Project settings > Android app (' + PKG + ') se google-services.json lo. Service-account/private-key JSON nahi. File paste karo ya 4 value haath se bharo.') : h('p', { class: 'muted' }, 'Push sirf Android app mein chalta hai. Browser mein Telegram kaam karega.'),
+        n ? h('p', { class: 'muted' }, 'google-services.json paste karo (Firebase > Android app ' + PKG + ') ya 4 value bharo.') : h('p', { class: 'muted' }, 'Push sirf Android app mein chalta hai. Browser mein Telegram kaam karega.'),
         n ? paste : null, n ? f.apiKey.el : null, n ? f.appId.el : null, n ? f.projectId.el : null, n ? f.senderId.el : null,
         n ? h('div', { class: 'frow' }, fcmSave, h('button', { class: 'btn ghost', on: { click: () => { fcmState(); run('fcm_test', fcmOut, 'Push bhej raha hoon'); } } }, 'Test push')) : null, fcmOut));
       if (n) fcmState();
       b.append(h('div', { class: 'pv-form nw-sec' }, h('div', { class: 'nw-sh' }, '4 · DIGEST TIME'),
-        h('p', { class: 'muted' }, 'Raat ka digest Briefing ke time par jata hai (abhi ' + Briefing.time() + '). Briefing ka time badlo to ye apne aap sync hota hai.'),
+        h('p', { class: 'muted' }, 'Digest Briefing ke time par jata hai (' + Briefing.time() + ').'),
         h('button', { class: 'btn ghost', on: { click: async () => { const r = await syncTime(true); toast(r ? 'Digest time ' + Briefing.time() : 'Sync nahi hua'); } } }, 'Abhi sync karo')));
     } });
   }
@@ -5104,24 +5103,24 @@ const App = (() => {
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
-      swItem('search', 'Research sources', '14 providers', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
+      swItem('search', 'Research sources', '', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
-    st.append(label('Seekhna (learning)'), h('div', { class: 'grp' },
-      navItem('sparkle', 'Standard style', Learn.styleName() + ' · dono mein 1 jawab = 1 concept', () => Learn.styleSheet(redraw)),
-      swItem('ask', 'Check questions', 'Har jawab ke baad MCQ ya fill-in; phone par check hota hai, 0 token', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
-      navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd · dobara nahi samjhaye jaate', () => Learn.vocabSheet())));
+    st.append(label('Learning'), h('div', { class: 'grp' },
+      navItem('sparkle', 'Standard style', Learn.styleName(), () => Learn.styleSheet(redraw)),
+      swItem('ask', 'Check questions', '', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
+      navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd', () => Learn.vocabSheet())));
     st.append(label('Mission & briefing'), h('div', { class: 'grp' },
       navItem('target', 'Mission & goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
-      swItem('moon', 'Raat ki briefing', 'Roz tay time par notification; kholne par aaj ka hisaab + kal ka plan (1 Groq call)', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
+      swItem('moon', 'Raat ki briefing', '', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
       navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
-      navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Summary Groq ko jata hai: haan (badal sakte ho)' : 'Pehli briefing par poochega', () => Briefing.privacySheet(() => redraw()))));
-    st.append(label('News (cloud)'), h('div', { class: 'grp' },
+      navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Allowed' : 'Not set', () => Briefing.privacySheet(() => redraw()))));
+    st.append(label('News'), h('div', { class: 'grp' },
       navItem('globe', 'News dashboard', News.summary(), () => show('news')),
-      navItem('link', 'News setup', 'Server URL, Telegram, push (Firebase), digest time', () => News.setupSheet(redraw)),
-      swItem('moon', 'Briefing mein news', 'Raat ki briefing mein top 5 khabar (sarkari daava alag tag ke saath)', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
-      swItem('send', 'Briefing ki copy Telegram par', 'Poori raat ki briefing tumhare apne bot ko (tumhare Supabase se). Roz 1 baar', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
-      navItem('bars', 'News AI budget', 'Groq / Tavily kitna chala, caps, alerts per din', () => News.budgetSheet(redraw))));
+      navItem('link', 'News setup', '', () => News.setupSheet(redraw)),
+      swItem('moon', 'Briefing mein news', '', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
+      swItem('send', 'Briefing ki copy Telegram par', '', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
+      navItem('bars', 'News AI budget', '', () => News.budgetSheet(redraw))));
     st.append(label('System'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts'), h('div', { class: 'grp' },
@@ -5178,7 +5177,7 @@ const App = (() => {
   }
   function controllerSummary() {
     const state = controllerState();
-    return state.linked ? 'Paired · revision ' + (state.revision || 0) : 'Pair this phone with the owner console';
+    return state.linked ? 'Paired · revision ' + (state.revision || 0) : 'Not paired';
   }
   function controllerSheet() {
     const native = window.ADARSH_BACKEND;
@@ -5211,10 +5210,8 @@ const App = (() => {
       const state = controllerState();
       status.textContent = state.linked
         ? 'Paired · revision ' + (state.revision || 0) + (state.config_cached ? ' · cached config ready' : '')
-        : 'PWA ke Devices page se one-time code banao. Pairing token is phone par encrypted rahega; provider API keys alag storage mein hain.';
-      b.append(h('p', { class: 'muted' }, 'Controller model routes aur quality safeguards manage karta hai. Pairing code sirf is screen mein daalo; provider keys yahan nahi jaati. Config remote se validate hokar apply hogi, aur offline hone par last good/bundled plan chalega.'),
-        status, code, h('div', { class: 'frow' }, pairButton, syncButton),
-        h('p', { class: 'muted' }, 'Usage snapshots mein sirf model/provider/key-slot counters aur feature totals jaate hain—chat, prompt, provider key ya personal records nahi. Usage uploads are throttled and run off the UI thread.'));
+        : 'Not paired. PWA > Devices & changes > Pair a device se code lo.';
+      b.append(status, code, h('div', { class: 'frow' }, pairButton, syncButton));
     } });
   }
   function architectureSheet() {

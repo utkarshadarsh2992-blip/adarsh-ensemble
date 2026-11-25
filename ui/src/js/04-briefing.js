@@ -63,7 +63,7 @@ const Briefing = (() => {
       b.append(h('div', { class: 'bp-consent' },
         h('p', {}, 'Briefing ke liye ek chhota summary Groq (Standard mode ka AI) ko jayega:'),
         h('ul', {}, ['Mission, goals (deadline, progress) aur projects (built / learned / next)', 'Aaj ke concepts, naye shabd, check score aur galat sawaal', 'Aaj ke done / open tasks, work minutes, kal ke fixed time'].map(t => h('li', {}, t))),
-        h('p', { class: 'muted' }, 'Chats ka text nahi jata. Is par web search aur Wikipedia band rehte hain. Briefing chat ke follow-up bhi sirf Standard (Groq) mein chalte hain.')),
+        h('p', { class: 'muted' }, 'Chats ka text nahi jata.')),
         h('div', { class: 'frow' },
           h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { if (S.settings.briefingConsent) { S.settings.briefingConsent = false; save(); toast('Consent hata diya. Agli briefing par phir poochega.'); } close(); if (then) then(false); } } }, S.settings.briefingConsent ? 'Consent hatao' : 'Abhi nahi'),
           h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { S.settings.briefingConsent = true; save(); close(); if (then) then(true); } } }, S.settings.briefingConsent ? 'Theek hai' : 'Theek hai, chalao')));

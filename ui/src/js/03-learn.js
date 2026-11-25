@@ -136,7 +136,7 @@ const Learn = (() => {
         return h('button', { class: 'opt' + (on ? ' on' : ''), role: 'radio', 'aria-checked': String(on), on: { click: () => {
           S.settings.stdStyle = v; save(); Bus.emit('std:changed', v); close(); toast(name + ' on'); if (onDone) onDone();
         } } }, h('span', { class: 'mk' }, on ? icon('check') : null), h('span', { class: 'ot' }, h('b', {}, name), h('small', {}, sub)));
-      })), h('p', { class: 'muted' }, 'Dono mein ek jawab = ek concept. Formula/derivation ke liye Physics ya Math mode khud chuno.'));
+      })));
     } });
   }
   function vocabSheet() {
@@ -146,7 +146,7 @@ const Learn = (() => {
       const m = h('input', { type: 'text', placeholder: 'Matlab (optional)', 'aria-label': 'Meaning', maxlength: '160' });
       const add = () => { if (!w.value.trim()) return; if (!addWord(w.value, m.value || 'manually added', 'manual')) return toast('Ye shabd pehle se hai'); save(); w.value = ''; m.value = ''; draw(); Bus.emit('vocab:changed'); };
       const st = stats(7), list = h('div', { class: 'grp lvocab' }), count = h('p', { class: 'muted' });
-      b.append(h('p', { class: 'muted' }, 'Jo shabd ek baar samjhaya gaya, wo seekha hua maana jata hai. Latest ' + SEND + ' shabd har sawaal ke saath AI ko jaate hain, taaki dobara na samjhaye. Galti se save hua ho to delete karo.'),
+      b.append(h('p', { class: 'muted' }, 'Seekhe hue shabd dobara nahi samjhaye jaate.'),
         st.total ? h('div', { class: 'lstat' }, h('b', {}, st.ok + '/' + st.total), ' check questions sahi (pichhle 7 din)') : null,
         q, count, list, h('label', { class: 'l' }, 'Khud jodo'), h('div', { class: 'frow' }, w, m), h('button', { class: 'btn pri', on: { click: add } }, 'Save word'));
       function draw() {

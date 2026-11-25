@@ -169,24 +169,24 @@ const App = (() => {
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
-      swItem('search', 'Research sources', '14 providers', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
+      swItem('search', 'Research sources', '', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
-    st.append(label('Seekhna (learning)'), h('div', { class: 'grp' },
-      navItem('sparkle', 'Standard style', Learn.styleName() + ' · dono mein 1 jawab = 1 concept', () => Learn.styleSheet(redraw)),
-      swItem('ask', 'Check questions', 'Har jawab ke baad MCQ ya fill-in; phone par check hota hai, 0 token', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
-      navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd · dobara nahi samjhaye jaate', () => Learn.vocabSheet())));
+    st.append(label('Learning'), h('div', { class: 'grp' },
+      navItem('sparkle', 'Standard style', Learn.styleName(), () => Learn.styleSheet(redraw)),
+      swItem('ask', 'Check questions', '', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
+      navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd', () => Learn.vocabSheet())));
     st.append(label('Mission & briefing'), h('div', { class: 'grp' },
       navItem('target', 'Mission & goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
-      swItem('moon', 'Raat ki briefing', 'Roz tay time par notification; kholne par aaj ka hisaab + kal ka plan (1 Groq call)', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
+      swItem('moon', 'Raat ki briefing', '', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
       navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
-      navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Summary Groq ko jata hai: haan (badal sakte ho)' : 'Pehli briefing par poochega', () => Briefing.privacySheet(() => redraw()))));
-    st.append(label('News (cloud)'), h('div', { class: 'grp' },
+      navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Allowed' : 'Not set', () => Briefing.privacySheet(() => redraw()))));
+    st.append(label('News'), h('div', { class: 'grp' },
       navItem('globe', 'News dashboard', News.summary(), () => show('news')),
-      navItem('link', 'News setup', 'Server URL, Telegram, push (Firebase), digest time', () => News.setupSheet(redraw)),
-      swItem('moon', 'Briefing mein news', 'Raat ki briefing mein top 5 khabar (sarkari daava alag tag ke saath)', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
-      swItem('send', 'Briefing ki copy Telegram par', 'Poori raat ki briefing tumhare apne bot ko (tumhare Supabase se). Roz 1 baar', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
-      navItem('bars', 'News AI budget', 'Groq / Tavily kitna chala, caps, alerts per din', () => News.budgetSheet(redraw))));
+      navItem('link', 'News setup', '', () => News.setupSheet(redraw)),
+      swItem('moon', 'Briefing mein news', '', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
+      swItem('send', 'Briefing ki copy Telegram par', '', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
+      navItem('bars', 'News AI budget', '', () => News.budgetSheet(redraw))));
     st.append(label('System'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts'), h('div', { class: 'grp' },
@@ -243,7 +243,7 @@ const App = (() => {
   }
   function controllerSummary() {
     const state = controllerState();
-    return state.linked ? 'Paired · revision ' + (state.revision || 0) : 'Pair this phone with the owner console';
+    return state.linked ? 'Paired · revision ' + (state.revision || 0) : 'Not paired';
   }
   function controllerSheet() {
     const native = window.ADARSH_BACKEND;
@@ -276,10 +276,8 @@ const App = (() => {
       const state = controllerState();
       status.textContent = state.linked
         ? 'Paired · revision ' + (state.revision || 0) + (state.config_cached ? ' · cached config ready' : '')
-        : 'PWA ke Devices page se one-time code banao. Pairing token is phone par encrypted rahega; provider API keys alag storage mein hain.';
-      b.append(h('p', { class: 'muted' }, 'Controller model routes aur quality safeguards manage karta hai. Pairing code sirf is screen mein daalo; provider keys yahan nahi jaati. Config remote se validate hokar apply hogi, aur offline hone par last good/bundled plan chalega.'),
-        status, code, h('div', { class: 'frow' }, pairButton, syncButton),
-        h('p', { class: 'muted' }, 'Usage snapshots mein sirf model/provider/key-slot counters aur feature totals jaate hain—chat, prompt, provider key ya personal records nahi. Usage uploads are throttled and run off the UI thread.'));
+        : 'Not paired. PWA > Devices & changes > Pair a device se code lo.';
+      b.append(status, code, h('div', { class: 'frow' }, pairButton, syncButton));
     } });
   }
   function architectureSheet() {

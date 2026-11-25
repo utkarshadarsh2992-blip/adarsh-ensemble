@@ -42,7 +42,7 @@ const Lessons = (() => {
         if (!r || !r.ok) { wrap.append(h('p', { class: 'warn' }, (r && r.error) || 'Lessons nahi khule.')); return; }
         const items = r.lessons || [];
         if (onChange) onChange(items.length);
-        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi. Upar khud likh kar jodo, ya Manual master answer par 👎 daba kar "kya galat tha" likho. Jab checks galti pakdenge to yahan apne aap bhi judega.')); return; }
+        if (!items.length) { wrap.append(h('p', { class: 'muted' }, 'Abhi koi lesson nahi.')); return; }
         items.forEach(x => wrap.append(h('div', { class: 'ccard' },
           h('div', { class: 'ch' }, h('b', {}, x.title || 'Tumhara rule'), h('span', { class: 'chips' },
             h('span', { class: 'pill ' + (x.origin === 'user' ? 'info' : 'mute') }, x.origin === 'user' ? 'tumhara' : 'auto'),

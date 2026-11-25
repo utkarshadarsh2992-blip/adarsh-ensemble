@@ -218,8 +218,7 @@ const News = (() => {
     more.addEventListener('click', () => refresh(true));
     if (!configured()) {
       st.append(h('div', { class: 'card nw-setup' }, h('div', { class: 'k' }, 'NEWS SETUP'),
-        h('p', {}, 'News cloud mein (tumhare Supabase par) chalti hai, phone par kuch poll nahi hota. Pehle ek baar setup karo: server URL + APP_SECRET, phir Telegram aur push.'),
-        h('p', { class: 'muted' }, 'Steps: docs/NEWS_SETUP.md'),
+        h('p', {}, 'Server URL + APP_SECRET daalo, phir Telegram aur push.'),
         h('button', { class: 'btn pri', on: { click: () => setupSheet(redraw) } }, 'Setup karo')));
       return;
     }
@@ -324,12 +323,12 @@ const News = (() => {
         fcmOut.classList.remove('bad'); fcmOut.textContent = 'Save hua. Token aane mein kuch second lagte hain…'; setTimeout(fcmState, 2500);
       } } }, 'Save Firebase');
       b.append(h('div', { class: 'pv-form nw-sec' }, h('div', { class: 'nw-sh' }, '3 · PUSH (FIREBASE)'),
-        n ? h('p', { class: 'muted' }, 'Firebase Console > Project settings > Android app (' + PKG + ') se google-services.json lo. Service-account/private-key JSON nahi. File paste karo ya 4 value haath se bharo.') : h('p', { class: 'muted' }, 'Push sirf Android app mein chalta hai. Browser mein Telegram kaam karega.'),
+        n ? h('p', { class: 'muted' }, 'google-services.json paste karo (Firebase > Android app ' + PKG + ') ya 4 value bharo.') : h('p', { class: 'muted' }, 'Push sirf Android app mein chalta hai. Browser mein Telegram kaam karega.'),
         n ? paste : null, n ? f.apiKey.el : null, n ? f.appId.el : null, n ? f.projectId.el : null, n ? f.senderId.el : null,
         n ? h('div', { class: 'frow' }, fcmSave, h('button', { class: 'btn ghost', on: { click: () => { fcmState(); run('fcm_test', fcmOut, 'Push bhej raha hoon'); } } }, 'Test push')) : null, fcmOut));
       if (n) fcmState();
       b.append(h('div', { class: 'pv-form nw-sec' }, h('div', { class: 'nw-sh' }, '4 · DIGEST TIME'),
-        h('p', { class: 'muted' }, 'Raat ka digest Briefing ke time par jata hai (abhi ' + Briefing.time() + '). Briefing ka time badlo to ye apne aap sync hota hai.'),
+        h('p', { class: 'muted' }, 'Digest Briefing ke time par jata hai (' + Briefing.time() + ').'),
         h('button', { class: 'btn ghost', on: { click: async () => { const r = await syncTime(true); toast(r ? 'Digest time ' + Briefing.time() : 'Sync nahi hua'); } } }, 'Abhi sync karo')));
     } });
   }
