@@ -126,6 +126,16 @@ class AdarshBridge(
     fun briefingStatus(): String = if (ok()) MainActivity.briefingStatus() else denied
     @JavascriptInterface
     fun takeOpen(): String = if (ok()) MainActivity.takeOpen() else ""
+    @JavascriptInterface
+    fun newsSet(json: String): String = if (ok()) MainActivity.newsSet(json) else denied
+    @JavascriptInterface
+    fun fcmSet(json: String): String = if (ok()) MainActivity.fcmSet(json) else denied
+    @JavascriptInterface
+    fun fcmStatus(): String = if (ok()) MainActivity.fcmStatus() else denied
+    @JavascriptInterface
+    fun newsStatus(): String = if (ok()) MainActivity.newsStatus() else denied
+    @JavascriptInterface
+    fun newsCall(id: String, json: String) { if (ok()) MainActivity.newsCall(id, json) }
 
     @JavascriptInterface
     fun status(): String = if (ok()) Engine.status() else denied

@@ -49,7 +49,7 @@ const Briefing = (() => {
     return { date: today, tomorrow: ymd(d1), weekday: DAYS[d0.getDay()], tomorrowDay: DAYS[d1.getDay()], now: hm(now),
       mission: sum.mission, goals: sum.goals, projects: sum.projects,
       today: { questions, concepts: concepts.slice(0, 12), words, right: log.filter(x => x.ok).length, total: log.length, weak, done, open, work },
-      fixed, news: [] };
+      fixed, news: News.briefingLines() };
   }
   function request(c, meta) {
     if (meta && meta.briefing) return context();
@@ -76,10 +76,14 @@ const Briefing = (() => {
     const date = ymd(base()), text = 'Raat ki briefing · ' + dayLabel(date);
     const ex = (S.chats || []).find(c => c.briefing === date);
     if (ex && succeeded(ex)) { Chat.open(ex.id); return toast('Aaj ki briefing ye rahi. Nayi chahiye to Retry dabao.'); }
-    if (ex) { Chat.open(ex.id); return Chat.submit(text, { briefing: true }); }
-    App.show('chat');
-    const c = Chat.newChat(); c.briefing = date; save();
-    Chat.submit(text, { briefing: true });
+    const go = () => {   /* change 1.5: top news lines were fetched just before (News.prefetchTop) */
+      if (Chat.isBusy()) return;
+      if (ex) { Chat.open(ex.id); return Chat.submit(text, { briefing: true }); }
+      App.show('chat');
+      const c = Chat.newChat(); c.briefing = date; save();
+      Chat.submit(text, { briefing: true });
+    };
+    if (News.wants()) { toast('Khabar la raha hoon…'); News.prefetchTop(3500).then(go, go); } else go();   // sync when news is off
   }
   function absorb(c, r) {
     if (!c || !c.briefing || !r || !r.briefing || typeof r.briefing !== 'object') return;
@@ -87,6 +91,7 @@ const Briefing = (() => {
     const list = (Array.isArray(S.briefings) ? S.briefings : []).filter(x => !(x.date === date && x.chatId === c.id));
     list.unshift({ date, chatId: c.id, ts: Date.now(), saved: 0 });
     S.briefings = list.slice(0, 60);
+    try { News.copyBriefing(r, date); } catch (e) {}   // change 1.5: optional Telegram copy
   }
   const doneToday = () => (S.briefings || []).some(x => x.date === ymd(base()));
 
@@ -156,7 +161,7 @@ const Briefing = (() => {
         h('label', { class: 'pv-field' }, h('span', { class: 'pv-label' }, 'Roz is time par'), inp, h('span', { class: 'pv-hint' }, 'Phone sirf notification dikhata hai (battery bachti hai). Groq call tab hoti hai jab aap briefing kholte ho.')),
         h('button', { class: 'btn pri', on: { click: () => {
           if (!okTime(inp.value)) return toast('Time HH:MM chahiye');
-          S.settings.briefingTime = inp.value; S.settings.briefingOn = true; save(); sync(true); close(); toast('Briefing roz ' + inp.value + ' par'); if (onDone) onDone();
+          S.settings.briefingTime = inp.value; S.settings.briefingOn = true; save(); sync(true); close(); toast('Briefing roz ' + inp.value + ' par'); try { News.syncTime(true); } catch (e) {} if (onDone) onDone();
         } } }, 'Save')));
     } });
   }
@@ -181,14 +186,14 @@ const Briefing = (() => {
     go();
   }
   window.__adarshOpen = (what) => {   /* MainActivity.onNewIntent: notification tapped while the app was running */
-    if (what !== 'briefing') return;
+    if (what !== 'briefing' && !/^news/.test(String(what))) return;
     try { const n = N(); if (n && n.takeOpen) n.takeOpen(); } catch (e) {}   // clear the native flag so a page reload does not reopen it
-    openFromNotification();
+    if (what === 'briefing') openFromNotification(); else News.open(what);
   };
   function init() {
     sync(false);
     const n = N();
-    try { if (n && n.takeOpen && n.takeOpen() === 'briefing') openFromNotification(); } catch (e) {}
+    try { const v = n && n.takeOpen ? String(n.takeOpen() || '') : ''; if (v === 'briefing') openFromNotification(); else if (/^news/.test(v)) News.open(v); } catch (e) {}
     setTimeout(dueCheck, 4000); setInterval(dueCheck, 60e3);
   }
   function cleanImport(d) {

@@ -294,6 +294,7 @@ class MainActivity : AppCompatActivity() {
 
         current = this
         if (intent?.action == BriefingScheduler.ACTION_OPEN) BriefingScheduler.pendingOpen = true   // notification tap on a cold start
+        NewsFcm.openTarget(intent ?: Intent()).let { target -> if (target != null) BriefingScheduler.pendingNewsOpen = target }
         if (savedInstanceState == null) load() else web.restoreState(savedInstanceState)
     }
     /** Night briefing notification while the app is already running (singleTask): the page starts the briefing
@@ -301,9 +302,22 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (intent.action != BriefingScheduler.ACTION_OPEN) return
-        BriefingScheduler.pendingOpen = true
-        if (pageTrusted) js("window.__adarshOpen&&window.__adarshOpen('briefing')")
+        if (intent.action == BriefingScheduler.ACTION_OPEN) {
+            BriefingScheduler.pendingOpen = true
+            if (pageTrusted) js("window.__adarshOpen&&window.__adarshOpen('briefing')")
+            return
+        }
+        val target = NewsFcm.openTarget(intent)
+        if (target != null) {
+            BriefingScheduler.pendingNewsOpen = target
+            if (pageTrusted) js("window.__adarshOpen&&window.__adarshOpen(${JSONObject.quote(target)})")
+            return
+        }
+        val updateTarget = intent.getStringExtra(UpdateCheckJob.EXTRA_OPEN)
+        if (updateTarget != null) {
+            launchTarget = updateTarget
+            if (updateTarget == UpdateCheckJob.OPEN_UPDATES && pageTrusted) js("window.__adarshOpen&&window.__adarshOpen('updates')")
+        }
     }
 
     private fun load() {
@@ -325,14 +339,8 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Notification taps (e.g. "Naya update available") ask the page to open a screen. */
+    /** Notification target retained for the page bridge on cold start. */
     private var launchTarget: String? = null
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        val target = intent.getStringExtra(UpdateCheckJob.EXTRA_OPEN) ?: return
-        if (target == UpdateCheckJob.OPEN_UPDATES) js("window.__adarshOpen&&window.__adarshOpen('updates')")
-    }
     override fun onResume() {
         super.onResume()
         resumed = true
@@ -683,6 +691,20 @@ class MainActivity : AppCompatActivity() {
         }
         fun briefingStatus(): String = appCtx?.let { BriefingScheduler.status(it).toString() } ?: "{\"ok\":false,\"error\":\"not ready\"}"
         fun takeOpen(): String = BriefingScheduler.takeOpen()
+        fun newsSet(json: String): String = appCtx?.let { NewsFcm.configureNews(it, json) }
+            ?: "{\"ok\":false,\"error\":\"not ready\"}"
+        fun fcmSet(json: String): String = appCtx?.let { NewsFcm.configureFcm(it, json) }
+            ?: "{\"ok\":false,\"error\":\"not ready\"}"
+        fun fcmStatus(): String = appCtx?.let { NewsFcm.status(it).toString() }
+            ?: "{\"ok\":false,\"error\":\"not ready\"}"
+        fun newsStatus(): String = appCtx?.let { NewsFcm.newsStatus(it).toString() }
+            ?: "{\"configured\":false,\"url\":\"\"}"
+        fun newsCall(id: String, json: String) {
+            val c = appCtx ?: return
+            NewsFcm.newsCall(c, id, json) { result ->
+                ui { a -> a.js("window.__adarshNews&&window.__adarshNews(${JSONObject.quote(id)},$result)") }
+            }
+        }
         fun setNotify(on: Boolean): String {
             val c = appCtx ?: return "denied"
             prefs(c).edit().putBoolean("notify", on).apply()

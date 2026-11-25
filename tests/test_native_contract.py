@@ -115,3 +115,67 @@ def test_night_briefing_alarm_only_notifies_and_stays_private():
     assert 'fun takeOpen(): String = if (ok()) MainActivity.takeOpen() else ""' in bridge
     assert "override fun onNewIntent(intent: Intent)" in activity and "BriefingScheduler.pendingOpen = true" in activity
     assert "BriefingScheduler.arm(ctx)" in boot
+
+
+def test_news_fcm_service_channels_and_manual_firebase_setup():
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+    gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+    service = source("NewsMessagingService.kt")
+    app = source("AdarshApp.kt")
+    assert '<service' in manifest and 'android:name=".NewsMessagingService"' in manifest
+    assert 'android:exported="false"' in manifest
+    assert 'com.google.firebase.MESSAGING_EVENT' in manifest
+    assert 'implementation(platform("com.google.firebase:firebase-bom:34.19.0"))' in gradle
+    assert 'implementation("com.google.firebase:firebase-messaging")' in gradle
+    assert "com.google.gms.google-services" not in gradle and "google-services.json" not in gradle
+    assert 'const val ALERT_CHANNEL = "adarsh_news_alert"' in source("NewsFcm.kt")
+    assert 'const val INFO_CHANNEL = "adarsh_news_info"' in source("NewsFcm.kt")
+    assert '"Breaking news"' in service and '"News digest aur budget"' in service
+    assert "IMPORTANCE_HIGH" in service and "IMPORTANCE_DEFAULT" in service
+    assert "FirebaseOptions.Builder()" in source("NewsFcm.kt")
+    assert "setApiKey" in source("NewsFcm.kt") and "setApplicationId" in source("NewsFcm.kt")
+    assert "setProjectId" in source("NewsFcm.kt") and "setGcmSenderId" in source("NewsFcm.kt")
+    assert "try { NewsFcm.start(this) } catch (_: Throwable) {}" in app
+
+
+def test_news_bridge_is_guarded_and_never_returns_credentials():
+    bridge = source("AdarshBridge.kt")
+    activity = source("MainActivity.kt")
+    for method in ("newsSet", "fcmSet", "fcmStatus", "newsStatus"):
+        assert f"fun {method}" in bridge
+        assert f"if (ok()) MainActivity.{method}" in bridge
+    assert "fun newsCall(id: String, json: String) { if (ok()) MainActivity.newsCall(id, json) }" in bridge
+    assert "window.__adarshNews&&window.__adarshNews" in activity
+    assert "callback(failure(\"id galat hai\"))" in source("NewsFcm.kt")
+    assert 'put("configured", isHttps(url) && secret.isNotBlank()).put("url", url)' in source("NewsFcm.kt")
+    assert "fcm_token" not in activity.split("fun fcmStatus", 1)[0]
+
+
+def test_news_registration_and_calls_are_https_bounded_and_allowlisted():
+    news = source("NewsFcm.kt")
+    service = source("NewsMessagingService.kt")
+    assert 'uri.scheme.equals("https", true)' in news
+    assert 'connection.connectTimeout = 10_000' in news and 'connection.readTimeout = 10_000' in news
+    assert 'setRequestProperty("x-app-secret", secret)' in news
+    assert 'MAX_CALL_RESPONSE = 512 * 1024' in news
+    assert 'json.length > 32 * 1024' in news
+    assert 'action !in API_ACTIONS' in news
+    assert 'put("action", "register")' in news and 'put("device_id", device)' in news
+    assert 'put("fcm_token", token)' in news
+    assert 'FLAG_IMMUTABLE' in service
+    assert 'setSmallIcon(R.drawable.ic_notification)' in service
+    assert 'sanitizeOpenTarget("news:${data["news_id"].orEmpty()}")' in service
+    for path in ("NewsFcm.kt", "NewsMessagingService.kt"):
+        for line in source(path).splitlines():
+            if "Log." in line:
+                assert "token" not in line.lower() and "secret" not in line.lower()
+
+
+def test_news_open_targets_are_sanitized_before_javascript():
+    news = source("NewsFcm.kt")
+    briefing = source("Briefing.kt")
+    activity = source("MainActivity.kt")
+    assert 'filter { it.isLetterOrDigit() || it == \'_\' || it == \'-\' }.take(64)' in news
+    assert 'return target' in briefing and 'pendingNewsOpen = null' in briefing
+    assert 'JSONObject.quote(target)' in activity
+    assert 'NewsFcm.openTarget(intent)' in activity

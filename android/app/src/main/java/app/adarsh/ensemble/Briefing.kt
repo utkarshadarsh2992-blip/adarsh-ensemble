@@ -33,6 +33,8 @@ object BriefingScheduler {
     private val TIME = Regex("^([01]\\d|2[0-3]):([0-5]\\d)$")
     /** Set when the notification opened the app; the page takes it once (AdarshNative.takeOpen). */
     @Volatile var pendingOpen = false
+    /** News notification target; only sanitized values from NewsFcm are assigned. */
+    @Volatile var pendingNewsOpen: String? = null
 
     private fun prefs(c: Context) = c.getSharedPreferences("adarsh_briefing", Context.MODE_PRIVATE)
     private fun err(msg: String) = JSONObject().put("ok", false).put("error", msg).toString()
@@ -131,8 +133,13 @@ object BriefingScheduler {
         false
     }
 
-    /** The page asks once after it loads (or after onNewIntent); returns "briefing" a single time. */
-    fun takeOpen(): String = if (pendingOpen) { pendingOpen = false; "briefing" } else ""
+    /** The page asks once after it loads (or after onNewIntent); returns one target a single time. */
+    fun takeOpen(): String {
+        if (pendingOpen) { pendingOpen = false; return "briefing" }
+        val target = pendingNewsOpen ?: return ""
+        pendingNewsOpen = null
+        return target
+    }
 }
 
 /** Briefing alarm + the system events after which Android's alarm queue must be armed again. Not exported:

@@ -48,8 +48,12 @@ const MobileUpdates = (() => {
     try { if (native().updateNotify) native().updateNotify(on ? 'on' : 'off'); } catch (e) {}
     return !!on;
   }
-  /* Tapping "Naya update available" opens this screen (warm start: native call; cold start: launchTarget). */
-  window.__adarshOpen = target => { if (target === 'updates' && $('#lock').hidden) open(); };
+  /* Compose update taps with the Briefing/News notification router registered earlier. */
+  const priorOpen = window.__adarshOpen;
+  window.__adarshOpen = target => {
+    if (target === 'updates') { if ($('#lock').hidden) open(); return; }
+    if (typeof priorOpen === 'function') priorOpen(target);
+  };
   function init() {
     if (!supported()) return;
     try { if (native().updateNotify) { const r = JSON.parse(native().updateNotify('')); if (r && typeof r.on === 'boolean') S.settings.updateNotify = r.on; } } catch (e) {}

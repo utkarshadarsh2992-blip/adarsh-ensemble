@@ -16,13 +16,8 @@ const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-<<<<<<< HEAD
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
-  const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
-=======
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['goals', 'target', 'Mission & goals'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities'], ['usage', 'bars', 'API usage']];
-  const TITLES = { today: 'Today', goals: 'Mission & goals', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', usage: 'API usage', settings: 'Settings' };
->>>>>>> 40c4c93 (change 1.4: API usage screen + hallucination controls (truth.py, fact-check card, quota hint))
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['goals', 'target', 'Mission & goals'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities'], ['usage', 'bars', 'API usage'], ['news', 'globe', 'News']];
+  const TITLES = { today: 'Today', goals: 'Mission & goals', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', usage: 'API usage', news: 'News', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -118,19 +113,17 @@ const App = (() => {
   /* ================= Tasks ================= */
   ['tasks', 'work', 'reminders', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
   Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'reminders', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
-
-<<<<<<< HEAD
-=======
-  /* ================= Mission & goals (change 1.3) ================= */
+  /* ================= Mission, usage and news views ================= */
   BUILD.goals = (st, redraw) => Mission.view(st, redraw);
   BUILD.usage = (st, redraw) => Usage.view(st, redraw);
+  BUILD.news = (st, redraw) => News.view(st, redraw);
   Bus.on('mission:changed', () => {
     if (view === 'today') build('today');
     if (view !== 'goals') return;
-    const y = ($('#v-goals .scroll') || {}).scrollTop || 0;   /* keep the scroll position on milestone taps */
+    const y = ($('#v-goals .scroll') || {}).scrollTop || 0;
     build('goals'); const sc = $('#v-goals .scroll'); if (sc) sc.scrollTop = y;
   });
->>>>>>> 40c4c93 (change 1.4: API usage screen + hallucination controls (truth.py, fact-check card, quota hint))
+
   /* ================= Missions ================= */
   BUILD.missions = (st, redraw) => {
     if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'Abhi koi mission nahi.'), h('div', { class: 'muted' }, 'Chat mein goal batao.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
@@ -174,12 +167,12 @@ const App = (() => {
       h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
       h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Reply font'), seg([['serif', 'Serif'], ['sans', 'Sans']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
     st.append(label('Assistant'), h('div', { class: 'grp' },
-      navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
+      navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       navItem('shield', 'Hallucination control', Usage.summary() + ' · galat jawab kam karne ke niyam', () => Usage.truthSheet(redraw)),
-      swItem('globe', 'Built-in web search', 'Standard mode: Groq ka live web search on/off. Wikipedia research hamesha on rehta hai', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
-      navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
+      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
+      navItem('book', 'Lessons', '', () => Lessons.listSheet()),
+      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Seekhna (learning)'), h('div', { class: 'grp' },
       navItem('sparkle', 'Standard style', Learn.styleName() + ' · dono mein 1 jawab = 1 concept', () => Learn.styleSheet(redraw)),
       swItem('ask', 'Check questions', 'Har jawab ke baad MCQ ya fill-in; phone par check hota hai, 0 token', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
@@ -189,6 +182,12 @@ const App = (() => {
       swItem('moon', 'Raat ki briefing', 'Roz tay time par notification; kholne par aaj ka hisaab + kal ka plan (1 Groq call)', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
       navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
       navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Summary Groq ko jata hai: haan (badal sakte ho)' : 'Pehli briefing par poochega', () => Briefing.privacySheet(() => redraw()))));
+    st.append(label('News (cloud)'), h('div', { class: 'grp' },
+      navItem('globe', 'News dashboard', News.summary(), () => show('news')),
+      navItem('link', 'News setup', 'Server URL, Telegram, push (Firebase), digest time', () => News.setupSheet(redraw)),
+      swItem('moon', 'Briefing mein news', 'Raat ki briefing mein top 5 khabar (sarkari daava alag tag ke saath)', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
+      swItem('send', 'Briefing ki copy Telegram par', 'Poori raat ki briefing tumhare apne bot ko (tumhare Supabase se). Roz 1 baar', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
+      navItem('bars', 'News AI budget', 'Groq / Tavily kitna chala, caps, alerts per din', () => News.budgetSheet(redraw))));
     st.append(label('Android'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts and feel'), h('div', { class: 'grp' },
@@ -207,12 +206,8 @@ const App = (() => {
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
-<<<<<<< HEAD
-      navItem('server', 'Connection', Backend.isNative() ? 'On-device' : Backend.isDemo() ? 'Demo' : (S.conn.url || 'Server'), connSheet)));
-=======
       navItem('bars', 'API usage', Usage.brief(), () => show('usage')),
-      navItem('server', 'Connection', Backend.isNative() ? 'On-device engine · tap for status' : Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
->>>>>>> 40c4c93 (change 1.4: API usage screen + hallucination controls (truth.py, fact-check card, quota hint))
+      navItem('server', 'Connection', Backend.isNative() ? 'On-device' : Backend.isDemo() ? 'Demo' : (S.conn.url || 'Server'), connSheet)));
     st.append(label('Data'), h('div', { class: 'grp' },
       navItem('download', 'Export data', '', exportSheet),
       navItem('upload', 'Import data', '', () => $('#f-import').click()),
@@ -334,7 +329,7 @@ const App = (() => {
   }
   function replySummary() {
     const L = { auto: 'Auto language', hinglish: 'Hinglish', english: 'English', hindi: 'Hindi' }, D = { simple: 'Simple', normal: 'Normal', detailed: 'Detailed' };
-    return Learn.styleName() + ' · ' + (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep council' : 'Fast council');
+    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep council' : 'Fast council');
   }
   function replySheet() {
     sheet({ title: 'Reply style', build(b) {
@@ -342,15 +337,12 @@ const App = (() => {
         const seg = h('div', { class: 'seg' });
         opts.forEach(([v, label]) => seg.append(h('button', { 'aria-pressed': String((S.settings[key] || def) === v), on: { click: () => {
           S.settings[key] = v; save();
-          if (key === 'stdStyle') Bus.emit('std:changed', v);   /* composer shows "Standard 2.9 / 9.2" */
           [...seg.children].forEach(x => x.setAttribute('aria-pressed', 'false'));
           seg.children[opts.findIndex(o => o[0] === v)].setAttribute('aria-pressed', 'true');
           if (view === 'settings') build('settings');
         } } }, label)));
         b.append(h('label', { class: 'l' }, title), seg, h('p', { class: 'muted' }, note));
       };
-      group('Standard style', 'stdStyle', '2.9', [['2.9', '2.9 · short first'], ['9.2', '9.2 · deep']],
-        '2.9: pehle chhota jawab, phir "Gehrai mein jao". 9.2: seedha poora gehra jawab, discoverer ke tareeke se. Dono mein ek jawab = ek concept.');
       group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
         'Auto: sawaal ki bhasha mein jawab.');
       group('Council', 'think', 'fast', [['fast', 'Fast'], ['deep', 'Deep']],
@@ -463,7 +455,7 @@ const App = (() => {
   function exportSheet() {
     sheet({ title: 'Export data', tall: true, build(b) {
       Productivity.sync();
-      const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, vocab: S.vocab || [], learnLog: S.learnLog || [], settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
+      const data = JSON.stringify({ version: 2, chats: S.chats, memories: S.memories, records: Productivity.exportRecords(), missions: S.missions, settings: S.settings, abilities: S.abilities }, (k, v) => k === '_ctx' ? undefined : v, 1);
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
       const N = window.AdarshNative;
       window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'File save nahi hui'); };
@@ -478,7 +470,7 @@ const App = (() => {
     const t = e.target;
     if (t.id === 'f-import' && t.files[0]) {
       /* audit M8: bounded size, known version, typed + capped lists before anything replaces local data */
-      const MAX_IMPORT_BYTES = 8 * 1024 * 1024, CAPS = { chats: 500, memories: 2000, missions: 500, vocab: 5000, learnLog: 3000 };
+      const MAX_IMPORT_BYTES = 8 * 1024 * 1024, CAPS = { chats: 500, memories: 2000, missions: 500 };
       if (t.files[0].size > MAX_IMPORT_BYTES) { toast('Backup file bahut badi hai (8 MB max).'); t.value = ''; return; }
       t.files[0].text().then(txt => {
         if (txt.length > MAX_IMPORT_BYTES) return toast('Backup file bahut badi hai (8 MB max).');
@@ -498,11 +490,10 @@ const App = (() => {
         if (lists.chats) lists.chats = lists.chats.filter(c => typeof c.id === 'string' && c.id.length <= 200 && (c.messages === undefined || Array.isArray(c.messages)));
         const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
         const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key].slice(0, 2000) : []).filter(isObj).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
-        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory, missions and learned words replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
+        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
           try {
             const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
             ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(lists[k])) S[k] = lists[k]; });
-            Object.assign(S, Learn.cleanImport(lists));   /* learned words + check history, typed and capped */
             S.cur = S.chats[0] ? S.chats[0].id : null; saveNow(); Chat.renderThread(); drawerList(); toast('Imported');
           } catch (e) { toast('Import fail: ' + e.message); }
         } });
