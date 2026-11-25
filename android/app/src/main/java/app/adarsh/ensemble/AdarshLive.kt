@@ -200,7 +200,15 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", instruction()))))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
-            .put("sessionResumption", resumeHandle?.let { JSONObject().put("handle", it) } ?: JSONObject())
+        // Resumption handles are asked for on the dialogue models; translate/transcribe sessions are short-lived
+        // and one-shot, so nothing is resumed there.
+        val role = roleOf(model)
+        val res = when {
+            resumeHandle != null -> JSONObject().put("handle", resumeHandle)
+            role == "translate" || role == "transcribe" -> null
+            else -> JSONObject()
+        }
+        if (res != null) setup.put("sessionResumption", res)
         return JSONObject().put("setup", setup).toString()
     }
 
