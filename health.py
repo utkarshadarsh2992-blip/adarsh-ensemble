@@ -41,10 +41,18 @@ def _today() -> str:
     return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
 
 
-def _fresh(learned: dict | None = None) -> dict:
-    # out: quota key -> unix time a DAILY 429 said it is empty until (kept on disk, so an app restart does not
-    # spend a request just to hear "quota used up" again). learned: daily caps seen in real 429s; survive the day roll.
-    return {"day": _today(), "req": {}, "tok": {}, "out": {}, "learned": dict(learned or {})}
+def _fresh(learned: dict | None = None, old: dict | None = None) -> dict:
+    # out:  quota key -> unix time a DAILY 429 said it is empty until (that model on that key).
+    # gone: "provider:model" -> {"until", "why"}: the model does not exist / was retired (404), on every key.
+    # Both are kept on disk (an app restart does not spend a request just to hear the same error again) and survive
+    # the UTC day roll while still in the future: Gemini's day ends at midnight Pacific, not at midnight UTC.
+    # learned: daily caps seen in real 429s; survive the day roll.
+    now = time.time()
+    old = old or {}
+    out = {k: v for k, v in (old.get("out") or {}).items() if isinstance(v, (int, float)) and v > now}
+    gone = {k: v for k, v in (old.get("gone") or {}).items()
+            if isinstance(v, dict) and isinstance(v.get("until"), (int, float)) and v["until"] > now}
+    return {"day": _today(), "req": {}, "tok": {}, "out": out, "gone": gone, "learned": dict(learned or {})}
 
 
 def _load() -> dict:
@@ -54,8 +62,8 @@ def _load() -> dict:
         if isinstance(data, dict):
             learned = data.get("learned") if isinstance(data.get("learned"), dict) else {}
             if data.get("day") != _today():
-                return _fresh(learned)
-            for k in ("req", "tok", "out"):
+                return _fresh(learned, data)
+            for k in ("req", "tok", "out", "gone"):
                 data.setdefault(k, {})
             data["learned"] = learned
             return data
@@ -74,8 +82,9 @@ def _roll() -> None:
     with _usage_lock:
         if _usage.get("day") != _today():
             learned = _usage.get("learned") or {}
+            old = dict(_usage)
             _usage.clear()
-            _usage.update(_fresh(learned))
+            _usage.update(_fresh(learned, old))
 
 
 def _save() -> None:
@@ -179,10 +188,22 @@ def capped(spec: ModelSpec) -> bool:
     return bool(req_limit(spec) or tok_limit(spec))
 
 
+def gone_key(spec: ModelSpec) -> str:
+    return f"{spec.provider}:{spec.model}"
+
+
+def _clock(ts: float) -> str:
+    return dt.datetime.fromtimestamp(ts).strftime("%H:%M")
+
+
 def _quota_block(spec: ModelSpec, margin: float) -> str:
     key = quota_key(spec)
-    if _usage["out"].get(key, 0) > time.time():
-        return "daily quota used up (provider said so)"
+    gone = (_usage.get("gone") or {}).get(gone_key(spec))
+    if gone and gone.get("until", 0) > time.time():
+        return f"skipped today: {gone.get('why') or 'model not found'}"[:160]
+    until = _usage["out"].get(key, 0)
+    if until > time.time():
+        return f"daily quota used up (skipped till {_clock(until)})"
     rl = req_limit(spec)
     if rl and _usage["req"].get(key, 0) >= rl * margin:
         return "daily request quota used up"
@@ -319,11 +340,63 @@ def fail(spec: ModelSpec, base_seconds: float) -> None:
     cooldown(spec, min(base_seconds * 2 ** (n - 1), 3600))
 
 
+def next_reset(provider: str, now: float | None = None) -> float:
+    """Unix time of the provider's next daily quota reset (config.DAILY_RESET_UTC_HOUR)."""
+    now = time.time() if now is None else now
+    hour = config.DAILY_RESET_UTC_HOUR.get(provider, 0)
+    t = dt.datetime.fromtimestamp(now, dt.timezone.utc).replace(hour=hour, minute=0, second=0, microsecond=0)
+    if t.timestamp() <= now:
+        t += dt.timedelta(days=1)
+    return t.timestamp()
+
+
+def daily_skip_seconds(spec: ModelSpec, wait: float | None, now: float | None = None) -> float:
+    """How long a model+key with a used-up DAILY quota is skipped. Providers with a rolling day (Groq: "try again in
+    7m12s") are trusted; the others reset at a fixed hour, whatever short "retry in 34s" their message carries."""
+    now = time.time() if now is None else now
+    reset_in = next_reset(spec.provider, now) - now
+    if wait and (spec.provider in config.DAILY_WAIT_TRUSTED or wait > reset_in):
+        return max(wait, 60.0)
+    return max(reset_in, 60.0)
+
+
+def model_gone(spec: ModelSpec, why: str = "model not found") -> None:
+    """The provider says this model does not exist (404 / retired): skip it on EVERY key for MODEL_GONE_SKIP_S,
+    saved on disk, so neither a restart nor key 2 / key 3 spends a request on it again today."""
+    until = time.time() + config.MODEL_GONE_SKIP_S
+    for s in _slot_specs(spec):
+        cooldown(s, config.MODEL_GONE_SKIP_S)
+    cooldown(spec, config.MODEL_GONE_SKIP_S)
+    with _usage_lock:
+        _roll()
+        _usage.setdefault("gone", {})[gone_key(spec)] = {"until": until, "why": str(why)[:120]}
+        _save()
+
+
+def forget_provider(provider: str) -> None:
+    """A key of this provider was added / changed / removed: its old "quota used up" and "model gone" marks may not
+    hold for the new key, so they are dropped (the worst case is one call that hears the same error again)."""
+    with _usage_lock:
+        for name in ("out", "gone"):
+            box = _usage.get(name) or {}
+            for k in [k for k in box if k == provider or k.startswith((provider + ":", provider + "#"))]:
+                box.pop(k, None)
+        _save()
+    for box in (_cool,):
+        for label in [lb for lb in box if config.REGISTRY.get(config.base_label(lb)) is not None
+                      and config.REGISTRY[config.base_label(lb)].provider == provider]:
+            box.pop(label, None)
+    for kid in [k for k in _key_cool if k == provider or k.startswith(provider + "#")]:
+        _key_cool.pop(kid, None)
+    _prov_cool.pop(provider, None)
+
+
 def rate_limited(spec: ModelSpec, wait: float | None, daily: bool = False) -> None:
     """A real 429. `wait` = how long the provider said to wait (None if it did not say), `daily` = it is the
-    per-DAY quota, which waiting a minute will not fix."""
+    per-DAY quota, which waiting a minute will not fix: that model on that key is skipped until the provider's
+    daily reset (daily_skip_seconds), and the mark is saved, so a restart does not try it again."""
     if daily:
-        secs = max(wait or 0.0, 3600.0)  # look again in an hour (one cheap call), not every few seconds
+        secs = daily_skip_seconds(spec, wait)
         cooldown(spec, secs)
         with _usage_lock:
             _roll()
@@ -453,6 +526,7 @@ def snapshot() -> dict:
         "requests_today": dict(_usage["req"]),
         "tokens_today": dict(_usage["tok"]),
         "out_today": {k: int(v - now) for k, v in _usage.get("out", {}).items() if v > now},
+        "gone_today": {k: v.get("why", "") for k, v in (_usage.get("gone") or {}).items() if v.get("until", 0) > now},
         "learned_daily_caps": dict(_usage.get("learned", {})),
         "cooling_down": cooling,
     }

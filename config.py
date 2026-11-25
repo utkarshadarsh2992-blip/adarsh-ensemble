@@ -470,6 +470,16 @@ def _timeouts(raw: str) -> dict[str, float]:
     return out
 
 
+# Errors that will not go away within the day (health.py keeps them on disk, so a restart does not retry them):
+#   * DAILY quota used up (429 "per day") -> that model on that key is skipped until the provider's daily reset.
+#     Hour (UTC) of each provider's reset; Gemini's day ends at midnight Pacific (08:00 UTC in winter).
+#     Providers in DAILY_WAIT_TRUSTED have a rolling day and say exactly when it frees up ("try again in 7m12s").
+#   * model not found / retired (404) -> that model is skipped on every key for MODEL_GONE_SKIP_S.
+# Minute limits, 503 and network errors keep the short cooldowns (next key at once).
+DAILY_RESET_UTC_HOUR = {"gemini": 8, "openrouter": 0, "groq": 0, "cloudflare": 0, "nvidia": 0}
+DAILY_WAIT_TRUSTED = ("groq",)
+MODEL_GONE_SKIP_S = float(os.getenv("MODEL_GONE_SKIP_S", str(24 * 3600)))
+
 MODEL_TIMEOUT_S: dict[str, float] = {
     "gemini-3.8-flash": 200.0,  # long Judge / Synthesizer / Refiner answers: 120 s cut it off while it was still writing
     "mistral-large-4": 300.0,  # 1T-parameter NVIDIA model: long queue + slow writing

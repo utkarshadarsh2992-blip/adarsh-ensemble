@@ -23,6 +23,7 @@ import bigtask
 from llm import LLMError, chat, make_client
 import verified
 import standard_agent
+import thinking
 
 # Greetings, thanks and other small talk do not need panel + falsifiers + judge.
 _CASUAL = re.compile(
@@ -339,34 +340,39 @@ async def handle(body: dict) -> dict | list[dict]:
     q_text, q_extra, cut_note = _fit(text, extra)
     question = q_text + q_extra
     topics = None
-    # Big message in a council mode (V, Physics, Math, Business, Coding): split into sub-topics first, then the
-    # council answers ONCE with a heading per sub-topic (bigtask.py). Standard never comes here.
-    if (source == "auto" and ui_mode != "standard" and config.CHAT_ENGINE == "roles" and bigtask.BIG_INPUT_CHARS > 0
-            and bigtask.is_big(text)):
-        async with make_client() as client:
-            topics = await bigtask.decompose(client, text, {})
-        if len(topics) >= 2:
-            ctx = extra[:1500]
-            question = bigtask.brief(text, topics, MAX_QUESTION_CHARS - len(ctx)) + ctx
-            cut_note = ""  # the sub-topic map covers the whole message
-        else:
-            topics = None
-    res = await pipeline.run(
-        question,
-        deep=think == "deep",
-        engine=config.CHAT_ENGINE,
-        source=source,
-        answers=answers,
-        run_code=config.CODE_EXEC_SUPPORTED,
-        use_guard=bool(answers),  # scan pasted answers for prompt injection
-        reply_lang=reply_lang,
-        depth=depth,
-        debug=False,
-        record=True,
-        mode=str(body.get("mode") or "standard"),
-        web_research=not private_context,
-        topics=topics,
-    )
+    # Thinking by the weight of the question (thinking.py): every council mode, never Standard. Internal only.
+    weight = thinking.set_weight(thinking.weigh(text, ui_mode) if ui_mode != "standard" else None)
+    try:
+        # Big message in a council mode (V, Physics, Math, Business, Coding): split into sub-topics first, then the
+        # council answers ONCE with a heading per sub-topic (bigtask.py). Standard never comes here.
+        if (source == "auto" and ui_mode != "standard" and config.CHAT_ENGINE == "roles" and bigtask.BIG_INPUT_CHARS > 0
+                and bigtask.is_big(text)):
+            async with make_client() as client:
+                topics = await bigtask.decompose(client, text, {})
+            if len(topics) >= 2:
+                ctx = extra[:1500]
+                question = bigtask.brief(text, topics, MAX_QUESTION_CHARS - len(ctx)) + ctx
+                cut_note = ""  # the sub-topic map covers the whole message
+            else:
+                topics = None
+        res = await pipeline.run(
+            question,
+            deep=think == "deep",
+            engine=config.CHAT_ENGINE,
+            source=source,
+            answers=answers,
+            run_code=config.CODE_EXEC_SUPPORTED,
+            use_guard=bool(answers),  # scan pasted answers for prompt injection
+            reply_lang=reply_lang,
+            depth=depth,
+            debug=False,
+            record=True,
+            mode=str(body.get("mode") or "standard"),
+            web_research=not private_context,
+            topics=topics,
+        )
+    finally:
+        thinking.reset(weight)
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
     if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:
         replies[0]["text"] += "\n\n*Android par code proof off hai: steps [REASONED] hain.*"

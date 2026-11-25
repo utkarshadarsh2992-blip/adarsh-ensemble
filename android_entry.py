@@ -34,11 +34,26 @@ def init(files_dir: str) -> str:
 def set_key(name: str, value: str) -> bool:
     if name not in KEY_NAMES:
         return False
+    old = os.environ.get(name, "")
     if value:
         os.environ[name] = value.strip()
     else:
         os.environ.pop(name, None)
+    if os.environ.get(name, "") != old and name != "TAVILY_API_KEY":
+        _forget_marks(name)
     return True
+
+
+def _forget_marks(env_name: str) -> None:
+    """A changed key gets a fresh start: its provider's saved "daily quota used up" / "model gone" marks are dropped."""
+    provider = next((p for p, prefix in (("groq", "GROQ_"), ("gemini", "GEMINI_"), ("openrouter", "OPENROUTER_"),
+                                         ("cloudflare", "CLOUDFLARE_"), ("nvidia", "NVIDIA_")) if env_name.startswith(prefix)), "")
+    if not provider or "health" not in sys.modules:
+        return  # engine not loaded yet: nothing in memory, and the next load reads the file as it is
+    try:
+        sys.modules["health"].forget_provider(provider)
+    except Exception:  # never let a key save fail because of the skip list
+        pass
 
 
 def lessons(op_json: str) -> str:

@@ -1,6 +1,7 @@
 """Quota saving: judge reserve, learned daily caps (kept on disk), load balancing, pressure levels. No network."""
 import asyncio
 import importlib
+import time
 import os
 import sys
 
@@ -89,6 +90,11 @@ def test_daily_429_teaches_the_cap_and_survives_restart_and_day_roll():
     # next day: counters reset, the learned cap stays, so we stop at 95% of it BEFORE a 429
     health._usage["day"] = "2000-01-01"
     health._roll()
+    # the UTC day rolled, but Gemini's own day (midnight Pacific) has not: the saved mark still holds
+    assert not health.available(GEM)[0]
+    # ... once the provider's reset time has passed, the model is back, with the learned cap
+    health._usage["out"][key] = time.time() - 1
+    health.reset()
     assert health.req_limit(GEM) == 30 and health.available(GEM)[0]
     health._usage["req"][key] = 29
     assert not health.available(GEM)[0]

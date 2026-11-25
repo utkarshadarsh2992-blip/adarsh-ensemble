@@ -28,6 +28,7 @@ import httpx
 
 import config
 import health
+import thinking
 from config import PROVIDERS, ModelSpec
 
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -250,6 +251,17 @@ def _retry_after(r) -> float | None:
 
 
 _HEAVY_EFFORT = ("medium", "high", "xhigh")
+# a 400/410/422 that says the MODEL is gone (Groq "model_decommissioned", Google "no longer available") is a 404
+_GONE_RE = re.compile(r"(model[_ ]?(not[_ ]?found|decommissioned|does not exist)|models/\S+ is not found|"
+                      r"no longer (available|supported)|has been (decommissioned|deprecated|removed)|unknown model|"
+                      r"invalid model)", re.I)
+
+
+def _model_gone(data, r) -> bool:
+    code = ""
+    if isinstance(data, dict) and isinstance(data.get("error"), dict):
+        code = str(data["error"].get("code") or "")
+    return bool(_GONE_RE.search(f"{_full_error(data, r)} {code}"))
 
 
 def _think_retry(spec, extra: dict, max_tokens: int | None, est: int, tpm: int, plain: bool):
@@ -268,6 +280,8 @@ def _think_retry(spec, extra: dict, max_tokens: int | None, est: int, tpm: int, 
     effort = lighter.get("reasoning_effort")
     if effort in _HEAVY_EFFORT:
         lighter["reasoning_effort"] = "low"
+    elif isinstance(lighter.get("reasoning"), dict) and lighter["reasoning"].get("effort") in _HEAVY_EFFORT:
+        lighter["reasoning"] = {**lighter["reasoning"], "effort": "low"}  # OpenRouter's switch (thinking.py)
     elif effort is None and not plain and spec.provider == "gemini" and spec.model.startswith("gemini-"):
         lighter["reasoning_effort"] = "low"
     if bigger <= max_tokens and lighter == extra:
@@ -282,9 +296,13 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
     ok, why = health.available(spec)
     if not ok:
         raise _Skip(why)
-    if boost:
-        max_tokens = boost[0]
     tpm = config.tpm_limit(spec)
+    extra = dict(spec.extra)
+    if boost:
+        max_tokens, extra = boost[0], dict(boost[1])
+    else:  # council modes: think as much as the question's weight needs AND the budget allows (thinking.py)
+        max_tokens, extra, _lvl = thinking.plan(spec.provider, spec.model, extra, max_tokens, _est_tokens(messages),
+                                                tpm, health.stage())
     need = _est_tokens(messages) + (max_tokens or 0)
     if tpm and need > tpm * 0.9:
         raise _Skip(f"request too big for its {tpm} tokens/min limit", retry=False)
@@ -300,9 +318,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
     if spec.provider == "openrouter":
         headers["X-Title"] = "multi-model-ensemble"
 
-    extra, msgs = dict(spec.extra), messages
-    if boost:
-        extra = dict(boost[1])
+    msgs = messages
     attempts, recovered, think_retried = 0, False, bool(boost)
     url = f"{base_url}/chat/completions"
     stream = spec.provider in config.STREAM_PROVIDERS and hasattr(client, "stream")
@@ -401,9 +417,10 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
             raise _Skip(f"forbidden: {_error_text(data, r)}", retry=False)
         if code == 413:
             raise _Skip("request too large", retry=False)
-        if code == 404:
-            health.cooldown(spec, 6 * 3600)
-            raise _Skip(f"model not found: {_error_text(data, r)}", retry=False)
+        if code == 404 or (code in (400, 410, 422) and _model_gone(data, r)):
+            why = f"model not found: {_error_text(data, r)}"
+            health.model_gone(spec, why)  # every key of this model, saved: not called again until tomorrow
+            raise _Skip(why, retry=False, whole_model=True)
         if code in (400, 422):
             if not recovered:  # maybe an unsupported extra param or system role: retry plain, once
                 recovered, extra, msgs = True, {}, _merge_system(messages)
