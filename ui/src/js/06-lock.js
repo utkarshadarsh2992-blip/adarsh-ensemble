@@ -99,7 +99,7 @@ const Lock = (() => {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
       b.append(row('lock', 'Change PIN', 'Enter current PIN first', async () => { const ok = await pinSheet('Current PIN', 'Enter your current PIN', verify); if (ok) { const old = S.lock; S.lock = null; await setup(after); if (!S.lock) S.lock = old; } }),
         row('x', 'Remove PIN', 'Turn the lock off', async () => { const ok = await pinSheet('Current PIN', 'Enter your current PIN', verify); if (ok) { S.lock = null; save(); toast('PIN lock is off'); if (after) after(); } }),
-        h('p', {}, 'This lock only hides the app on this device. Real protection is your backend token and allow-list.'));
+        h('p', {}, 'Sirf is phone par chhupata hai.'));
     } });
   }
 

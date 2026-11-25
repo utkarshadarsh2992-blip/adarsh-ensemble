@@ -33,7 +33,7 @@ const MobileUpdates = (() => {
         b.append(h('button', { class: 'btn ghost', disabled: running, on: { click: () => check(true) } }, 'Check for updates'));
         if (state.state === 'available') b.append(h('button', { class: 'btn pri', on: { click: () => { BackgroundVoice.stop(); Voice.close(); TTS.stop(); call('updateDownload'); } } }, 'Update now'));
         if (['ready', 'permission_required'].includes(state.state)) b.append(h('button', { class: 'btn pri', on: { click: () => { BackgroundVoice.stop(); call('updateInstall'); } } }, 'Install update'));
-        b.append(h('p', { class: 'muted' }, 'Only successful published builds. APK hash, package, version and signing identity are checked. Android asks before installation; if permission is needed, allow it and tap Install update again. No uninstall or automatic installation.'), h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Later'));
+        b.append(h('p', { class: 'muted' }, 'Verified builds only · hash aur signature checked'), h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Later'));
       };
       redraw = draw; draw();
       const observer = new MutationObserver(() => { if (!b.isConnected) { observer.disconnect(); if (redraw === draw) redraw = null; } });
@@ -95,7 +95,7 @@ const BackgroundVoice = (() => {
     if (active()) return toast('Background voice is already starting or active. Stop it first.');
     if (!$('#lock').hidden) return toast('Pehle app unlock karo.');
     if (Chat.isBusy()) return toast('Current answer complete hone do.');
-    if ((S.settings.source || 'auto') !== 'auto') return toast('Background voice ko Auto source chahiye. Manual/Hybrid change nahi kiya; app mein answers paste karke use karo.');
+    if ((S.settings.source || 'auto') !== 'auto') return toast('Background voice ke liye Auto source chahiye.');
     const config = configFor(Chat.cur() || Chat.newChat());
     Voice.close(); STT.stop(); TTS.stop();
     const out = call('backgroundVoiceStart', JSON.stringify(config));
@@ -161,13 +161,13 @@ const BackgroundVoice = (() => {
     const close = sheet({ title: 'Background live voice', tall: true, build(b) {
       const draw = () => {
         b.textContent = '';
-        b.append(h('p', {}, 'Voice chat app ke bahar chal rahi hai. ADARSH sun raha hai aur bol raha hai; notification mein Stop hai.'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
+        b.append(h('p', {}, 'App ke bahar live · notification mein Stop'), h('p', { role: 'status', 'aria-live': 'polite' }, String(state.message || state.state || 'Stopped')),
           h('p', {}, 'Session mode: ' + (state.mode || Modes.current().name)));
         if (active()) b.append(h('button', { class: 'btn pri', on: { click: () => { close(); handedOff = false; call('backgroundVoiceStop'); sync(); setTimeout(() => Voice.open({ listen: true }), 500); } } }, 'App mein baat jaari rakho'),
           h('button', { class: 'btn ghost', on: { click: () => stop() } }, 'Stop background voice'));
-        b.append(h('p', { class: 'muted' }, 'Standard mode mein live voice khula ho to Back ya Home dabane par ye apne aap shuru hota hai. Mic aur notification permission chahiye. Ek session max 30 minute. Auto source hi chalta hai. Calls/messages aur screen wale edits ke liye app kholna padta hai.'),
-          h('p', { class: 'muted' }, 'Background sessions do not attach stored notes, tasks, memory or old chats as extra model context. Safe local commands can read allowed records on the phone. Current-chat history follows your sharing controls.'),
-          h('p', { class: 'muted' }, 'Phone recognition may use the recognition provider online. AI/TTS use your existing configured providers. No raw recording is saved by ADARSH. Android battery restrictions and your installed recognizer can interrupt the session.'),
+        b.append(h('p', { class: 'muted' }, 'Back/Home par apne aap · max 30 min · Auto source'),
+          h('p', { class: 'muted' }, 'Notes, tasks aur memory attach nahi hote.'),
+          h('p', { class: 'muted' }, 'Recognition online ho sakta hai · recording save nahi hoti.'),
           h('button', { class: 'btn ghost', on: { click: () => close() } }, 'Close controls'));
       };
       redraw = draw; draw();

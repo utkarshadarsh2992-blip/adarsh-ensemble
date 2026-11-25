@@ -154,7 +154,7 @@ test('BNR preference is off by default and opt-in/function ID are passed only to
   assert.ok(voiceLink, 'Voice & language settings link should exist');
   voiceLink.click();
   await settle(0);
-  const toggle = [...app.document.querySelectorAll('[role="switch"]')].find(b => text(b).includes('Voice typing noise removal (NVIDIA)'));
+  const toggle = [...app.document.querySelectorAll('[role="switch"]')].find(b => text(b).includes('Noise removal (NVIDIA)'));
   assert.ok(toggle);
   assert.match(text(toggle), /online/i);
   assert.equal(toggle.getAttribute('aria-checked'), 'false');
@@ -296,6 +296,6 @@ test('API keys: saving one key keeps the sheet open so the next key can be saved
     assert.ok(sheetEl(), 'sheet must stay open after saving key ' + n);
   }
   assert.deepEqual(Object.keys(saved).length, 2);
-  assert.match(text(sheetEl()), /Groq · 2\/3 keys/);
+  assert.match(text(sheetEl()), /Groq · 2\/3/);
   assert.ok(sheetEl().querySelector('details[data-g="Groq"]').open);
 });

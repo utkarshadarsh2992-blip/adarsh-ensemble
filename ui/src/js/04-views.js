@@ -121,8 +121,7 @@ const App = (() => {
     const add = () => { const t = inp.value.trim(); if (!t) return; S.memories.unshift({ id: uid('mem'), text: t, pin: false, ts: Date.now() }); save(); redraw(); };
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
     st.append(h('div', { class: 'addbar', style: 'padding:0' }, inp, h('button', { class: 'go', on: { click: add } }, 'Save')));
-    st.append(h('p', { class: 'muted' }, 'Memory local hai. Online replies mein relevant entries tabhi jayengi jab AI access mein sharing on ho.'));
-    if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Abhi kuch yaad nahi.')));
+    if (!S.memories.length) st.append(h('div', { class: 'empty' }, icon('brain'), h('div', {}, 'Khaali')));
     const sorted = [...S.memories].sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0));
     sorted.forEach((m, i) => st.append(h('div', { class: 'mem' }, h('span', { class: 'id' }, '#' + (S.memories.length - S.memories.indexOf(m))), h('p', {}, m.text),
       h('button', { 'aria-label': m.pin ? 'Unpin' : 'Pin', 'aria-pressed': String(!!m.pin), on: { click: () => { m.pin = !m.pin; save(); redraw(); } } }, icon('pin', 's')),
@@ -134,14 +133,14 @@ const App = (() => {
      background voice) so the model follows it. Never edited by the AI. */
   const PHILOSOPHY_MAX = 3000;
   BUILD.philosophy = (st) => {
-    const ta = h('textarea', { rows: '12', maxlength: String(PHILOSOPHY_MAX), 'aria-label': 'Meri philosophy', placeholder: 'Apne usool, soch aur priorities likho…',
+    const ta = h('textarea', { rows: '12', maxlength: String(PHILOSOPHY_MAX), 'aria-label': 'Meri philosophy', placeholder: 'Usool, soch, priorities…',
       style: 'width:100%;min-height:260px;padding:14px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;line-height:1.5;resize:vertical' });
     ta.value = S.philosophy || '';
     const count = h('small', { class: 'muted' });
     const paint = () => { count.textContent = ta.value.length + ' / ' + PHILOSOPHY_MAX; };
     ta.addEventListener('input', paint); paint();
     const saveIt = () => { S.philosophy = ta.value.trim().slice(0, PHILOSOPHY_MAX); save(); toast(S.philosophy ? 'Philosophy save ho gayi' : 'Philosophy khaali hai'); };
-    st.append(h('p', { class: 'muted' }, 'Har jawab mein AI ise follow karega.'), ta,
+    st.append(ta,
       h('div', { style: 'display:flex;justify-content:space-between;align-items:center;gap:12px' }, count, h('button', { class: 'btn pri', on: { click: saveIt } }, 'Save')));
   };
 
@@ -155,29 +154,29 @@ const App = (() => {
     const seg = (opts, get, set) => h('div', { class: 'seg' }, opts.map(([v, l]) => h('button', { 'aria-pressed': String(get() === v), on: { click: () => { set(v); save(); redraw(); } } }, l)));
     st.append(label('Appearance'),
       h('div', { class: 'themes' }, [['light', 'Light', 'tl'], ['dark', 'Dark', 'td'], ['system', 'Auto', 'ts']].map(([v, l, c]) => h('button', { class: c, 'aria-pressed': String(S.settings.theme === v), on: { click: () => { S.settings.theme = v; save(); applyTheme(); redraw(); } } }, h('span', { class: 'tile' }, h('i')), l))),
-      h('div', { class: 'd-label', style: 'padding:6px 4px 0' }, 'Reply font'), seg([['serif', 'Serif'], ['sans', 'Sans']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
+      h('div', { class: 'glabel', style: 'padding:6px 2px 0' }, 'Reply font'), seg([['serif', 'Serif'], ['sans', 'Sans']], () => S.settings.font, v => { S.settings.font = v; applyTheme(); }));
     st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
-      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
-      swItem('search', 'Research sources', 'arXiv · OpenAlex · NASA · World Bank', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on (har mode me)' : 'Sources off'); }),
+      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
+      swItem('search', 'Research sources', '14 providers', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
-    st.append(label('Android'), h('div', { class: 'grp' },
+      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
+    st.append(label('System'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
-    st.append(label('Alerts and feel'), h('div', { class: 'grp' },
+    st.append(label('Alerts'), h('div', { class: 'grp' },
       swItem('bell', 'Notifications', '', () => S.settings.notif, async (v) => {
         S.settings.notif = v;
         if (window.AdarshNative && AdarshNative.setNotify) {   // Android: the app posts the notification itself
           let r = ''; try { r = AdarshNative.setNotify(v); } catch (e) {}
-          if (r === 'denied') { S.settings.notif = false; save(); toast('Notification permission blocked. Phone Settings > Apps > Adarsh > Notifications me allow karo'); redraw(); }
+          if (r === 'denied') { S.settings.notif = false; save(); toast('Permission blocked · phone Settings me allow karo'); redraw(); }
           else if (r === 'granted') toast('Notifications on');
         } else if (v && window.Notification && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) {} }
       }),
       swItem('kbd', 'Haptics', '', () => S.settings.haptics, v => { S.settings.haptics = v; if (v) vibe(30); })));
     st.append(label('Adarsh'), h('div', { class: 'grp' },
       navItem('shield', 'AI access', '', aiAccessSheet)));
-    st.append(label('Privacy and connection'), h('div', { class: 'grp' },
+    st.append(label('Security'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
@@ -185,7 +184,7 @@ const App = (() => {
     st.append(label('Data'), h('div', { class: 'grp' },
       navItem('download', 'Export data', '', exportSheet),
       navItem('upload', 'Import data', '', () => $('#f-import').click()),
-      navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Saari chats clear karein?', text: 'Is phone ki saari chats hat jayengi. Memory aur tasks rahenge.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
+      navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Saari chats clear karein?', text: 'Memory aur tasks rahenge.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
 
   };
   function nameSheet() {
@@ -196,17 +195,16 @@ const App = (() => {
   }
   function aiAccessSheet() {
     sheet({ title: 'AI access', tall: true, build(b) {
-      b.append(h('p', { class: 'muted' }, 'Local commands phone par chalte hain. Online sharing on karne se sirf relevant, limited records selected mode ke model providers ko ja sakte hain. Keys, PIN aur connection credentials include nahi hote. Mic recognizer aur online TTS ki privacy alag hai.'));
       const rows = [
-        ['localRead', 'Local records read', 'Tasks, Work, Notes aur Memory dekhna'],
-        ['localEdit', 'Local add / edit', 'Standard commands se save, edit aur task completion; no delete/security'],
-        ['personalOnline', 'Share relevant context online', 'Har sawaal par apne aap. Off ho tab bhi "mere tasks padho" bolne par us sawaal ke liye jata hai'],
-        ['oldChats', 'Old chats context', 'Apne aap. Off ho tab bhi "purani chat padho" bolne par milta hai'],
-        ['currentChat', 'Current conversation context', 'Follow-up answers ke liye isi chat ke limited earlier messages'],
-        ['architecture', 'Read-only architecture', 'App modules/model chains ka safe reference; source editing nahi']
+        ['localRead', 'Records read', 'Tasks, Work, Notes, Memory'],
+        ['localEdit', 'Add / edit', 'Save, edit, complete'],
+        ['personalOnline', 'Share context online', 'Har sawaal par'],
+        ['oldChats', 'Old chats', 'Purani chats padhna'],
+        ['currentChat', 'Current chat', 'Follow-up context'],
+        ['architecture', 'Architecture', 'Read-only']
       ];
       b.append(h('div', { class: 'grp' }, rows.map(([key, title, sub]) => swItem('shield', title, sub, () => Productivity.access()[key], v => { S.settings.aiAccess = { ...Productivity.access(), [key]: v }; }))));
-      b.append(h('p', {}, 'Bolne par AI purani chats aur drawer ke records (Tasks, Work, Notes, Alarms, Memory) padh aur edit kar sakta hai, settings bhi badal sakta hai. Kabhi nahi: koi delete, API keys, chat delete aur PIN/password. Mode sirf aapke kehne par badalta hai.'));
+      b.append(h('p', { class: 'muted' }, 'AI edit kar sakta hai · delete, keys aur PIN kabhi nahi.'));
     } });
   }
   function architectureSheet() {
@@ -224,20 +222,20 @@ const App = (() => {
   /* V6: offline neural voice pack (Hindi + English male, ~42 MB once). Only shown inside the Android app. */
   function offlineBlock() {
     const N = window.AdarshNative;
-    if (!N || !N.neuralStatus) return h('span');
-    const msg = h('p', { class: 'muted' }); const btn = h('button', { class: 'btn', on: { click: () => { try { N.neuralInstall(); } catch (e) {} paint(); poll(); } } }, 'Download offline voice');
+    if (!N || !N.neuralStatus) return null;
+    const msg = h('p', { class: 'muted' }); const btn = h('button', { class: 'btn ghost', on: { click: () => { try { N.neuralInstall(); } catch (e) {} paint(); poll(); } } }, 'Download');
     const st = () => { try { return JSON.parse(N.neuralStatus()); } catch (e) { return {}; } };
     function paint() {
       const s = st();
-      if (s.installing) { msg.textContent = 'Offline voice download ho rahi hai… ' + (s.progress || 0) + '%'; btn.disabled = true; return; }
+      if (s.installing) { msg.textContent = 'Downloading · ' + (s.progress || 0) + '%'; btn.disabled = true; return; }
       btn.disabled = false;
-      if (s.hi && s.en) { msg.textContent = 'Offline neural voice taiyar (Hindi + English). Internet ya Gemini quota na ho tab ye bolti hai.'; btn.hidden = true; }
-      else msg.textContent = (s.error ? 'Download fail: ' + s.error + '. ' : '') + 'Offline voice (Piper, ~42 MB, ek baar) download karo: bina internet ke bhi natural awaaz.';
+      if (s.hi && s.en) { msg.textContent = 'Ready · offline'; btn.hidden = true; }
+      else msg.textContent = s.error ? 'Fail · ' + s.error : 'Piper · ~42 MB';
     }
     function poll() { paint(); if (st().installing) setTimeout(poll, 800); }
     window.__adarshNeural = () => paint();
     paint();
-    return h('div', {}, h('label', { class: 'l' }, 'Offline neural voice (fallback)'), msg, btn);
+    return h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Offline voice'), h('div', { class: 'inline' }, msg, btn));
   }
   function voiceSheet() {
     sheet({ title: 'Voice & language', tall: true, build(b) {
@@ -272,13 +270,12 @@ const App = (() => {
           sel.append(o);
         });
         if (!S.settings.deviceVoice) sel.value = '__auto';
-        return h('div', {}, h('label', { class: 'l' }, 'Phone voice'), sel,
-          h('p', { class: 'muted' }, 'Phone mode aur fallback ki awaaz. Female lag rahi ho to yahan se male choose karo — tap par sample bolega.'));
+        return h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Phone voice'), sel);
       })();
       const note = () => {
         const n = Backend.canTts() && !Backend.isDemo();
-        status.textContent = (n ? 'Natural voice: Gemini TTS (Gemini API key chahiye; free quota limited). ' : 'Natural voice is backend mein nahi hai. ')
-          + 'Na chale to phone ki apni voice turant bolti hai.' + (TTS.info.last ? ' Last time: ' + (TTS.info.last === 'natural' ? 'natural voice' + (TTS.info.model ? ' (' + TTS.info.model + ')' : '') : 'phone voice' + (TTS.info.why ? ' · natural voice error: ' + TTS.info.why : '')) : '');
+        status.textContent = n ? '' : 'Natural voice is backend mein nahi hai.';
+        if (TTS.info.last === 'device' && TTS.info.why) status.textContent = 'Phone voice · natural fail (' + TTS.info.why + ')';
       };
       note();
       /* Adarsh Live: Gemini Live socket on the voice screen only (never background, never Standard text chat). */
@@ -286,46 +283,45 @@ const App = (() => {
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
         on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
         (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
-      const liveBlock = liveNative ? h('div', {}, h('div', { class: 'grp' },
-        swItem('voice', 'Adarsh Live', 'Live voice · jarvis jaisi', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
-        S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,
-          (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn', on: { click: () => {
-            out.textContent = 'Live test chal raha hai…';
+      const liveBlock = liveNative ? [
+        h('div', { class: 'grp' },
+          swItem('voice', 'Adarsh Live', 'Live voice', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
+        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick,
+          (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn ghost', on: { click: () => {
+            out.textContent = 'Testing…';
             const lines = [];
-            Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) out.textContent = 'Connecting… ' + ev.attempt + '/' + ev.total + (ev.endpoint ? ' · ' + ev.endpoint : ''); if (s === 'listening') { lines.push('Live chalu hai' + (m ? ' (' + m + ')' : '')); out.textContent = lines.join(' · ') + ' — ab voice screen kholo.'; } },
-              onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); },
+            Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) out.textContent = 'Connecting ' + ev.attempt + '/' + ev.total; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); out.textContent = lines.join(' · '); } },
+              onProbe: (m) => { lines.push('Key: ' + m); out.textContent = lines.join(' · '); },
               onNotice: (m) => { lines.push(m); out.textContent = lines.join(' · '); },
               onError: (m) => { lines.push('Live: ' + m); out.textContent = lines.join(' · '); Live.stop(); },
               onClosed: () => {} });
-            Live.probe({ onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); } });
-            setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /chal raha/.test(out.textContent)) out.textContent = 'Live chalu ho gaya (test band kar diya).'; } }, 8000);
-          } } }, 'Test Adarsh Live'); return h('div', {}, btn, out); })(),
-          h('p', { class: 'muted' }, 'Sirf live voice screen par. Awaaz aur mic seedhe Google Gemini ko jaate hain; koi recording save nahi hoti. Fail ho to purani voice chalti hai.')) : null)
-        : h('p', { class: 'muted' }, 'Adarsh Live sirf Android app mein chalta hai.');
-      b.append(swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
-        liveBlock,
+            Live.probe({ onProbe: (m) => { lines.push('Key: ' + m); out.textContent = lines.join(' · '); } });
+            setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /Testing/.test(out.textContent)) out.textContent = 'Live connected.'; } }, 8000);
+          } } }, 'Test'); return h('div', { class: 'inline' }, btn, out); })()) : null
+      ] : [];
+      const kids = [
+        swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
+        ...liveBlock,
         h('label', { class: 'l' }, 'Voice engine'),
         segOf([['auto', 'Auto'], ['natural', 'Natural'], ['device', 'Phone']], () => S.settings.voiceEngine || 'auto', v => { S.settings.voiceEngine = v; }),
-        h('p', { class: 'muted' }, 'Auto: natural (Gemini) awaaz, aur fail ho to phone ki voice. Phone: sirf device TTS, offline bhi chalta hai.'),
+        h('p', { class: 'muted' }, 'Auto: natural, fail par phone.'),
         h('label', { class: 'l' }, 'Natural voice'), pick,
-        devPick || null,
-        h('label', { class: 'l' }, 'Language (sunna aur bolna)'),
-        segOf([['hi-IN', 'Hindi / Hinglish'], ['en-IN', 'English (India)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
-        h('label', { class: 'l' }, 'Speaking speed'), rate,
-        bnrSupported ? h('div', { class: 'grp' },
-          swItem('mic', 'Voice typing noise removal (NVIDIA)', 'Online', () => !!S.settings.bnr, v => { S.settings.bnr = v; }),
-          h('label', { class: 'l' }, 'NVIDIA BNR Function ID'), bnrFunctionId,
-          h('p', { class: 'muted' }, 'On par audio NVIDIA aur Android speech recognizer ko online jaata hai; baad mein delete.')
-        ) : (window.AdarshNative ? h('p', { class: 'muted' }, 'NVIDIA BNR ke liye Android 13+ chahiye; normal dictation chalta rahega.') : null),
+        devPick,
+        h('label', { class: 'l' }, 'Language'),
+        segOf([['hi-IN', 'Hindi'], ['en-IN', 'English (IN)'], ['en-US', 'English (US)']], () => S.settings.lang, v => { S.settings.lang = v; }),
+        h('label', { class: 'l' }, 'Speed'), rate,
+        bnrSupported ? h('div', { class: 'grp' }, swItem('mic', 'Noise removal (NVIDIA)', 'Online', () => !!S.settings.bnr, v => { S.settings.bnr = v; })) : null,
+        bnrSupported ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'NVIDIA Function ID'), bnrFunctionId) : null,
         offlineBlock(),
-        TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice')
-          : h('p', {}, 'Is browser me speech output nahi hai.'),
-        status);
+        TTS.ok() ? h('button', { class: 'btn pri', on: { click: () => { status.textContent = 'Bol raha hoon…'; TTS.speak('Namaste! Main Adarsh hoon. Aap jo bhi poochoge, main seedha aur saaf jawab dunga.', note); } } }, 'Test voice') : null,
+        status
+      ];
+      b.append(...kids.filter(Boolean));
     } });
   }
   function replySummary() {
     const L = { auto: 'Auto language', hinglish: 'Hinglish', english: 'English', hindi: 'Hindi' }, D = { simple: 'Simple', normal: 'Normal', detailed: 'Detailed' };
-    return (L[S.settings.replyLang || 'auto'] || 'Auto language') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep council' : 'Fast council');
+    return (L[S.settings.replyLang || 'auto'] || 'Auto') + ' · ' + (D[S.settings.depth || 'normal'] || 'Normal') + ' · ' + (S.settings.think === 'deep' ? 'Deep' : 'Fast');
   }
   function replySheet() {
     sheet({ title: 'Reply style', build(b) {
@@ -337,14 +333,16 @@ const App = (() => {
           seg.children[opts.findIndex(o => o[0] === v)].setAttribute('aria-pressed', 'true');
           if (view === 'settings') build('settings');
         } } }, label)));
-        b.append(h('label', { class: 'l' }, title), seg, h('p', { class: 'muted' }, note));
+        const kids = [h('label', { class: 'l' }, title), seg];
+        if (note) kids.push(h('p', { class: 'muted' }, note));
+        b.append(...kids);
       };
       group('Language', 'replyLang', 'auto', [['auto', 'Auto'], ['hinglish', 'Hinglish'], ['english', 'English'], ['hindi', 'Hindi']],
-        'Auto: sawaal ki bhasha mein jawab.');
+        'Sawaal ki bhasha.');
       group('Council', 'think', 'fast', [['fast', 'Fast'], ['deep', 'Deep']],
-        'Sirf Verified/Physics/Math/Business/Coding modes me: Fast = kam models, quota bachta hai. Deep = zyada models aur falsifiers, slow aur quota-heavy. Standard hamesha 1 model, turant.');
+        'Deep = zyada models, slow.');
       group('Depth', 'depth', 'normal', [['simple', 'Simple'], ['normal', 'Normal'], ['detailed', 'Detailed']],
-        'Simple: everyday words and one example. Detailed: the mechanism, edge cases and a worked example.');
+        '');
     } });
   }
   function keysSummary() {
@@ -353,7 +351,7 @@ const App = (() => {
     const slotOk = (g, n) => ok(K.slotId(g.base, n)) && (!g.idBase || ok(K.slotId(g.idBase, n)) || ok(g.idBase));
     let providers = 0, keys = 0;
     (K.groups || []).forEach(g => { const c = [1, 2, 3].filter(n => slotOk(g, n)).length; keys += c; if (c) providers++; });
-    return providers ? providers + ' of 5 providers · ' + keys + ' of 15 keys set' : 'No keys yet. Add at least one to get answers';
+    return providers ? providers + '/5 providers · ' + keys + ' keys' : 'No keys';
   }
   function keysSheet() {
     // Save / Delete keep the sheet open: it redraws in place (same open groups, same scroll), so several keys can be
@@ -364,8 +362,7 @@ const App = (() => {
       const keepOpen = new Set([...b.querySelectorAll('details.keygrp')].filter(d => d.open).map(d => d.getAttribute('data-g')));
       const scrollers = [b, b.parentElement].filter(Boolean).map(el => [el, el.scrollTop]);
       b.textContent = '';
-      b.append(h('p', {}, 'Keys are stored encrypted on this phone and are only sent to the provider you got them from. They are never shown again after saving.'),
-        h('p', {}, 'Har provider me 3 keys daal sakte ho. Pehle key 1 chalti hai; uski limit khatam ho (429), credits chahiye (402), key reject ho ya server down ho, to key 2, phir key 3. Khaali slot skip hota hai.'));
+      b.append(h('p', { class: 'muted' }, 'Encrypted on this phone · 3 keys per provider, 1 → 2 → 3'));
       const done = (r, msg) => { if (r && r.ok) { toast(msg); render(false); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
       const field = (id, label, plain) => {
         const cur = st[id] || {};
@@ -375,18 +372,18 @@ const App = (() => {
         const anySet = [1, 2, 3].some(n => (st[K.slotId(g.base, n)] || {}).set);
         const open = first ? (anySet || g.name === 'Groq') : keepOpen.has(g.name);
         const box = h('details', { class: 'keygrp', 'data-g': g.name, open: open ? '' : null },
-          h('summary', { class: 'l' }, g.name + ' · ' + [1, 2, 3].filter(n => (st[K.slotId(g.base, n)] || {}).set).length + '/3 keys'),
-          h('p', { class: 'muted' }, g.url));
+          h('summary', { class: 'l' }, g.name + ' · ' + [1, 2, 3].filter(n => (st[K.slotId(g.base, n)] || {}).set).length + '/3'));
         [1, 2, 3].forEach(n => {
           const keyId = K.slotId(g.base, n), idId = g.idBase ? K.slotId(g.idBase, n) : null;
           const keyIn = field(keyId, g.name + (g.idBase ? ' token ' : ' key ') + n, false);
           const idIn = idId ? field(idId, g.name + ' Account ID ' + n, true) : null;
           const isSet = (st[keyId] || {}).set || (idId && (st[idId] || {}).set);
-          box.append(h('label', { class: 'l' }, 'Key ' + n + (n === 1 ? ' (pehle yeh)' : ' (backup)')), keyIn, idIn,
-            h('div', { class: 'frow' },
+          const kids = [h('label', { class: 'l' }, 'Key ' + n), keyIn];
+          if (idIn) kids.push(idIn);
+          kids.push(h('div', { class: 'frow' },
               h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => {
                 const v = keyIn.value.trim(), acc = idIn ? idIn.value.trim() : '';
-                if (!v && !acc) return toast('Paste a key first');
+                if (!v && !acc) return toast('Key paste karo');
                 let r = { ok: true };
                 if (acc) r = K.save(idId, acc);
                 if (r && r.ok && v) r = K.save(keyId, v);
@@ -397,6 +394,7 @@ const App = (() => {
                 if (r && r.ok && idId && (st[idId] || {}).set) r = K.remove(idId);
                 done(r, g.name + ' key ' + n + ' deleted');
               } } }, 'Delete') : null));
+          box.append(...kids);
         });
         b.append(box);
       });
@@ -424,12 +422,11 @@ const App = (() => {
       const row = (k, v) => h('div', { class: 'item' }, h('span', { class: 't' }, h('b', { style: 'font-weight:500' }, k), h('small', {}, v)));
       const p = st.providers || {}; const on = Object.keys(p).filter(k => p[k]);
       const v = st.voice || {};
-      b.append(h('p', {}, 'Is app me koi server nahi hai: engine isi phone par chalta hai aur sirf tumhare API keys se models ko call karta hai.'),
-        h('div', { class: 'grp' },
-          row('Engine', st.ready ? 'Running (Python ' + (st.python || '?') + ')' : st.error ? 'Error: ' + st.error : 'Starting…'),
-          row('Providers with a key', on.length ? on.join(', ') : 'None. Settings > API keys'),
-          row('Natural voice', v.gemini ? 'Ready (Gemini key found)' : v.groq_english ? 'English only (Groq key)' : 'Needs a Gemini key. Phone voice is used meanwhile'),
-          row('Plan check', (st.plan_problems || []).length ? st.plan_problems.slice(0, 3).join('; ') : 'All model chains valid')));
+      b.append(h('div', { class: 'grp' },
+          row('Engine', st.ready ? 'On-device · Python ' + (st.python || '?') : st.error ? 'Error · ' + st.error : 'Starting…'),
+          row('Providers', on.length ? on.join(', ') : 'None'),
+          row('Natural voice', v.gemini ? 'Ready' : v.groq_english ? 'English only' : 'Phone voice'),
+          row('Plan', (st.plan_problems || []).length ? st.plan_problems.slice(0, 3).join('; ') : 'Valid')));
       const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
       b.append(h('button', { class: 'btn pri', on: { click: async () => { res.textContent = 'Testing…'; try { const r = await B.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); } catch (e) { res.textContent = 'Test failed: ' + e.message; } } } }, 'Test connection'), res,
         h('button', { class: 'btn ghost', on: { click: () => { Backend.refresh(); toast('Checking…'); } } }, 'Recheck status'));
@@ -441,11 +438,10 @@ const App = (() => {
       const url = h('input', { type: 'text', placeholder: 'https://your-server.example/api/chat', value: S.conn.url, 'aria-label': 'Backend URL', autocapitalize: 'off', autocomplete: 'off' });
       const tok = h('input', { type: 'password', placeholder: 'Secret token', value: S.conn.token, 'aria-label': 'Secret token', autocomplete: 'off' });
       const out = h('p', {});
-      b.append(h('p', {}, 'Point the app at your ADARSH backend. The token is sent as a Bearer header; your server must verify it and keep its own allow-list (the Telegram CHAT_ID check). Leave empty for the demo.'),
-        h('label', { class: 'l' }, 'Backend URL'), url, h('label', { class: 'l' }, 'Secret token'), tok, out,
+      b.append(h('label', { class: 'l' }, 'Backend URL'), url, h('label', { class: 'l' }, 'Token'), tok, out,
         h('div', { class: 'frow' }, h('button', { class: 'btn ghost', style: 'flex:1', on: { click: async () => { S.conn.url = url.value.trim(); S.conn.token = tok.value; out.textContent = 'Testing…'; const r = await Backend.ping(); out.textContent = r.ok ? '✓ ' + r.label : '✗ ' + r.label; } } }, 'Test'),
           h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { S.conn.url = url.value.trim(); S.conn.token = tok.value; save(); Backend.refresh(); close(); if (view === 'settings') build('settings'); toast('Connection saved'); } } }, 'Save')),
-        h('p', {}, 'Or from code: set window.ADARSH_BACKEND = { send, missionAction?, ping? } before the app loads. See ARCHITECTURE.md.'));
+        h('p', { class: 'muted' }, 'Token Bearer header me jata hai.'));
     } });
   }
   function exportSheet() {
@@ -455,11 +451,14 @@ const App = (() => {
       const ta = h('textarea', { readonly: '', style: 'width:100%;flex:1;min-height:200px;background:var(--card);border:0;border-radius:16px;padding:12px;font:12px var(--mono);color:var(--fg)' }); ta.value = data;
       const N = window.AdarshNative;
       window.__adarshSaved = (ok) => { if (ok === null) return; toast(ok ? 'File saved' : 'File save nahi hui'); };
-      b.append(h('p', {}, 'Save this JSON as a file or copy it, and keep it somewhere safe. It does not include your PIN or token.'), ta,
+      const kids = [
+        h('p', { class: 'muted' }, 'JSON backup · PIN aur keys include nahi'), ta,
         N && N.saveFile ? h('button', { class: 'btn pri', on: { click: () => { try { N.saveFile('adarsh-backup-' + new Date().toISOString().slice(0, 10) + '.json', data); } catch (e) { toast('Save dialog nahi khula'); } } } }, 'Save as file') : null,
         h('button', { class: N && N.saveFile ? 'btn ghost' : 'btn pri', on: { click: async () => { if (await copyText(data)) toast('Copied'); else { ta.focus(); ta.select(); toast('Select all and copy'); } } } }, 'Copy JSON'),
         N && N.shareText ? h('button', { class: 'btn ghost', on: { click: () => { try { N.shareText(data); } catch (e) {} } } }, 'Share…') : null,
-        !(N && N.saveFile) ? h('button', { class: 'btn ghost', on: { click: () => { const a = h('a', { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: 'adarsh-backup.json' }); document.body.append(a); a.click(); a.remove(); } } }, 'Download file') : null);
+        !(N && N.saveFile) ? h('button', { class: 'btn ghost', on: { click: () => { const a = h('a', { href: URL.createObjectURL(new Blob([data], { type: 'application/json' })), download: 'adarsh-backup.json' }); document.body.append(a); a.click(); a.remove(); } } }, 'Download file') : null
+      ];
+      b.append(...kids.filter(Boolean));
     } });
   }
   document.addEventListener('change', (e) => {
@@ -486,7 +485,7 @@ const App = (() => {
         if (lists.chats) lists.chats = lists.chats.filter(c => typeof c.id === 'string' && c.id.length <= 200 && (c.messages === undefined || Array.isArray(c.messages)));
         const legacy = { tasks: 'task', reminders: 'reminder', alarms: 'alarm', timers: 'timer', notes: 'note', work: 'work' };
         const records = Array.isArray(d.records) ? d.records : Object.entries(legacy).flatMap(([key, kind]) => (Array.isArray(d[key]) ? d[key].slice(0, 2000) : []).filter(isObj).map(r => ({ ...r, kind, at: r.at || r.due || 0, created: r.created || r.ts || Date.now() })));
-        confirmSheet({ title: 'Import this backup?', text: 'Imported chats, memory and missions replace those lists. Productivity records merge by ID; missing records are not deleted. Permissions, PIN, keys and connection settings stay unchanged.', label: 'Import', onYes: () => {
+        confirmSheet({ title: 'Import this backup?', text: 'Chats, memory aur missions replace honge. Records merge honge. PIN aur keys wahi rahenge.', label: 'Import', onYes: () => {
           try {
             const r = Productivity.importRecords(records); if (!r.ok) return toast(r.message || r.error || 'Records import fail hua; purana data preserve hai.');
             ['chats', 'memories', 'missions'].forEach(k => { if (Array.isArray(lists[k])) S[k] = lists[k]; });

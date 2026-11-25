@@ -110,10 +110,10 @@ const Actions = (() => {
   function infoSheet() {
     const i = info();
     sheet({ title: 'Notification permissions', build(b, close) {
-      if (!i) { b.append(h('p', {}, 'Browser alerts sirf tab khula rehne par chalenge. Background reminders ke liye Android app use karo.')); return; }
+      if (!i) { b.append(h('p', {}, 'Alerts sirf app khula rehne par.')); return; }
       b.append(h('p', {}, 'Notifications: ' + (i.notify ? 'On' : 'Off')), h('p', {}, 'Exact alarms: ' + (i.exact ? 'Allowed' : 'Not allowed — Android alert late kar sakta hai.')));
       if (!i.notify) b.append(h('button', { class: 'btn pri', on: { click: () => { N().setNotify(true); close(); toast('Android permission mein Allow karo.'); } } }, 'Allow notifications'));
-      b.append(h('p', { class: 'muted' }, 'App screen band ho tab scheduled notifications chal sakte hain. Android Force stop/battery restrictions delivery rok sakti hain.'));
+      b.append(h('p', { class: 'muted' }, 'App band ho to notifications Android par chalte hain. Force stop/battery restrictions delivery rok sakti hain.'));
     } });
   }
   function notesSheet() { App.show('notes'); }
