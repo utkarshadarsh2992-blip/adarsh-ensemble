@@ -6,7 +6,7 @@ import {budgetState, digestDue, localDay} from '../functions/_shared/budget.ts';
 import {alertThreshold,canAlert,htmlEscape,splitTelegram} from '../functions/_shared/alerts.ts';
 import {fcmPayload,serviceToken} from '../functions/_shared/fcm.ts';
 import {constantTime,handleApi} from '../functions/_shared/api.ts';
-import {run as ingest} from '../functions/news-ingest/index.ts';
+import {run as ingest,selectDueFeeds} from '../functions/news-ingest/index.ts';
 import {run as score} from '../functions/news-score/index.ts';
 
 Deno.test('RSS 2.0 CDATA/entities and Atom parse',async()=>{const rss=`<rss><channel><item><title><![CDATA[Nvidia &amp; chips]]></title><link>https://x.test/a?utm_source=z</link><description>Hi &amp; bye</description><pubDate>Wed, 25 Nov 2026 10:00:00 GMT</pubDate><source url="https://publisher.test">Pub</source></item></channel></rss>`;const atom=`<feed><entry><title>Rocket &amp; launch</title><link href="https://a.test/r"/><summary><![CDATA[Summary]]></summary><updated>2026-11-25T10:00:00Z</updated></entry></feed>`;const a=parseFeed(rss),b=parseFeed(atom);assertEquals(a[0].title,'Nvidia & chips');assertEquals(a[0].publisher,'Pub');assertEquals(b[0].url,'https://a.test/r');assertEquals(decodeEntities('a&nbsp;&amp;&#39;'),"a &'");assert((await sha256('x')).length===64)});
@@ -19,3 +19,25 @@ Deno.test('FCM payload shape and JWT structure',async()=>{const p=fcmPayload({id
 Deno.test('news-api auth, CORS, ping, settings clamping',async()=>{Deno.env.set('APP_SECRET','test-app-secret');const s=new MemoryStore();let r=await handleApi(new Request('http://x',{method:'OPTIONS'}),s);assertEquals(r.status,204);r=await handleApi(new Request('http://x',{method:'POST',headers:{'content-type':'application/json','x-app-secret':'bad'},body:'{"action":"ping"}'}),s);assertEquals(r.status,401);assert(constantTime('x','x'));r=await handleApi(new Request('http://x',{method:'POST',headers:{'content-type':'application/json','x-app-secret':'test-app-secret'},body:'{"action":"settings_set","alerts_per_day":99,"alert_min_score":2}'}),s);const j=await r.json();assertEquals(j.settings.alerts_per_day,5);assertEquals(j.settings.alert_min_score,2)});
 Deno.test('digest timezone due logic',()=>{const d=new Date('2026-11-25T16:05:00Z');assertEquals(localDay(d,'Asia/Kolkata'),'2026-11-25');assert(digestDue(d,'21:30','Asia/Kolkata',null));assertFalse(digestDue(d,'21:30','Asia/Kolkata','2026-11-25'))});
 Deno.test('end-to-end ingest -> score -> Tavily -> review -> alert decision',async()=>{Deno.env.set('GROQ_API_KEY_1','placeholder');Deno.env.set('TAVILY_API_KEY','placeholder');const s=new MemoryStore();s.feeds=[{id:'f',url:'https://feed.test',kind:'rss',grp:'x',region:'US',tag_hint:'AI',state_media:false,every_min:5,active:true,fail_count:0,name:'x'}];const rss='<rss><channel><item><title>OpenAI launches frontier model</title><link>https://publisher.test/a</link><description>AI model release</description></item></channel></rss>';let groqCalls=0;const fake=async (u:any,init?:RequestInit)=>{if(String(u)==='https://feed.test')return new Response(rss,{status:200});if(String(u).includes('groq')){groqCalls++;const content=groqCalls===1?'[{"tag":"AI","tags":["AI"],"region":"US","company":"OpenAI","activity":"model","score":9,"points":["p1","p2"]}]':'{"verified":"confirmed","points":["p1","p2"],"why":"ok"}';return new Response(JSON.stringify({choices:[{message:{content}}],usage:{completion_tokens:20,prompt_tokens:10}}),{status:200});}if(String(u).includes('tavily'))return new Response(JSON.stringify({results:[{url:'https://one.test/a'},{url:'https://two.test/a'}]}),{status:200});return new Response('{}',{status:200})};const ir=await ingest(s,fake);assertEquals(ir.items,1);const sr=await score(s,fake,new Date('2026-11-25T12:00:00Z'));assertEquals(sr.scored,1);const item=s.items[0];assertEquals(item.verified,'confirmed');assert(item.breaking||sr.alerts===0)});
+
+Deno.test('ingest rotates due feeds oldest-first and honors polling intervals',async()=>{
+  const now=new Date('2026-11-25T12:00:00Z');
+  const makeFeed=(id:string,last_fetch:string|null,every_min:number):any=>({id,url:`https://${id}.test/rss`,kind:'rss',grp:'test',region:'US',tag_hint:'AI',state_media:false,every_min,active:true,fail_count:0,name:id,last_fetch});
+  const s=new MemoryStore();
+  s.feeds=[
+    makeFeed('recent','2026-11-25T11:55:00Z',15),
+    makeFeed('due-newer','2026-11-25T11:30:00Z',15),
+    makeFeed('long-interval','2026-11-25T11:20:00Z',60),
+    makeFeed('never',null,1440),
+    makeFeed('due-old','2026-11-25T11:00:00Z',30),
+  ];
+  const requested:string[]=[];
+  const fake:typeof fetch=async(input)=>{
+    requested.push(String(input));
+    return new Response('<rss><channel></channel></rss>',{status:200});
+  };
+  const summary=await ingest(s,fake,now);
+  assertEquals(summary.feeds,3);
+  assertEquals(requested,['https://never.test/rss','https://due-old.test/rss','https://due-newer.test/rss']);
+  assertEquals(selectDueFeeds(s.feeds,now).length,0);
+});
