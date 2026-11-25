@@ -352,6 +352,8 @@ class MainActivity : AppCompatActivity() {
         backgroundGeneration++
         pendingBackground = null
         if (current === this) current = null
+        handoffConfig = null
+        BackgroundVoiceService.unprepare()
         dictation.destroy()
         speaker?.destroy()
         neural?.destroy()
@@ -415,6 +417,8 @@ class MainActivity : AppCompatActivity() {
             val a = current!!
             a.handoffConfig = json.trim().ifBlank { null }
             val armed = a.handoffConfig != null
+            // Become a foreground service while the screen is visible; leaving the app then only starts listening.
+            val ready = if (armed) BackgroundVoiceService.prepare(a) else { BackgroundVoiceService.unprepare(); false }
             val notif = a.notificationsReady()
             // Ask once, while the user is looking at the voice screen; leaving the app cannot show a dialog.
             if (armed && !notif && Build.VERSION.SDK_INT >= 33 && a.resumed && !a.handoffNotifAsked &&
@@ -422,7 +426,7 @@ class MainActivity : AppCompatActivity() {
                 a.handoffNotifAsked = true
                 a.askNotifications()
             }
-            JSONObject().put("ok", true).put("armed", armed).put("notifications", notif).toString()
+            JSONObject().put("ok", true).put("armed", armed).put("ready", ready).put("notifications", notif).toString()
         }
         fun backgroundVoicePeek(): String = onMain { BackgroundVoiceService.peek(current!!).toString() }
         fun backgroundVoiceAck(json: String): String = onMain {

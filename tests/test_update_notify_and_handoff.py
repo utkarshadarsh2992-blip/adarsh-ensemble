@@ -32,3 +32,16 @@ def test_live_voice_hands_off_on_every_way_of_leaving():
     js = (SRC.parents[3] / "ui/src/js/05-mobile.js").read_text()
     can = js.split("const canHandoff")[1].split(";")[0]
     assert "standard" not in can                                  # every selected mode can continue outside
+def test_voice_service_is_foreground_before_the_app_leaves_the_screen():
+    """Android 14 refuses a microphone foreground service started from the background: prepare while visible."""
+    main = (K / "MainActivity.kt").read_text(); svc = (K / "BackgroundVoiceService.kt").read_text()
+    arm = main.split("fun backgroundVoiceArm")[1].split("fun ")[0]
+    assert "BackgroundVoiceService.prepare(a)" in arm and "BackgroundVoiceService.unprepare()" in arm
+    assert "BackgroundVoiceService.unprepare()" in main.split("override fun onDestroy()")[1]
+    assert "ACTION_PREPARE" in svc and "startForegroundNow(ready = true)" in svc
+    start = svc.split("fun start(activity: MainActivity")[1].split("fun prepare")[0]
+    assert "ready.standby" in start and "beginSession(configJson, epoch)" in start
+    assert "private fun endStandby()" in svc and "standby && !active" in svc
+def test_background_voice_error_is_shown_when_the_user_comes_back():
+    js = (Path(__file__).resolve().parents[1] / "ui/src/js/05-mobile.js").read_text()
+    assert "Bahar voice ruk gayi: " in js and "lastError" in js

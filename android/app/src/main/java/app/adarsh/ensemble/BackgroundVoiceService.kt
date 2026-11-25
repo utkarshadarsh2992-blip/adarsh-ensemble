@@ -56,6 +56,8 @@ class BackgroundVoiceService : Service() {
     private var store: BackgroundVoiceStore? = null
     private var cleaned = false
     private var sessionEpoch = 0L
+    /** Standby: already a foreground service (started while the voice screen was visible), not listening yet. */
+    private var standby = false
 
     override fun onCreate() {
         super.onCreate()
@@ -71,7 +73,24 @@ class BackgroundVoiceService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             launchEpoch.incrementAndGet()
-            stopSession("stopped")
+            if (standby && !active) endStandby() else stopSession("stopped")
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_PREPARE) {
+            if (active) return START_NOT_STICKY
+            try {
+                startForegroundNow(ready = true)
+                live = this
+                standby = true
+                cleaned = false
+                standbyToken++
+                val t = standbyToken
+                // the voice screen re-arms after every turn; an abandoned standby ends on its own
+                main.postDelayed({ if (standby && !active && t == standbyToken) endStandby() }, SESSION_LIMIT_MS)
+            } catch (_: Throwable) {
+                standby = false
+                stopSelf()
+            }
             return START_NOT_STICKY
         }
         if (intent?.action != ACTION_START || intent.getStringExtra(EXTRA_CONFIG).isNullOrBlank()) {
@@ -84,10 +103,17 @@ class BackgroundVoiceService : Service() {
             return START_NOT_STICKY
         }
         if (active) return START_NOT_STICKY
+        beginSession(intent.getStringExtra(EXTRA_CONFIG)!!, requestedEpoch)
+        return START_NOT_STICKY
+    }
+
+    /** Starts listening. From standby the service is already in the foreground (no background-start limits apply). */
+    private fun beginSession(raw: String, requestedEpoch: Long) {
+        if (active) return
+        live = this
         sessionEpoch = requestedEpoch
         try {
-            startForegroundNow()
-            val raw = intent.getStringExtra(EXTRA_CONFIG)!!
+            if (standby) { standby = false; standbyToken++; updateNotificationNow("Listening") } else startForegroundNow()
             val parsed = parseConfig(raw)
             pendingStartEpoch = 0L
             config = parsed
@@ -115,18 +141,27 @@ class BackgroundVoiceService : Service() {
             emitStatus()
             beginListening(sessionToken, 0L)
         } catch (e: Throwable) {
+            cleaned = false   // failAndStop reports the error to the app and removes the notice
             failAndStop("Could not start voice chat: ${e.message ?: e.javaClass.simpleName}")
         }
-        return START_NOT_STICKY
     }
 
-    private fun startForegroundNow() {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Background voice", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Microphone and spoken replies for an active Adarsh voice chat"
-            }
-        )
+    /** Ends a standby that never started listening (voice screen closed, app destroyed or 30 minutes idle). */
+    private fun endStandby() {
+        if (!standby || active) return
+        standby = false
+        standbyToken++
+        cleaned = true   // nothing to report: no session ran
+        try { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) } catch (_: Exception) { try { stopForeground(true) } catch (_: Exception) {} }
+        live = null
+        stopSelf()
+    }
+
+    private fun updateNotificationNow(text: String) {
+        try { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(text)) } catch (_: Exception) {}
+    }
+
+    private fun buildNotification(text: String): Notification {
         val stop = PendingIntent.getService(
             this, 42, Intent(this, BackgroundVoiceService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -135,15 +170,25 @@ class BackgroundVoiceService : Service() {
             this, 43, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        val notification = Notification.Builder(this, CHANNEL)
+        return Notification.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Adarsh voice chat")
-            .setContentText("Voice chat is active")
+            .setContentText(text)
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())
             .build()
+    }
+
+    private fun startForegroundNow(ready: Boolean = false) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL, "Background voice", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Microphone and spoken replies for an active Adarsh voice chat"
+            }
+        )
+        val notification = buildNotification(if (ready) "Ready: app se bahar bhi baat jaari rahegi" else "Voice chat is active")
         if (Build.VERSION.SDK_INT >= 29) {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, notification,
@@ -637,12 +682,13 @@ class BackgroundVoiceService : Service() {
         emitStatus()
         try { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) } catch (_: Exception) { try { stopForeground(true) } catch (_: Exception) {} }
         live = null
+        standby = false
         if (pendingStartEpoch == sessionEpoch) pendingStartEpoch = 0L
         stopSelf()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        stopSession("task_removed")
+        if (standby && !active) endStandby() else stopSession("task_removed")
         super.onTaskRemoved(rootIntent)
     }
 
@@ -676,6 +722,8 @@ class BackgroundVoiceService : Service() {
     companion object {
         private const val ACTION_START = "app.adarsh.ensemble.action.BACKGROUND_VOICE_START"
         private const val ACTION_STOP = "app.adarsh.ensemble.action.BACKGROUND_VOICE_STOP"
+        private const val ACTION_PREPARE = "app.adarsh.ensemble.action.BACKGROUND_VOICE_PREPARE"
+        private var standbyToken = 0L
         private const val EXTRA_CONFIG = "config_json"
         private const val EXTRA_LAUNCH_EPOCH = "launch_epoch"
         private const val CHANNEL = "background_voice"
@@ -718,6 +766,7 @@ class BackgroundVoiceService : Service() {
             "thinking" -> "Background voice is preparing a reply"
             "speaking" -> "Background voice is speaking"
             "stopping" -> "Background voice is stopping"
+            "standby" -> "Background voice is ready"
             "stopped" -> "Background voice stopped"
             "error" -> "Background voice stopped with an error"
             else -> "Background voice is inactive"
@@ -754,6 +803,12 @@ class BackgroundVoiceService : Service() {
             pendingStartEpoch = epoch
             pendingChatId = parsed.chatId
             pendingMode = parsed.mode
+            val ready = live
+            if (ready != null && ready.standby && !ready.active) {
+                // Already a foreground service since the voice screen opened: just start listening.
+                ready.main.post { if (epoch == launchEpoch.get()) ready.beginSession(configJson, epoch) else if (pendingStartEpoch == epoch) pendingStartEpoch = 0L }
+                return response(true, false, "starting", "Background voice is starting", "", parsed.chatId, parsed.mode)
+            }
             val intent = Intent(activity, BackgroundVoiceService::class.java)
                 .setAction(ACTION_START).putExtra(EXTRA_CONFIG, configJson).putExtra(EXTRA_LAUNCH_EPOCH, epoch)
             return try {
@@ -764,6 +819,26 @@ class BackgroundVoiceService : Service() {
                 val error = "Could not start background voice: ${e.message ?: e.javaClass.simpleName}"
                 response(false, false, "error", error, error, parsed.chatId, parsed.mode)
             }
+        }
+
+        /**
+         * Voice screen open (app visible): become a foreground service now, idle, so that leaving the app later only
+         * has to start listening. Android 14 does not let a microphone service start once the app is in the background.
+         */
+        fun prepare(activity: MainActivity): Boolean {
+            if (live?.active == true || live?.standby == true) return true
+            if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return false
+            if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
+            return try {
+                ContextCompat.startForegroundService(activity, Intent(activity, BackgroundVoiceService::class.java).setAction(ACTION_PREPARE))
+                true
+            } catch (_: Exception) { false }
+        }
+
+        /** Voice screen closed without leaving the app: drop the idle standby (a running session is untouched). */
+        fun unprepare() {
+            val s = live ?: return
+            s.main.post { s.endStandby() }
         }
 
         fun stop(context: Context): JSONObject {

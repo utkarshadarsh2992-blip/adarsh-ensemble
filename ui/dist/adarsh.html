@@ -4695,7 +4695,7 @@ const MobileUpdates = (() => {
 })();
 
 const BackgroundVoice = (() => {
-  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false, handedOff = false, notifHint = false;
+  let state = { active: false, state: 'stopped' }, redraw = null, syncing = false, handedOff = false, notifHint = false, lastError = '';
   const N = () => window.AdarshNative;
   const supported = () => !!(N() && N().backgroundVoiceStart);
   const active = () => !!state.active || ['starting', 'permission_required'].includes(state.state);
@@ -4705,6 +4705,7 @@ const BackgroundVoice = (() => {
     if (!value || typeof value !== 'object') return state;
     if (value.type === 'reply') return state;
     state = { ...value, message: value.message || value.error || '', state: value.state || (value.ok === false ? 'error' : value.active ? 'listening' : 'stopped') };
+    if (state.state === 'error' && (value.error || value.message)) lastError = String(value.error || value.message);   // kept: the phone forgets it once the session ends
     if (redraw) redraw();
     Bus.emit('background:state', state);
     if (handedOff && !document.hidden) setTimeout(maybeResume, 0);
@@ -4750,12 +4751,15 @@ const BackgroundVoice = (() => {
   function disarm() { try { if (N() && N().backgroundVoiceArm) N().backgroundVoiceArm(''); } catch (e) {} }
   /* Native started the session while the app was leaving: close the in-app screen without touching the session. */
   window.__adarshVoiceHandoff = value => {
-    if (value && value.ok) { handedOff = true; Voice.close({ keepBackground: true }); }
+    if (value && value.ok) { handedOff = true; lastError = ''; Voice.close({ keepBackground: true }); }
+    else if (value && (value.error || value.message)) lastError = String(value.error || value.message);
     apply(value);
   };
   /* Back in the app: when the session is quiet, end it and continue the same conversation on the voice screen. */
   function maybeResume() {
-    if (!handedOff || document.hidden || !$('#lock').hidden) return;
+    if (document.hidden || !$('#lock').hidden) return;
+    if (lastError && !active()) { toast('Bahar voice ruk gayi: ' + lastError); lastError = ''; }
+    if (!handedOff) return;
     if (active() && !QUIET.includes(state.state)) return;   // the user is speaking or a reply is on its way: wait for it
     handedOff = false;
     const wasActive = active();
