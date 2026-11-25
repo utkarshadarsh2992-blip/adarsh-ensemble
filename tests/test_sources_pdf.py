@@ -113,6 +113,10 @@ def test_sources_and_pdf_are_wired_into_every_mode():
     assert "research: S.settings.research === false ? 'off' : 'on'" in CHAT_JS
     assert "research: true" in CORE_JS and "'Research sources'" in VIEWS_JS
     assert "AdarshNative.savePdf" in CHAT_JS
+    # the report is offered as a card with a Download button; nothing is written to Downloads on its own
+    assert "function holdPdf(" in CHAT_JS and "const PDFS = new Map();" in CHAT_JS
+    assert "function pdfEl(m)" in CHAT_JS and "'Download'" in CHAT_JS
+    assert "holdPdf(r)" in CHAT_JS and "r.pdfFile = {" in CHAT_JS
     assert "fun savePdf(" in BRIDGE and "fun savePdf(" in ACTIVITY
     assert "MediaStore.Downloads" in ACTIVITY
 

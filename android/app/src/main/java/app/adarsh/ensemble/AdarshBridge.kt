@@ -38,6 +38,9 @@ class AdarshBridge(
 
     @JavascriptInterface
     fun updateStatus(): String = if (ok()) MainActivity.updateStatus() else denied
+    /** Installed build ("1.0.123 (123)"), so Settings can show which APK is running. */
+    @JavascriptInterface
+    fun appVersion(): String = if (ok()) MainActivity.appVersion() else ""
     @JavascriptInterface
     fun updateCheck(force: Boolean): String = if (ok()) MainActivity.updateCheck(force) else denied
     @JavascriptInterface

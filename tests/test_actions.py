@@ -42,6 +42,11 @@ def test_alarm_timer_note():
     assert s["action"] == "note.add" and s["args"]["text"] == "kal exam hai"
 
 
+def test_plain_search_does_not_open_a_browser():
+    """\"ispar search karo\" is a question for the model, not a Google tab. Only an explicit browser word opens one."""
+    for cmd in ("ispar search karo", "isko search kar lo", "search karo aaj ka mausam"):
+        assert one(cmd)[1] is None, cmd
+    assert one("browser me search karo python decorators")[1]["action"] == "web.search"
 def test_open_search_status_voice():
     assert one("whatsapp kholo")[1]["args"]["app"] == "whatsapp"
     assert one("google par best laptop search karo")[1]["args"]["query"] == "best laptop"

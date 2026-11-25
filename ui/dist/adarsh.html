@@ -472,6 +472,13 @@ button.item:active{background:var(--card2)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes down{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
 
+/* ---------- report card (PDF is offered, never auto-saved) ---------- */
+.pdfcard{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px 10px 10px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.pdfcard>svg{color:var(--accent);flex:none}
+.pdfcard .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pdfcard .t b{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdfcard .t small{font:500 11px var(--mono);color:var(--muted);letter-spacing:.03em}
+.pdfcard .btn{height:36px;padding:0 16px;border-radius:10px;font-size:13.5px;flex:none}
 /* ---------- sheets ---------- */
 .shade{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.52);display:flex;align-items:flex-end;animation:fade .2s ease}
 .shade.top{z-index:70}
@@ -608,6 +615,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 
 /* ---------- settings groups ---------- */
 .glabel{display:flex;align-items:center;gap:7px;font:500 10.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 2px 0;margin-bottom:-8px}
+.buildline{text-align:center;font:500 10.5px var(--mono);letter-spacing:.12em;color:var(--muted);opacity:.75;padding:6px 0 2px}
 .glabel::before{content:"";width:3px;height:9px;border-radius:1px;background:var(--accent);flex:none}
 .stack>.glabel:first-child{padding-top:0}
 
@@ -2676,12 +2684,30 @@ const Chat = (() => {
         h('div', { class: 'mcl' }, r.calls.map(c => callRowEl({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails }, false)))));
     }
     wrap.append(renderReply(r, ctx));
+    const pdfCard = pdfEl(m); if (pdfCard) wrap.append(pdfCard);
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* check questions, new words, Gehrai mein jao */
     if (r.type === 'text' && r.briefing) Briefing.extras(m, ctx).forEach(el => wrap.append(el));   /* KAL KA PLAN card */
     if (r.type === 'text' && r.truth) Usage.extras(m, ctx).forEach(el => wrap.append(el));   /* FACT-CHECK card */
     if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
+  }
+  /* The report card: name, size and one button. Nothing is written to Downloads until it is pressed. */
+  function pdfEl(m) {
+    const f = m.reply && m.reply.pdfFile;
+    if (!f) return null;
+    return h('div', { class: 'pdfcard' }, icon('file', 's'),
+      h('span', { class: 't' }, h('b', {}, f.name), h('small', {}, f.kb + ' KB · PDF')),
+      h('button', { class: 'btn pri', on: { click: () => downloadPdf(f) } }, 'Download'));
+  }
+  function downloadPdf(f) {
+    const held = PDFS.get(f.id);
+    if (!held) return toast('PDF is session me nahi hai · dobara banao');
+    if (!window.AdarshNative || !window.AdarshNative.savePdf) return toast('Download sirf Android app me');
+    try {
+      const out = JSON.parse(window.AdarshNative.savePdf(held.name, held.base64) || '{}');
+      toast(out && out.ok ? 'PDF Downloads me: ' + (out.name || held.name) : 'Save fail: ' + ((out && out.message) || 'unknown'));
+    } catch (e) { toast('PDF save nahi hua'); }
   }
   function actionsEl(m, isLast) {
     const txt = () => stripMd(speechOf(m.reply)) || '';
@@ -2985,7 +3011,7 @@ const Chat = (() => {
       }
       for (const [i, r] of arr.entries()) {
         r.uiMode = modeId;
-        if (i === 0) { savePdf(r); r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
+        if (i === 0) { holdPdf(r); r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
         if (r.origin === 'local-rule' || ['blocked', 'clarification'].includes(r.type)) { const last = [...c.msgs].reverse().find(m => m.role === 'user' && m.text === text); if (last) last.localOnly = true; }
         if (personal) r.personalContext = true;
         // App-setting commands ("standard mode pe jao", "web search off karo") work from every mode; other actions stay Standard-only.
@@ -3003,13 +3029,16 @@ const Chat = (() => {
     }
   }
   /* A report the backend built: hand the bytes to Kotlin, which writes them into Downloads. */
-  function savePdf(r) {
+  /* Report bytes stay in memory (base64 is far too heavy for localStorage) and the chat keeps only a small
+     {id, name, kb} card, so the download is a button the user presses instead of an automatic file. */
+  const PDFS = new Map();
+  function holdPdf(r) {
     const pdf = r && r.pdf;
-    if (!pdf || !pdf.base64 || !window.AdarshNative || !window.AdarshNative.savePdf) return;
-    try {
-      const out = JSON.parse(window.AdarshNative.savePdf(String(pdf.name || 'adarsh-report.pdf'), String(pdf.base64)));
-      toast(out && out.ok ? 'PDF Downloads me: ' + (out.name || pdf.name) : 'PDF save nahi hua: ' + ((out && out.message) || 'unknown'));
-    } catch (e) { toast('PDF save nahi hua'); }
+    if (!pdf || !pdf.base64) return;
+    const name = String(pdf.name || 'adarsh-report.pdf');
+    const id = uid('pdf');
+    PDFS.set(id, { name: name, base64: String(pdf.base64) });
+    r.pdfFile = { id: id, name: name, kb: Math.max(1, Math.round(String(pdf.base64).length * 0.75 / 1024)) };
     delete r.pdf;
   }
   const normReply = (r) => capReply(typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
@@ -5118,6 +5147,10 @@ const App = (() => {
       navItem('download', 'Export data', '', exportSheet),
       navItem('upload', 'Import data', '', () => $('#f-import').click()),
       navItem('trash', 'Clear all chats', '', () => confirmSheet({ title: 'Saari chats clear karein?', text: 'Memory aur tasks rahenge.', label: 'Clear', danger: true, onYes: () => { S.chats = []; S.cur = null; save(); Chat.renderThread(); drawerList(); toast('Chats cleared'); } }))));
+    /* which build is running: one mono line, nothing else */
+    let build = '';
+    try { if (window.AdarshNative && AdarshNative.appVersion) build = AdarshNative.appVersion(); } catch (e) {}
+    if (build) st.append(h('div', { class: 'buildline' }, 'ADARSH v' + build));
 
   };
   function nameSheet() {
@@ -5255,27 +5288,31 @@ const App = (() => {
         if (TTS.info.last === 'device' && TTS.info.why) status.textContent = 'Phone voice · natural fail (' + TTS.info.why + ')';
       };
       note();
-      /* Adarsh Live: Gemini Live socket on the voice screen only (never background, never Standard text chat). */
-      const liveNative = !!(window.AdarshNative && window.AdarshNative.liveStart);
+      /* Adarsh Live: Gemini Live socket on the voice screen only (never background, never Standard text chat).
+         The row is always shown, so a build that cannot reach the native bridge still shows the switch and says why. */
+      const liveNative = !!(window.AdarshNative && (window.AdarshNative.liveStart || window.AdarshNative.liveProbe));
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
         on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
         (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
-      const liveBlock = liveNative ? [
+      const liveOut = h('p', { class: 'muted' }, liveNative ? '' : 'Sirf Android app mein');
+      const liveTest = h('button', { class: 'btn ghost', on: { click: () => {
+        if (!liveNative) { liveOut.textContent = 'Adarsh Live sirf Android app mein chalta hai.'; return; }
+        liveOut.textContent = 'Testing…';
+        const lines = [];
+        Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) liveOut.textContent = 'Connecting ' + ev.attempt + '/' + ev.total; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); liveOut.textContent = lines.join(' · '); } },
+          onProbe: (m) => { lines.push('Key: ' + m); liveOut.textContent = lines.join(' · '); },
+          onNotice: (m) => { lines.push(m); liveOut.textContent = lines.join(' · '); },
+          onRole: (r, l) => { if (r && l) { lines.push(l); liveOut.textContent = lines.join(' · '); } },
+          onError: (m) => { lines.push('Live: ' + m); liveOut.textContent = lines.join(' · '); Live.stop(); },
+          onClosed: () => {} });
+        Live.probe({ onProbe: (m) => { lines.push('Key: ' + m); liveOut.textContent = lines.join(' · '); } });
+        setTimeout(() => { if (Live.isOn) { Live.stop(); if (!liveOut.textContent || /Testing/.test(liveOut.textContent)) liveOut.textContent = 'Live connected.'; } }, 8000);
+      } } }, 'Test');
+      const liveBlock = [
         h('div', { class: 'grp' },
-          swItem('voice', 'Adarsh Live', 'Live voice', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
-        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick,
-          (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn ghost', on: { click: () => {
-            out.textContent = 'Testing…';
-            const lines = [];
-            Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) out.textContent = 'Connecting ' + ev.attempt + '/' + ev.total; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); out.textContent = lines.join(' · '); } },
-              onProbe: (m) => { lines.push('Key: ' + m); out.textContent = lines.join(' · '); },
-              onNotice: (m) => { lines.push(m); out.textContent = lines.join(' · '); },
-              onError: (m) => { lines.push('Live: ' + m); out.textContent = lines.join(' · '); Live.stop(); },
-              onClosed: () => {} });
-            Live.probe({ onProbe: (m) => { lines.push('Key: ' + m); out.textContent = lines.join(' · '); } });
-            setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /Testing/.test(out.textContent)) out.textContent = 'Live connected.'; } }, 8000);
-          } } }, 'Test'); return h('div', { class: 'inline' }, btn, out); })()) : null
-      ] : [];
+          swItem('voice', 'Adarsh Live', 'Live voice', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && typeof Live !== 'undefined' && Live) Live.stop(); })),
+        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick, h('div', { class: 'inline' }, liveTest, liveOut)) : null
+      ];
       const kids = [
         swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
         ...liveBlock,

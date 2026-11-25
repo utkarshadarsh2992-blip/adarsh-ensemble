@@ -156,3 +156,15 @@ def test_dictation_transcript_does_not_reroute_the_session():
     # the transcript of our own voice must not bounce the session between roles
     assert "if (current === 'transcribe') return" in VOICE
     assert "(stop|band|bas|normal|wapas|ruko|kaafi)" in VOICE
+
+
+def test_the_live_row_is_always_in_the_voice_sheet():
+    """A build that cannot reach the native bridge used to hide the whole Adarsh Live row, which looked like
+    the switch had been deleted. The row is always rendered; only the Test action needs the bridge."""
+    assert "liveNative ? [" not in VIEWS
+    assert "swItem('voice', 'Adarsh Live'" in VIEWS
+    assert "const liveBlock = [" in VIEWS
+    assert "'Sirf Android app mein'" in VIEWS
+    # Settings shows which build is running, so a report can name the APK
+    assert "AdarshNative.appVersion" in VIEWS and "ADARSH v" in VIEWS
+    assert 'fun appVersion(): String' in BRIDGE and "fun appVersion(): String" in ACTIVITY

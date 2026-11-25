@@ -418,10 +418,13 @@ def one(text: str, now: int) -> dict | None:
     if re.search(r"\b(?:open|kholo|launch)\b", padded):
         app = _app(t)
         if app: return _step("app.open", app=app)
-    m = re.search(r"\b(?:google|search|dhundo|dhunde)\b(?:\s+(?:par|pe|mein|me|for))?\s*(.*)$", t)
-    if m:
-        q = _clean(re.sub(r"\b(?:google|par|pe|mein|me|search|dhundo|dhunde|karo|kar|do|for)\b", " ", m.group(1), flags=re.I))
-        if len(q) >= 2: return _step("web.search", query=q)
+    # Only an explicit browser mention opens Google. "ispar search karo" is a normal question: it must go to the
+    # model (with its own web search), not to a browser tab.
+    if re.search(r"\b(?:google|browser|chrome)\b", padded):
+        m = re.search(r"\b(?:google|search|dhundo|dhunde)\b(?:\s+(?:par|pe|mein|me|for))?\s*(.*)$", t)
+        if m:
+            q = _clean(re.sub(r"\b(?:google|par|pe|mein|me|search|dhundo|dhunde|karo|kar|do|for)\b", " ", m.group(1), flags=re.I))
+            if len(q) >= 2: return _step("web.search", query=q)
     return None
 
 

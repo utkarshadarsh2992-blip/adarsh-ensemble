@@ -461,6 +461,14 @@ class MainActivity : AppCompatActivity() {
         fun updateDownload(): String = onMain { current!!.updater!!.download().toString() }
         fun updateInstall(): String = onMain { current!!.updater!!.install().toString() }
         fun bootBars(dark: Boolean) = ui { a -> a.setBootBars(dark) }
+        /** Installed build for the Settings footer; empty when the package cannot be read. */
+        fun appVersion(): String {
+            val c = appCtx ?: return ""
+            return try {
+                val p = c.packageManager.getPackageInfo(c.packageName, 0)
+                p.versionName + " (" + p.versionCode + ")"
+            } catch (e: Exception) { "" }
+        }
         fun backgroundVoiceStatus(): String = onMain {
             if (current!!.pendingBackground != null) JSONObject().put("ok", true).put("active", false).put("state", "permission_required")
                 .put("message", "Voice start is waiting for permissions. Stay in the app or tap Stop to cancel.").toString()

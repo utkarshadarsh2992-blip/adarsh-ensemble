@@ -467,6 +467,13 @@ button.item:active{background:var(--card2)}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes down{from{transform:translateY(-12px);opacity:0}to{transform:none;opacity:1}}
 
+/* ---------- report card (PDF is offered, never auto-saved) ---------- */
+.pdfcard{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px 10px 10px 14px;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.pdfcard>svg{color:var(--accent);flex:none}
+.pdfcard .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.pdfcard .t b{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdfcard .t small{font:500 11px var(--mono);color:var(--muted);letter-spacing:.03em}
+.pdfcard .btn{height:36px;padding:0 16px;border-radius:10px;font-size:13.5px;flex:none}
 /* ---------- sheets ---------- */
 .shade{position:absolute;inset:0;z-index:30;background:rgba(0,0,0,.52);display:flex;align-items:flex-end;animation:fade .2s ease}
 .shade.top{z-index:70}
@@ -603,6 +610,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 
 /* ---------- settings groups ---------- */
 .glabel{display:flex;align-items:center;gap:7px;font:500 10.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:12px 2px 0;margin-bottom:-8px}
+.buildline{text-align:center;font:500 10.5px var(--mono);letter-spacing:.12em;color:var(--muted);opacity:.75;padding:6px 0 2px}
 .glabel::before{content:"";width:3px;height:9px;border-radius:1px;background:var(--accent);flex:none}
 .stack>.glabel:first-child{padding-top:0}
 

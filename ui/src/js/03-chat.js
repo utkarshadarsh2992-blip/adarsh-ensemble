@@ -151,12 +151,30 @@ const Chat = (() => {
         h('div', { class: 'mcl' }, r.calls.map(c => callRowEl({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails }, false)))));
     }
     wrap.append(renderReply(r, ctx));
+    const pdfCard = pdfEl(m); if (pdfCard) wrap.append(pdfCard);
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* check questions, new words, Gehrai mein jao */
     if (r.type === 'text' && r.briefing) Briefing.extras(m, ctx).forEach(el => wrap.append(el));   /* KAL KA PLAN card */
     if (r.type === 'text' && r.truth) Usage.extras(m, ctx).forEach(el => wrap.append(el));   /* FACT-CHECK card */
     if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
+  }
+  /* The report card: name, size and one button. Nothing is written to Downloads until it is pressed. */
+  function pdfEl(m) {
+    const f = m.reply && m.reply.pdfFile;
+    if (!f) return null;
+    return h('div', { class: 'pdfcard' }, icon('file', 's'),
+      h('span', { class: 't' }, h('b', {}, f.name), h('small', {}, f.kb + ' KB · PDF')),
+      h('button', { class: 'btn pri', on: { click: () => downloadPdf(f) } }, 'Download'));
+  }
+  function downloadPdf(f) {
+    const held = PDFS.get(f.id);
+    if (!held) return toast('PDF is session me nahi hai · dobara banao');
+    if (!window.AdarshNative || !window.AdarshNative.savePdf) return toast('Download sirf Android app me');
+    try {
+      const out = JSON.parse(window.AdarshNative.savePdf(held.name, held.base64) || '{}');
+      toast(out && out.ok ? 'PDF Downloads me: ' + (out.name || held.name) : 'Save fail: ' + ((out && out.message) || 'unknown'));
+    } catch (e) { toast('PDF save nahi hua'); }
   }
   function actionsEl(m, isLast) {
     const txt = () => stripMd(speechOf(m.reply)) || '';
@@ -460,7 +478,7 @@ const Chat = (() => {
       }
       for (const [i, r] of arr.entries()) {
         r.uiMode = modeId;
-        if (i === 0) { savePdf(r); r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
+        if (i === 0) { holdPdf(r); r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
         if (r.origin === 'local-rule' || ['blocked', 'clarification'].includes(r.type)) { const last = [...c.msgs].reverse().find(m => m.role === 'user' && m.text === text); if (last) last.localOnly = true; }
         if (personal) r.personalContext = true;
         // App-setting commands ("standard mode pe jao", "web search off karo") work from every mode; other actions stay Standard-only.
@@ -478,13 +496,16 @@ const Chat = (() => {
     }
   }
   /* A report the backend built: hand the bytes to Kotlin, which writes them into Downloads. */
-  function savePdf(r) {
+  /* Report bytes stay in memory (base64 is far too heavy for localStorage) and the chat keeps only a small
+     {id, name, kb} card, so the download is a button the user presses instead of an automatic file. */
+  const PDFS = new Map();
+  function holdPdf(r) {
     const pdf = r && r.pdf;
-    if (!pdf || !pdf.base64 || !window.AdarshNative || !window.AdarshNative.savePdf) return;
-    try {
-      const out = JSON.parse(window.AdarshNative.savePdf(String(pdf.name || 'adarsh-report.pdf'), String(pdf.base64)));
-      toast(out && out.ok ? 'PDF Downloads me: ' + (out.name || pdf.name) : 'PDF save nahi hua: ' + ((out && out.message) || 'unknown'));
-    } catch (e) { toast('PDF save nahi hua'); }
+    if (!pdf || !pdf.base64) return;
+    const name = String(pdf.name || 'adarsh-report.pdf');
+    const id = uid('pdf');
+    PDFS.set(id, { name: name, base64: String(pdf.base64) });
+    r.pdfFile = { id: id, name: name, kb: Math.max(1, Math.round(String(pdf.base64).length * 0.75 / 1024)) };
     delete r.pdf;
   }
   const normReply = (r) => capReply(typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
