@@ -58,6 +58,17 @@ def test_every_endpoint_and_auth_variant_is_tried():
     assert "https://generativelanguage.googleapis.com/v1beta/models/" in LIVE
 
 
+def test_replies_are_read_from_binary_frames_too():
+    # Gemini Live answers in binary frames; reading only text frames made every reply vanish ("no setup reply")
+    assert "override fun onMessage(webSocket: WebSocket, bytes: ByteString)" in LIVE
+    assert "take(bytes.utf8())" in LIVE and "override fun onMessage(webSocket: WebSocket, text: String)" in LIVE
+    # the setup turn goes out after the handshake, with a 900 ms safety net for the identity-guard race
+    assert "sendSetup(webSocket)" in LIVE and "!setupSent && !gotSetup" in LIVE
+    # two payload shapes are tried: the official example (top-level responseModalities) first, nested second
+    assert 'setup.put("responseModalities", JSONArray().put("AUDIO"))' in LIVE
+    assert 'put("generationConfig", JSONObject()' in LIVE and "shape == 0" in LIVE
+
+
 def test_key_is_never_placed_in_the_url_first():
     # header first, documented ?key= form only as a fallback, and the key is read on the device
     assert 'b.header("x-goog-api-key", key)' in LIVE
@@ -73,7 +84,7 @@ def test_a_dead_network_fails_fast_instead_of_burning_every_timeout():
     # a network failure ends the sweep immediately; only endpoint/model answers move on to the next attempt
     assert "isNetwork(t)" in LIVE and "SETUP_TIMEOUT_MS = 8_000L" in LIVE
     # six attempts at most: the chosen model on all four endpoints, the fallbacks on the documented one
-    assert "VARIANTS.map { v -> v to model } + FALLBACK.map { m -> VARIANTS.first() to m }" in LIVE
+    assert "Triple(VARIANTS[0], model, 0)" in LIVE and "FALLBACK.map { Triple(VARIANTS[0], it, 0) }" in LIVE
     # the page shows which attempt is running
     assert 'put("attempt", step + 1).put("total", plans.size)' in LIVE
     assert "onState(ev.state, ev.model, ev)" in VOICE and "'Connecting…' + n" in VOICE

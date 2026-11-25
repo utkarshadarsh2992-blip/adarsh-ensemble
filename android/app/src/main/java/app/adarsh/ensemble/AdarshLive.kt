@@ -14,6 +14,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
@@ -117,11 +118,13 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private val recent = StringBuilder()   // both sides of the talk, kept so a switch without a handle still has context
     private var voice = "Orus"
     private var prompt = ""
-    private var plans: List<Pair<Variant, String>> = emptyList()   // every endpoint/model combination, in order
+    /** endpoint + model + payload shape; the official example's shape first, the nested form second. */
+    private var plans: List<Triple<Variant, String, Int>> = emptyList()
     private var step = 0
     private var gotSetup = false
     private var lastWhy = ""
     @Volatile private var dnsDone = false
+    @Volatile private var setupSent = false
     private val trace = ArrayList<String>()
 
     private var recorder: AudioRecord? = null
@@ -143,7 +146,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
 
     private fun note(what: String) {
         val p = plans.getOrNull(step) ?: return
-        trace.add(p.first.label + " " + p.second.replace("gemini-", "") + ": " + what)
+        trace.add(p.first.label + " " + p.second.replace("gemini-", "") + (if (p.third == 1) " nested" else "") + ": " + what)
         while (trace.size > 6) trace.removeAt(0)
     }
 
@@ -170,7 +173,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         prompt = cfg.optString("prompt").take(MAX_PROMPT)
         // chosen model on every endpoint, then the fallback models on the documented endpoint only: six attempts,
         // and a network failure ends the sweep at once, so the screen never sits on "Connecting…" for a minute.
-        plans = VARIANTS.map { v -> v to model } + FALLBACK.map { m -> VARIANTS.first() to m }
+        plans = listOf(Triple(VARIANTS[0], model, 0), Triple(VARIANTS[0], model, 1)) +
+            VARIANTS.drop(1).take(2).map { Triple(it, model, 0) } +
+            FALLBACK.map { Triple(VARIANTS[0], it, 0) }
         step = 0
         gotSetup = false
         lastWhy = ""
@@ -190,18 +195,24 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         return JSONObject().put("ok", true).put("state", "connecting").put("model", model)
     }
 
-    private fun setupJson(model: String): String {
+    private fun setupJson(model: String, shape: Int): String {
+        val speech = JSONObject().put("voiceConfig",
+            JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))
         val setup = JSONObject()
             .put("model", "models/$model")
-            .put("generationConfig", JSONObject()
-                .put("responseModalities", JSONArray().put("AUDIO"))
-                .put("speechConfig", JSONObject().put("voiceConfig",
-                    JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))))
             .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", instruction()))))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
-        // Resumption handles are asked for on the dialogue models; translate/transcribe sessions are short-lived
-        // and one-shot, so nothing is resumed there.
+        if (shape == 0) {
+            // exactly the shape of the official WebSocket example: responseModalities at the top of setup
+            setup.put("responseModalities", JSONArray().put("AUDIO"))
+            setup.put("generationConfig", JSONObject().put("speechConfig", speech))
+        } else {
+            setup.put("generationConfig", JSONObject()
+                .put("responseModalities", JSONArray().put("AUDIO"))
+                .put("speechConfig", speech))
+        }
+        // Resumption handles are asked for on the dialogue models; translate/transcribe sessions are short-lived.
         val role = roleOf(model)
         val res = when {
             resumeHandle != null -> JSONObject().put("handle", resumeHandle)
@@ -212,10 +223,6 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         return JSONObject().put("setup", setup).toString()
     }
 
-    /**
-     * Resolve the host before opening a socket. A dead resolver otherwise costs a full timeout on every attempt and
-     * the user just watches "Connecting…", so it is answered in a few seconds with a plain "internet/DNS" message.
-     */
     private fun preflight() {
         val watchdog = Runnable {
             if (closed.get() || dnsDone) return@Runnable
@@ -267,8 +274,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         ws = null
         try { old?.close(1000, "switch") } catch (_: Exception) { }
         stopAudio()
-        val order = listOfNotNull(lastGood) + VARIANTS.filter { it != lastGood }
-        plans = order.map { it to target }
+        val first = lastGood ?: VARIANTS[0]
+        plans = listOf(Triple(first, target, 0), Triple(first, target, 1)) +
+            VARIANTS.filter { it != first }.take(2).map { Triple(it, target, 0) }
         step = 0
         trace.clear()
         say(JSONObject().put("type", "state").put("state", "connecting").put("model", target)
@@ -280,7 +288,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private fun connect() {
         val plan = plans.getOrNull(step)
         if (plan == null) { finish(); return }
-        val (variant, model) = plan
+        val (variant, model, shape) = plan
         val request = try {
             val b = Request.Builder().url(variant.url(key))
             if (variant.header) b.header("x-goog-api-key", key)
@@ -288,10 +296,13 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         } catch (_: Exception) { note("url"); next(); return }
         val socket = try { client!!.newWebSocket(request, listener) } catch (_: Exception) { null }
         if (socket == null) { note("socket"); next(); return }
+        setupSent = false
         ws = socket
         say(JSONObject().put("type", "state").put("state", "connecting").put("model", model)
             .put("endpoint", variant.label).put("attempt", step + 1).put("total", plans.size))
-        socket.send(setupJson(model))
+        // onOpen normally sends the setup turn; this covers the rare case where the callback runs before the
+        // socket reference is stored and is therefore ignored by the identity guard.
+        main.postDelayed({ if (ws === socket && !setupSent && !gotSetup) sendSetup(socket) }, 900)
         main.removeCallbacks(setupTimeout)
         main.postDelayed(setupTimeout, SETUP_TIMEOUT_MS)
     }
@@ -326,11 +337,20 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (webSocket !== ws) return
             note("open")
+            // The setup turn goes out after the handshake, which is what the protocol expects.
+            sendSetup(webSocket)
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (webSocket !== ws) return   // a socket replaced by the fallback must not speak any more
-            try { handle(JSONObject(text)) } catch (_: Exception) { }
+            take(text)
+        }
+
+        /* Gemini Live answers in BINARY frames, not text: without this override every reply was dropped and the
+           session looked like "server ne setup ka jawab nahi diya". */
+        override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            if (webSocket !== ws) return
+            take(bytes.utf8())
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -359,6 +379,22 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             if (!gotSetup) { next(); return }
             finish()
         }
+    }
+
+    /** Sends the setup turn exactly once per socket. */
+    private fun sendSetup(socket: WebSocket) {
+        if (setupSent) return
+        val plan = plans.getOrNull(step) ?: return
+        setupSent = true
+        try { socket.send(setupJson(plan.second, plan.third)) } catch (_: Exception) { setupSent = false; note("send fail") }
+    }
+
+    /** Parses one server frame (text or binary) and records its kind for the failure trace. */
+    private fun take(raw: String) {
+        val obj = try { JSONObject(raw) } catch (_: Exception) { null }
+        if (obj == null) { note("bad frame"); return }
+        if (trace.size < 2) note("first " + obj.keys().asSequence().firstOrNull())
+        handle(obj)
     }
 
     private fun handle(obj: JSONObject) {
