@@ -8,6 +8,7 @@ import {fcmPayload,serviceToken} from '../functions/_shared/fcm.ts';
 import {constantTime,handleApi} from '../functions/_shared/api.ts';
 import {run as ingest,selectDueFeeds} from '../functions/news-ingest/index.ts';
 import {run as score} from '../functions/news-score/index.ts';
+import {run as digest} from '../functions/news-digest/index.ts';
 
 Deno.test('RSS 2.0 CDATA/entities and Atom parse',async()=>{const rss=`<rss><channel><item><title><![CDATA[Nvidia &amp; chips]]></title><link>https://x.test/a?utm_source=z</link><description>Hi &amp; bye</description><pubDate>Wed, 25 Nov 2026 10:00:00 GMT</pubDate><source url="https://publisher.test">Pub</source></item></channel></rss>`;const atom=`<feed><entry><title>Rocket &amp; launch</title><link href="https://a.test/r"/><summary><![CDATA[Summary]]></summary><updated>2026-11-25T10:00:00Z</updated></entry></feed>`;const a=parseFeed(rss),b=parseFeed(atom);assertEquals(a[0].title,'Nvidia & chips');assertEquals(a[0].publisher,'Pub');assertEquals(b[0].url,'https://a.test/r');assertEquals(decodeEntities('a&nbsp;&amp;&#39;'),"a &'");assert((await sha256('x')).length===64)});
 Deno.test('normalization, fuzzy clustering, state media, relevance',()=>{assertEquals(normalizeUrl('https://x.test/a?utm_source=x&ok=1'),'https://x.test/a?ok=1');assert(jaccard('OpenAI launches new model','New OpenAI model launched')>.5);assert(isStateMedia('https://english.news.cn/business/a',false));assertFalse(relevant('Celebrity football scores','match result',{id:'x',url:'',kind:'rss',grp:'x',region:'WORLD',state_media:false,every_min:5,active:true,fail_count:0,name:'x'},[]));assert(relevant('Rocket launch succeeds','spacecraft propulsion',{id:'x',url:'',kind:'rss',grp:'x',region:'WORLD',tag_hint:'SPACE',state_media:false,every_min:5,active:true,fail_count:0,name:'x'},[]))});
@@ -40,4 +41,31 @@ Deno.test('ingest rotates due feeds oldest-first and honors polling intervals',a
   assertEquals(summary.feeds,3);
   assertEquals(requested,['https://never.test/rss','https://due-old.test/rss','https://due-newer.test/rss']);
   assertEquals(selectDueFeeds(s.feeds,now).length,0);
+});
+
+
+Deno.test('digest claims the local day before sending and does not repeat after FCM failure',async()=>{
+  const s=new MemoryStore();
+  s.kv.set('telegram:chat_id','test-chat');
+  await s.insertItem({title:'Test daily digest item',points:['Verified point'],score:9,status:'scored',created_at:'2026-11-25T15:00:00.000Z'} as any);
+  const oldToken=Deno.env.get('TELEGRAM_BOT_TOKEN');
+  const oldFcm=Deno.env.get('FCM_SERVICE_ACCOUNT');
+  Deno.env.set('TELEGRAM_BOT_TOKEN','test-only-token');
+  Deno.env.set('FCM_SERVICE_ACCOUNT','not-json');
+  let telegramCalls=0;
+  const fake:typeof fetch=async(input)=>{
+    if(String(input).includes('api.telegram.org')) telegramCalls++;
+    return new Response(JSON.stringify({ok:true,result:{message_id:1}}),{status:200,headers:{'content-type':'application/json'}});
+  };
+  try {
+    const first=await digest(s,fake,new Date('2026-11-25T16:05:00.000Z'));
+    const second=await digest(s,fake,new Date('2026-11-25T16:15:00.000Z'));
+    assertEquals(first.sent,true);
+    assertEquals(second.sent,false);
+    assertEquals(telegramCalls,1);
+    assertEquals(await s.getKV('digest:last_day'),'2026-11-25');
+  } finally {
+    if(oldToken===undefined) Deno.env.delete('TELEGRAM_BOT_TOKEN'); else Deno.env.set('TELEGRAM_BOT_TOKEN',oldToken);
+    if(oldFcm===undefined) Deno.env.delete('FCM_SERVICE_ACCOUNT'); else Deno.env.set('FCM_SERVICE_ACCOUNT',oldFcm);
+  }
 });

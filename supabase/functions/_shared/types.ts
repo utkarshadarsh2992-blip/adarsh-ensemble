@@ -34,7 +34,7 @@ export interface Store {
   getUsage(day:string, provider:string, model:string, stage:string):Promise<Usage>;
   getDevices():Promise<Device[]>; upsertDevice(d:Device):Promise<void>; removeDevice(id:string):Promise<void>;
   addAlert(a:AlertLog):Promise<void>; countAlerts(day:string, kind?:AlertLog['kind']):Promise<number>; listAlerts(day:string, kind?:AlertLog['kind']):Promise<AlertLog[]>;
-  getKV(key:string):Promise<unknown>; setKV(key:string,value:unknown):Promise<void>; deleteKV(key:string):Promise<void>; clean():Promise<number>;
+  getKV(key:string):Promise<unknown>; claimDigest(day:string):Promise<boolean>; setKV(key:string,value:unknown):Promise<void>; deleteKV(key:string):Promise<void>; clean():Promise<number>;
 }
 export type FetchLike = (input:RequestInfo|URL, init?:RequestInit)=>Promise<Response>;
 export const json = (body:unknown, status=200, headers:Record<string,string>={}) => new Response(JSON.stringify(body), {status, headers:{'content-type':'application/json', ...headers}});
