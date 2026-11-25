@@ -18,3 +18,20 @@ def _plain_post_by_default(monkeypatch):
 
     monkeypatch.setattr(config, "STREAM_PROVIDERS", frozenset())
     yield
+
+
+@pytest.fixture(autouse=True)
+def _sources_offline(monkeypatch):
+    """Unit tests must never depend on the network: the source layer returns nothing unless a test asks for it.
+    tests/test_sources_pdf.py calls sources.collect()/gather() directly, which this fixture does not patch."""
+    import sources
+
+    async def _nothing(text):
+        return "", []
+
+    async def _no_rows(text, **kw):
+        return []
+
+    monkeypatch.setattr(sources, "gather", _nothing)
+    monkeypatch.setattr(sources, "collect", _no_rows)
+    yield

@@ -160,6 +160,7 @@ const App = (() => {
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
       swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
+      swItem('search', 'Research sources', 'arXiv · OpenAlex · NASA · World Bank', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on (har mode me)' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone voice' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
     st.append(label('Android'), h('div', { class: 'grp' },

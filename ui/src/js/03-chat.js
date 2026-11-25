@@ -421,7 +421,7 @@ const Chat = (() => {
     try {
       const perms = Productivity.access();
       const personal = Productivity.modelContext(text, c.id);
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on' } },
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', research: S.settings.research === false ? 'off' : 'on' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.startsWith('\u0001part ')) {  // finished Part k/N (see config.emit_part)
             try {
@@ -448,7 +448,7 @@ const Chat = (() => {
       }
       for (const [i, r] of arr.entries()) {
         r.uiMode = modeId;
-        if (i === 0) { r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
+        if (i === 0) { savePdf(r); r.took = Math.round((Date.now() - t0) / 1000); r.thinkLines = steps.slice(); if (steps.length && r.type !== 'actions') r.steps = [...new Set([...steps, ...(Array.isArray(r.steps) ? r.steps : [])])]; }
         if (r.origin === 'local-rule' || ['blocked', 'clarification'].includes(r.type)) { const last = [...c.msgs].reverse().find(m => m.role === 'user' && m.text === text); if (last) last.localOnly = true; }
         if (personal) r.personalContext = true;
         // App-setting commands ("standard mode pe jao", "web search off karo") work from every mode; other actions stay Standard-only.
@@ -464,6 +464,16 @@ const Chat = (() => {
       busy = false; ctl = null; thinkEl = null; sendBtn.replaceChildren(icon('send')); sendBtn.setAttribute('aria-label', 'Send'); onInput(); renderThread(); save();
       Bus.emit('busy', false);
     }
+  }
+  /* A report the backend built: hand the bytes to Kotlin, which writes them into Downloads. */
+  function savePdf(r) {
+    const pdf = r && r.pdf;
+    if (!pdf || !pdf.base64 || !window.AdarshNative || !window.AdarshNative.savePdf) return;
+    try {
+      const out = JSON.parse(window.AdarshNative.savePdf(String(pdf.name || 'adarsh-report.pdf'), String(pdf.base64)));
+      toast(out && out.ok ? 'PDF Downloads me: ' + (out.name || pdf.name) : 'PDF save nahi hua: ' + ((out && out.message) || 'unknown'));
+    } catch (e) { toast('PDF save nahi hua'); }
+    delete r.pdf;
   }
   const normReply = (r) => capReply(typeof r === 'string' ? { type: 'text', text: r } : r && r.type ? r : { type: 'text', text: String((r && r.text) || '') });
   function deliver(c, r) {

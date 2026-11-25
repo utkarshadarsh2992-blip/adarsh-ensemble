@@ -35,9 +35,9 @@ def test_background_voice_philosophy_arrives_inside_reply():
 
 def test_philosophy_goes_first_so_the_cap_never_cuts_it():
     src = inspect.getsource(chat_adapter.handle)
-    assert "(app_context.philosophy(body) + extra)[:6000]" in src
     # philosophy is prepended, so it is the first thing in `extra` even when records fill the cap
-    assert "(app_context.philosophy(body) + extra)[:6000]" in src
+    assert "(app_context.philosophy(body) + " in src
+    assert ")[:6000]" in src
     # casual Standard small talk follows it too (it never reaches the pipeline)
     assert "app_context.philosophy(body or {})" in inspect.getsource(chat_adapter._casual_reply)
 

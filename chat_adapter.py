@@ -18,6 +18,9 @@ import health
 import lessons
 import pipeline
 import app_context
+import pdf_make
+import pdf_read
+import sources
 import app_knowledge
 import bigtask
 from llm import LLMError, chat, make_client
@@ -170,6 +173,36 @@ QUICK_VOICE = (
     "This will be read aloud. Plain spoken sentences only: no markdown, no lists, no code, no URLs, no emojis. "
     "2 to 5 short sentences, conversational and confident."
 )
+PDF_WORD = re.compile(r"\bpdf\b", re.I)
+PDF_VERB = re.compile(r"\b(bana|banao|banado|banade|banaye|generate|export|save|likh|create|make|chahiye)\b", re.I)
+PDF_REPORT = re.compile(r"\b(report|file|document)\b", re.I)
+
+
+def _wants_pdf(text: str) -> bool:
+    """Only when the user explicitly asks for a PDF; never on an ordinary question."""
+    asked = str(text or "")[:400]
+    if PDF_WORD.search(asked):
+        return True
+    return bool(PDF_REPORT.search(asked) and PDF_VERB.search(asked))
+
+
+def _attach_pdf(reply: dict, asked: str, rows: list[dict]) -> None:
+    """Build the report from the finished answer and hand it to the page as base64 (Kotlin saves it)."""
+    body = str(reply.get("text") or "").strip()
+    if not body:
+        return
+    title = (body.splitlines()[0] if body.splitlines() else "Report").lstrip("# ").strip()[:90] or "Report"
+    try:
+        data = pdf_make.report(title, body, subtitle="Adarsh Ensemble report", sources=rows)
+    except Exception as e:                       # a broken report must never break the answer
+        reply["text"] += "\n\n*PDF nahi ban paaya: " + str(e)[:80] + "*"
+        return
+    import base64 as _b64
+    name = re.sub(r"[^A-Za-z0-9 _-]+", "", title).strip().replace(" ", "-")[:50] or "adarsh-report"
+    reply["pdf"] = {"name": name + ".pdf", "base64": _b64.b64encode(data).decode("ascii"), "bytes": len(data)}
+    reply["text"] += "\n\n*PDF taiyaar: " + name + ".pdf*"
+
+
 async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool, *,
                        research: bool = True, deep: bool = False, web: bool = True) -> dict:
     """Standard mode: Groq gpt-oss-120b only. It searches the web (Groq browser_search) and Wikipedia by itself
@@ -325,8 +358,15 @@ async def handle(body: dict) -> dict | list[dict]:
     extra += app_context.context(body, text)
     private_context = private_context or "[Permitted relevant app records;" in extra
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
-    # Philosophy page: first, so the 6000-char cap never cuts it
-    extra = (app_context.philosophy(body) + extra)[:6000]
+    # Attached PDFs are read on the phone (no service): their text is data the models may quote.
+    pdf_block, pdf_names = pdf_read.attachments_text(body.get("attachments"))
+    # Real sources in every mode, Standard included (sources.py): papers, books, standards, statistics, launches,
+    # robotics. Keyless and fail-soft, so a dead endpoint costs nothing but a second.
+    src_block, src_rows = ("", [])
+    if rp.get("research") != "off" and not private_context and len(str(text or "").split()) >= 3:
+        src_block, src_rows = await sources.gather(text)
+    # Philosophy first, then the user's own document, then the sources: the 6000-char cap never cuts them.
+    extra = (app_context.philosophy(body) + pdf_block + src_block + extra)[:6000]
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra
@@ -335,8 +375,15 @@ async def handle(body: dict) -> dict | list[dict]:
                                    research=not has_records, deep=bool(meta.get("deep")), web=web_search)
         if cut_note:
             quick["text"] += "\n\n" + cut_note
-        if body.get("attachments"):
+        if src_rows:
+            quick["sources"] = src_rows
+            quick["text"] += sources.footer(src_rows)
+        if pdf_names:
+            quick["text"] += "\n\n*PDF padha: " + ", ".join(pdf_names) + "*"
+        elif body.get("attachments"):
             quick["text"] += "\n\n*Attachment nahi padha; sirf text gaya.*"
+        if _wants_pdf(text):
+            _attach_pdf(quick, text, src_rows)
         return [quick]
     q_text, q_extra, cut_note = _fit(text, extra)
     question = q_text + q_extra
@@ -375,9 +422,16 @@ async def handle(body: dict) -> dict | list[dict]:
     finally:
         thinking.reset(weight)
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
+    if src_rows:
+        replies[0]["sources"] = src_rows
+        replies[0]["text"] += sources.footer(src_rows)
+    if pdf_names:
+        replies[0]["text"] += "\n\n*PDF padha: " + ", ".join(pdf_names) + "*"
+    if _wants_pdf(text):
+        _attach_pdf(replies[0], text, src_rows)
     if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:
         replies[0]["text"] += "\n\n*Android par code proof off hai: steps [REASONED] hain.*"
-    if body.get("attachments"):
+    if body.get("attachments") and not pdf_names:
         replies[0]["text"] += "\n\n*Attachment nahi padha; sirf text gaya.*"
     if cut_note:
         replies[0]["text"] += "\n\n" + cut_note

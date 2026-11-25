@@ -63,6 +63,8 @@ class AdarshBridge(
     @JavascriptInterface
     fun liveSendText(text: String): String = if (ok()) MainActivity.liveSendText(text) else denied
     @JavascriptInterface
+    fun savePdf(name: String, base64: String): String = if (ok()) MainActivity.savePdf(name, base64) else denied
+    @JavascriptInterface
     fun liveStop(): String = if (ok()) MainActivity.liveStop() else denied
     @JavascriptInterface
     fun backgroundVoiceStart(config: String): String = if (ok()) MainActivity.backgroundVoiceStart(config) else denied

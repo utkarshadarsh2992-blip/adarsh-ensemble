@@ -8,16 +8,19 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ContentValues
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Base64
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.webkit.ValueCallback
@@ -35,6 +38,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
@@ -490,6 +494,35 @@ class MainActivity : AppCompatActivity() {
         }
         fun liveSendText(text: String): String = onMain {
             JSONObject().put("ok", current?.live?.sendText(text) ?: false).toString()
+        }
+        /** A generated report: written into Downloads (Q+) or the app's own reports folder, never anywhere else. */
+        fun savePdf(name: String, base64: String): String = onMain {
+            val a = current!!
+            val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(60).ifBlank { "adarsh-report.pdf" }
+            val bytes = try { Base64.decode(base64, Base64.DEFAULT) } catch (e: Exception) {
+                return@onMain JSONObject().put("ok", false).put("message", "PDF data kharab hai").toString()
+            }
+            try {
+                val where = if (Build.VERSION.SDK_INT >= 29) {
+                    val values = ContentValues().apply {
+                        put(MediaStore.Downloads.DISPLAY_NAME, safe)
+                        put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                    val uri = a.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                        ?: throw IllegalStateException("Downloads me jagah nahi mili")
+                    a.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
+                    a.contentResolver.update(uri, values, null, null)
+                    "Downloads/" + safe
+                } else {
+                    val dir = File(a.getExternalFilesDir(null) ?: a.filesDir, "reports").apply { mkdirs() }
+                    val f = File(dir, safe); f.writeBytes(bytes); f.absolutePath
+                }
+                JSONObject().put("ok", true).put("name", safe).put("path", where).toString()
+            } catch (e: Exception) {
+                JSONObject().put("ok", false).put("message", e.message ?: "save nahi hua").toString()
+            }
         }
         fun liveStop(): String = onMain {
             val a = current!!
