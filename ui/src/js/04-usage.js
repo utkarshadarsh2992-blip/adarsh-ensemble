@@ -151,12 +151,6 @@ const Usage = (() => {
     st.append(h('div', { class: 'sech' }, 'Kitna chala', h('button', { on: { click: refresh } }, 'Refresh')), status, box);
     if (last) fill(last);
     refresh();
-    const ctl = h('div', { class: 'card us-truth' }, h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, 'HALLUCINATION CONTROL'), controls(() => { status.hidden = true; }))));
-    const stats = h('div', {});
-    st.append(ctl, stats);
-    const paintStats = () => stats.replaceChildren(truthStats(last));
-    paintStats();
-    const t = setInterval(() => { if (!stats.isConnected) { clearInterval(t); return; } paintStats(); }, 1500);
   }
 
   /* ---------- under an answer ---------- */

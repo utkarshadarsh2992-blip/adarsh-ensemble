@@ -140,6 +140,22 @@ class AdarshBridge(
     @JavascriptInterface
     fun status(): String = if (ok()) Engine.status() else denied
 
+    /** Pair code is accepted only from the in-app linking field; the encrypted token never returns to JS. */
+    @JavascriptInterface
+    fun controllerPair(id: String, code: String) {
+        if (ok()) Engine.controllerPair(id, code) { result, error -> deliver(id, result, error) }
+        else deliver(id, null, "Untrusted page")
+    }
+
+    @JavascriptInterface
+    fun controllerSync(id: String) {
+        if (ok()) Engine.controllerSync(id) { result, error -> deliver(id, result, error) }
+        else deliver(id, null, "Untrusted page")
+    }
+
+    @JavascriptInterface
+    fun controllerStatus(): String = if (ok()) Engine.controllerStatus() else denied
+
     @JavascriptInterface
     fun lessons(opJson: String): String = if (ok()) Engine.lessons(opJson) else denied
 

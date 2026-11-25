@@ -1,6 +1,6 @@
-"""Standard mode: ONE Groq model (openai/gpt-oss-120b) that researches by itself.
+"""Standard mode: a configured Groq-only model chain that researches by itself.
 
-Only Groq is ever called, with the user's Groq keys in slot order (GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3).
+Only Groq models are ever called, with the user's Groq keys in slot order (GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3).
 A key is switched when it hits its limit (429), needs credits / is rejected (401/402/403) or the server fails
 (5xx, timeouts, network). No other provider is used: if every Groq key is out, the user gets a clear message.
 
@@ -79,8 +79,23 @@ class StandardError(Exception):
     """No Groq key could answer. `message` is shown to the user as is (Hinglish)."""
 
 
-def _base_spec() -> config.ModelSpec:
-    return replace(config.REGISTRY[MODEL_LABEL], role="standard", fallbacks=())
+def _standard_chain_labels() -> tuple[str, ...]:
+    labels = getattr(config, "STANDARD_CHAIN_LABELS", (MODEL_LABEL,)) or (MODEL_LABEL,)
+    return (labels,) if isinstance(labels, str) else tuple(labels)
+
+
+def _base_spec(label: str | None = None) -> config.ModelSpec:
+    """Base Standard model, defaulting to the configured primary; a used label may include a key slot."""
+    label = label or (_standard_chain_labels() or (MODEL_LABEL,))[0]
+    _, sep, tail = str(label).rpartition("#")
+    slot = int(tail) if sep and tail.isdigit() else 0
+    base_label = config.base_label(str(label))
+    spec = config.REGISTRY.get(base_label)
+    if spec is None or spec.provider != "groq":
+        raise StandardError(f"Standard chain model {base_label!r} is not a configured Groq model.")
+    if slot:
+        spec = config.keyed(spec, slot)
+    return replace(spec, role="standard", fallbacks=())
 
 
 def clean(text: str) -> str:
@@ -140,12 +155,13 @@ def _split_evidence(sources: list[dict]) -> tuple[list[dict], list[dict]]:
     return uniq[:6], evidence[:EVIDENCE_ITEMS]
 
 
-async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
-                 effort: str = "low", temperature: float = 0.6, budget: float = 75.0) -> dict:
+async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, tools: bool = True, web: bool = True,
+                      max_tokens: int = 1500, effort: str = "low", temperature: float = 0.6,
+                      budget: float = 75.0) -> dict:
     """Run the Groq-only agent. Returns {"text", "used", "searches", "wiki", "sources", "evidence", "secs"};
     evidence = short snippets of what the tools returned (for truth.check);
     raises StandardError when no Groq key could answer. `web=False` keeps Wikipedia but never sends browser_search."""
-    base = _base_spec()
+    base = _base_spec(model_label)
     prov = config.PROVIDERS["groq"]
     slots = prov.slots()
     if not slots:
@@ -173,8 +189,12 @@ async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, 
                 if left < 3:
                     reasons[spec.label] = "time budget used up"
                     break
-                payload = {"model": spec.model, "messages": msgs, "reasoning_effort": effort,
+                remote_extra = (getattr(config, "REMOTE_MODEL_EXTRAS", {}) or {}).get(spec.label, {})
+                payload = {"model": spec.model, "messages": msgs,
+                           "reasoning_effort": remote_extra.get("reasoning_effort", effort),
                            "max_completion_tokens": max_tokens, "temperature": temperature}
+                if remote_extra.get("reasoning_format") in ("hidden", "raw", "parsed"):
+                    payload["reasoning_format"] = remote_extra["reasoning_format"]
                 tool_list = tool_sets[tool_idx] if rounds < MAX_TOOL_ROUNDS else []
                 if tool_list:
                     payload["tools"] = tool_list  # tool_choice left at Groq's default ("auto")
@@ -276,6 +296,20 @@ async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, 
     detail = "; ".join(f"key {k.split('#')[1] if '#' in k else '1'}: {v}" for k, v in reasons.items())
     raise StandardError("Sir, Groq ki teeno keys se jawab nahi aaya" + (f" ({detail})" if detail else "") +
                         ". Standard mode sirf Groq use karta hai; thodi der baad try karo ya Settings mein aur Groq key daalo.")
+
+
+async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
+                 effort: str = "low", temperature: float = 0.6, budget: float = 75.0) -> dict:
+    """Try the configured Standard chain in order; every member is validated as Groq-only."""
+    failures = []
+    labels = _standard_chain_labels() or (MODEL_LABEL,)
+    for label in labels:
+        try:
+            return await _answer_one(messages, model_label=label, tools=tools, web=web, max_tokens=max_tokens,
+                                     effort=effort, temperature=temperature, budget=budget)
+        except StandardError as exc:
+            failures.append(f"{label}: {str(exc)[:220]}")
+    raise StandardError("Standard mode sirf Groq use karta hai. " + "; ".join(failures)[:700])
 
 
 def sources_block(sources: list[dict], limit: int = 4) -> str:

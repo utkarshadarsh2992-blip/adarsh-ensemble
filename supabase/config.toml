@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.news-clean]
 verify_jwt = false
+
+[functions.controller-admin]
+verify_jwt = false
+
+[functions.controller-device]
+verify_jwt = false

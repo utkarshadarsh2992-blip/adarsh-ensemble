@@ -86,6 +86,18 @@ def test_request_uses_only_gpt_oss_120b_with_both_tools(monkeypatch):
     assert body["tools"][1]["function"]["name"] == "wikipedia_search"
 
 
+def test_configured_standard_chain_selects_its_groq_model(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
+    monkeypatch.setattr(config, "STANDARD_CHAIN_LABELS", ("gpt-oss-20b",))
+    log = fake_net(monkeypatch, [final("configured model answered")])
+
+    out = run(standard_agent.answer(Q, tools=False, web=False))
+
+    assert out["used"] == "gpt-oss-20b"
+    assert log[0]["body"]["model"] == config.REGISTRY["gpt-oss-20b"].model
+    assert standard_agent._base_spec().model == config.REGISTRY["gpt-oss-20b"].model
+
+
 def test_wikipedia_tool_round_trip_and_citation_markers_removed(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
     log = fake_net(monkeypatch, [wiki_call("Chandrayaan-3"), final("Lander 23 August 2023 ko utra\u30101\u2020L1-L3\u3011.")])
@@ -235,3 +247,33 @@ def test_chat_adapter_passes_the_web_search_setting(monkeypatch):
     assert seen[-1][1]["web"] is True
     run(chat_adapter.handle({"text": q, "mode": "standard"}))  # older app / background voice config: default on
     assert seen[-1][1]["web"] is True
+
+
+def test_auto_factcheck_and_quota_warning_follow_the_model_actually_used(monkeypatch):
+    monkeypatch.setattr(config, "STANDARD_CHAIN_LABELS", ("gpt-oss-120b",))
+    seen_specs, checked = [], []
+
+    async def fake_answer(messages, **kw):
+        return {"text": "A fact from 2023.", "used": "gpt-oss-20b#2", "searches": 0,
+                "wiki": [], "sources": [], "secs": 1.0}
+
+    def used_frac(spec):
+        seen_specs.append(spec)
+        return 0.9 if spec.model == config.REGISTRY["gpt-oss-20b"].model else 0.0
+
+    async def fake_check(*args, **kwargs):
+        checked.append(True)
+        return None
+
+    monkeypatch.setattr(standard_agent, "answer", fake_answer)
+    monkeypatch.setattr(health, "used_frac", used_frac)
+    monkeypatch.setattr(chat_adapter.truth, "should_check", lambda *args: True)
+    monkeypatch.setattr(chat_adapter.truth, "check", fake_check)
+
+    out = run(chat_adapter.handle({"text": "Photosynthesis kya hai?", "mode": "standard",
+                                   "truth": {"check": "auto"}, "meta": {"deep": True}}))[0]
+
+    assert not checked  # 20b has only 10% left, so its optional auto check is skipped
+    assert seen_specs and all(s.model == config.REGISTRY["gpt-oss-20b"].model and s.key_slot == 2
+                              for s in seen_specs)
+    assert out["quota"] == {"provider": "groq", "left": 0.1}

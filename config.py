@@ -253,6 +253,8 @@ SYNTHESIZER = use("gemini-3.8-flash", "synthesizer", ["nemotron-ultra", "gpt-oss
 # Standard mode: ONE fast call, no council. Groq first (fastest), then Gemini, then OpenRouter.
 QUICK = use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "nemotron-lightning", "gpt-oss-20b", "gemini-3.8-flash"],
             {"reasoning_effort": "low"})
+# Remote-compatible Standard route. The controller adapter replaces this only with validated Groq labels.
+STANDARD_CHAIN_LABELS = ("gpt-oss-120b",)
 # fact auditor: a DIFFERENT model family from the judge (Gemini) so they do not share blind spots. Its input is only the
 # question + final answer, so it fits Groq's 8K tokens/min.
 # The same chain also runs the Manual-mode grounding check, whose input is BIG (pasted answers + claims + master answer):
@@ -496,6 +498,11 @@ REVIEW_ENABLED = os.getenv("REVIEW", "1") == "1"                    # methodolog
 DEBATE_ENABLED = os.getenv("DEBATE", "1") == "1"                    # debater runs only when drafts clash on a FACT
 # Research: web lookup before drafting (Wikipedia always, Tavily if TAVILY_API_KEY is set). RESEARCH=0 turns it off.
 RESEARCH_ENABLED = os.getenv("RESEARCH", "1") == "1"
+# Set only by controller_config after complete schema and fallback validation. Missing keys retain local request defaults.
+REMOTE_QUALITY: dict = {}
+REMOTE_LIMITS: dict = {}
+REMOTE_MODEL_EXTRAS: dict = {}
+CONTROLLER_CONFIG_ACTIVE = False
 RESEARCH_TIMEOUT_S = float(os.getenv("RESEARCH_TIMEOUT_S", "8"))
 RESEARCH_PER_QUERY = int(os.getenv("RESEARCH_PER_QUERY", "2"))
 RESEARCH_CHARS = int(os.getenv("RESEARCH_CHARS", "900"))               # per source

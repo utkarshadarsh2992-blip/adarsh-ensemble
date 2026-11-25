@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "providers": {
+    "groq": {
+      "base_url": "https://api.groq.com/openai/v1"
+    },
+    "openrouter": {
+      "base_url": "https://openrouter.ai/api/v1"
+    },
+    "gemini": {
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai"
+    },
+    "nvidia": {
+      "base_url": "https://integrate.api.nvidia.com/v1"
+    },
+    "cloudflare": {
+      "base_url": "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1"
+    }
+  },
+  "models": [
+    {
+      "label": "gpt-oss-120b",
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "enabled": true,
+      "extra": {
+        "reasoning_effort": "medium"
+      }
+    },
+    {
+      "label": "gpt-oss-20b",
+      "provider": "groq",
+      "model": "openai/gpt-oss-20b",
+      "enabled": true,
+      "extra": {
+        "reasoning_effort": "medium"
+      }
+    },
+    {
+      "label": "qwen3.8-27b",
+      "provider": "groq",
+      "model": "qwen/qwen3.8-27b",
+      "enabled": true,
+      "extra": {
+        "reasoning_format": "hidden"
+      }
+    },
+    {
+      "label": "safeguard-20b",
+      "provider": "groq",
+      "model": "openai/gpt-oss-safeguard-20b",
+      "enabled": true,
+      "extra": {
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "label": "prompt-guard-22m",
+      "provider": "groq",
+      "model": "meta-llama/llama-prompt-guard-2-22m",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "prompt-guard-86m",
+      "provider": "groq",
+      "model": "meta-llama/llama-prompt-guard-2-86m",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "nemotron-ultra",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "nemotron-lightning",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-lightning:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "nemotron-super-vl",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3.5-super-vl:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "nemotron-nano-omni",
+      "provider": "openrouter",
+      "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "gemma-4-31b",
+      "provider": "openrouter",
+      "model": "google/gemma-4-31b-it:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "gemma-4-26b",
+      "provider": "openrouter",
+      "model": "google/gemma-4-26b-a4b-it:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "ernie-5.5-flash",
+      "provider": "openrouter",
+      "model": "baidu/ernie-5.5-flash-preview:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "ling-3.2-flash",
+      "provider": "openrouter",
+      "model": "inclusionai/ling-3.2-flash:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "particle-1",
+      "provider": "openrouter",
+      "model": "particle-ai/particle-1:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "flint",
+      "provider": "openrouter",
+      "model": "recursive/flint-v1.0:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "lfm-3-1.7b",
+      "provider": "openrouter",
+      "model": "liquid/lfm-3-1.7b:free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "or-free-router",
+      "provider": "openrouter",
+      "model": "openrouter/free",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "gemini-3.8-flash",
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "gemini-3.1-flash-lite",
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-lite",
+      "enabled": true,
+      "extra": {
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "label": "gemma-4-31b-g",
+      "provider": "gemini",
+      "model": "gemma-4-31b-it",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "gemma-4-26b-g",
+      "provider": "gemini",
+      "model": "gemma-4-26b-a4b-it",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "enabled": true,
+      "extra": {
+        "reasoning_effort": "low"
+      }
+    },
+    {
+      "label": "cf-gpt-oss-120b",
+      "provider": "cloudflare",
+      "model": "@cf/openai/gpt-oss-120b",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "cf-gemma-4-26b",
+      "provider": "cloudflare",
+      "model": "@cf/google/gemma-4-26b-a4b-it",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "mistral-large-4",
+      "provider": "nvidia",
+      "model": "mistralai/mistral-large-4-1t-a52b",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "laguna-xs-2.1",
+      "provider": "nvidia",
+      "model": "poolside/laguna-xs-2.1",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "glm-5-3-flash",
+      "provider": "nvidia",
+      "model": "z-ai/glm-5-3-flash",
+      "enabled": true,
+      "extra": {}
+    },
+    {
+      "label": "inkling-2-small",
+      "provider": "openrouter",
+      "model": "thinkingmachines/inkling-2-small:free",
+      "enabled": true,
+      "extra": {}
+    }
+  ],
+  "routes": {},
+  "quality": {},
+  "limits": {}
+}

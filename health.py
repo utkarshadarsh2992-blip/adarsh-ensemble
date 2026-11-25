@@ -520,7 +520,17 @@ def snapshot() -> dict:
 
 # ------------------------------------------------------------------ usage screen (change 1.4)
 PROVIDER_NAMES = {"groq": "Groq", "gemini": "Gemini", "openrouter": "OpenRouter", "nvidia": "NVIDIA", "cloudflare": "Cloudflare"}
-STANDARD_MODEL = "openai/gpt-oss-120b"  # Standard mode's only model: its row is always shown for every Groq key
+STANDARD_MODEL = "openai/gpt-oss-120b"  # Legacy fallback if no configured Standard Groq label resolves
+
+
+def _selected_standard_spec():
+    """Configured Standard primary, constrained to Groq; retain the legacy model as a safe fallback."""
+    labels = getattr(config, "STANDARD_CHAIN_LABELS", ()) or ()
+    for label in labels:
+        spec = config.REGISTRY.get(config.base_label(str(label)))
+        if spec and spec.provider == "groq":
+            return spec
+    return _spec_for("groq", STANDARD_MODEL)
 
 
 def _split_qkey(qkey: str) -> tuple[str, str, int]:
@@ -611,14 +621,15 @@ def report() -> dict:
             by_key.setdefault((prov, slot), {})[model] = qk
     providers = []
     order = [p for p in PROVIDER_NAMES if p in PROVIDERS] + [p for p in PROVIDERS if p not in PROVIDER_NAMES]
+    standard_spec = _selected_standard_spec()
     for prov in order:
         set_slots = PROVIDERS[prov].slots()
         keys = []
         for slot in range(1, config.KEY_SLOTS + 1):
             have = slot in set_slots
             models = dict(by_key.get((prov, slot), {}))
-            if prov == "groq" and have and STANDARD_MODEL not in models:
-                models[STANDARD_MODEL] = f"groq:{STANDARD_MODEL}" + (f"#{slot}" if slot > 1 else "")
+            if prov == "groq" and have and standard_spec and standard_spec.model not in models:
+                models[standard_spec.model] = f"groq:{standard_spec.model}" + (f"#{slot}" if slot > 1 else "")
             rows = sorted((_model_row(prov, m, slot, qk, req, tok, out, now) for m, qk in models.items()),
                           key=lambda x: (-x["req"], x["model"]))
             kid = prov if slot <= 1 else f"{prov}#{slot}"
@@ -629,12 +640,10 @@ def report() -> dict:
                           "set": len(set_slots), "limits": limits_text(prov),
                           "req": sum(k["req"] for k in keys), "tok": sum(k["tok"] for k in keys)})
     std = {"state": "nokey", "left": 0.0}
-    if PROVIDERS["groq"].slots():
-        spec = _spec_for("groq", STANDARD_MODEL)
-        if spec:
-            left = 1.0 - used_frac(spec)
-            std = {"left": round(left, 3),
-                   "state": "low" if left < config.QUOTA_LOW else "tight" if left < config.QUOTA_TIGHT else "ok"}
+    if PROVIDERS["groq"].slots() and standard_spec:
+        left = 1.0 - used_frac(standard_spec)
+        std = {"left": round(left, 3),
+               "state": "low" if left < config.QUOTA_LOW else "tight" if left < config.QUOTA_TIGHT else "ok"}
     tomorrow = dt.datetime.now(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(days=1)
     days = [{"day": h.get("day", ""), "req": sum((h.get("req") or {}).values()), "tok": sum((h.get("tok") or {}).values()),
              "by": dict(h.get("req") or {})} for h in hist[-6:] if isinstance(h, dict)]
@@ -651,6 +660,54 @@ def report() -> dict:
         "margin": MARGIN,
         "reserve": RESERVE_MARGIN,
     }
+
+
+def controller_reports() -> list[dict]:
+    """Prompt-free absolute per-day reports; historical rows expose aggregates, never invented model/key detail."""
+    current = report()
+    with _usage_lock:
+        history = [dict(row) for row in _usage.get("hist", []) if isinstance(row, dict)]
+    try:
+        current_day = dt.date.fromisoformat(str(current.get("day_utc") or ""))
+    except ValueError:
+        current_day = dt.datetime.now(dt.timezone.utc).date()
+    first_day = current_day - dt.timedelta(days=HIST_DAYS - 1)
+    history_by_day = {}
+    for row in history:
+        try:
+            hist_day = dt.date.fromisoformat(str(row.get("day") or ""))
+        except ValueError:
+            continue
+        if first_day <= hist_day < current_day:
+            history_by_day[hist_day] = row  # last stored copy wins if corrupted history repeats a date
+    reports = []
+    # The current day retains the precise provider/model/key-slot breakdown from health.report().
+    current = dict(current)
+    reports.append(current)
+    for hist_day in sorted(history_by_day, reverse=True)[:HIST_DAYS - 1]:
+        row = history_by_day[hist_day]
+        day = hist_day.isoformat()
+        req = {str(k): max(0, int(v or 0)) for k, v in (row.get("req") or {}).items() if str(k) in PROVIDERS}
+        tok = {str(k): max(0, int(v or 0)) for k, v in (row.get("tok") or {}).items() if str(k) in PROVIDERS}
+        providers = []
+        for provider in PROVIDER_NAMES:
+            if provider not in PROVIDERS:
+                continue
+            providers.append({"id": provider, "name": PROVIDER_NAMES[provider], "set": 0,
+                              "req": req.get(provider, 0), "tok": tok.get(provider, 0), "keys": []})
+        reports.append({
+            "day_utc": day,
+            "totals": {"req": sum(req.values()), "tok": sum(tok.values())},
+            "providers": providers,
+            "features": {str(k)[:60]: max(0, int(v or 0)) for k, v in (row.get("feat") or {}).items()},
+            "days": [{"day": day, "req": sum(req.values()), "tok": sum(tok.values()), "by": req}],
+            "truth": {k: max(0, int((row.get("truth") or {}).get(k, 0) or 0)) for k in ("answers", "ok", "shak", "galat")},
+            "standard": {"state": "unknown", "left": 0.0},
+            "margin": MARGIN,
+            "reserve": RESERVE_MARGIN,
+            "reset_in_s": 0,
+        })
+    return reports[:HIST_DAYS + 1]
 
 
 def reset(clear_usage: bool = False) -> None:

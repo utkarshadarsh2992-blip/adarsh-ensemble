@@ -16,19 +16,45 @@ _SLOTTED = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
             "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
 KEY_NAMES = tuple(n if s == 1 else f"{n}_{s}" for s in (1, 2, 3) for n in _SLOTTED) + ("TAVILY_API_KEY",)
 _ready = False
+_controller_state = {"ok": True, "source": "bundled", "active": False}
 
 
-def init(files_dir: str) -> str:
-    """Point engine state at app-private storage. Safe to call more than once."""
-    global _ready
+def init(files_dir: str, controller_cache: str = "", controller_pending: str = "") -> str:
+    """Set private paths and apply cached data config before routing/health modules are imported."""
+    global _ready, _controller_state
     os.makedirs(files_dir, exist_ok=True)
     os.environ["USAGE_FILE"] = os.path.join(files_dir, "usage.json")
+    if controller_cache:
+        os.environ["CONTROLLER_CONFIG_FILE"] = controller_cache
     os.environ["LESSONS_FILE"] = os.path.join(files_dir, "lessons.json")
     os.environ["TTS_DIR"] = os.path.join(files_dir, "tts")  # natural-voice clips (MediaPlayer plays the file)
     os.environ["GENERATED_MEDIA_DIR"] = os.path.join(files_dir, "generated_media")
     os.environ.setdefault("CHAT_MODE", "fast")  # phone default: fewer models, less quota
+    # Kotlin fetches over pinned-to-project HTTPS before Python starts and leaves only a candidate config file.
+    # The adapter validates it, promotes it atomically as last-known-good, then loads config/mode_plans.
+    import controller_config
+    _controller_state = controller_config.apply_files(controller_cache or None, controller_pending or None)
     _ready = True
-    return "ok"
+    return json.dumps(_controller_state)
+
+
+def reload_controller_config(cache_path: str = "", pending_path: str = "") -> str:
+    """Apply newly fetched config only when the Android bridge has confirmed no active request."""
+    global _controller_state
+    import controller_config
+    _controller_state = controller_config.apply_files(cache_path or None, pending_path or None)
+    return json.dumps(_controller_state)
+
+
+def controller_reports() -> str:
+    """Prompt-free absolute daily usage reports for paired-device snapshots."""
+    import health
+    return json.dumps(health.controller_reports(), separators=(",", ":"))
+
+
+def usage_request_count() -> int:
+    import health
+    return int((health.report().get("totals") or {}).get("req") or 0)
 
 
 def set_key(name: str, value: str) -> bool:
@@ -79,6 +105,8 @@ def status() -> str:
             "python": sys.version.split()[0],
             "keys": {k: v.slots() for k, v in config.PROVIDERS.items()},
             "voice": {"gemini": bool(config.PROVIDERS["gemini"].api_key), "groq_english": bool(config.PROVIDERS["groq"].api_key)},
+            "controller": {"active": bool(getattr(config, "CONTROLLER_CONFIG_ACTIVE", False)),
+                           "source": _controller_state.get("source", "bundled")},
         }
     )
 

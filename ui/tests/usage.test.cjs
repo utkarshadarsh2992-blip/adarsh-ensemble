@@ -63,7 +63,7 @@ const TRUTH = { checked: 3, ok: 1, shak: 1, galat: 1, basis: 'sources', level: '
   { c: 'Budget 615 crore', v: 'shak', why: 'evidence mein budget nahi', fix: 'ISRO report dekho' },
   { c: 'Rover ka naam Vikram', v: 'galat', why: 'Vikram lander hai', fix: 'Rover Pragyan hai' }] };
 const answer = (extra = {}) => (req) => (req.usage ? { type: 'usage', usage: REPORT } : { type: 'text', text: 'Chandrayaan-3 ne landing ki.', uiMode: 'standard', ...extra });
-test('defaults, request body and the Settings sheet', async () => {
+test('defaults and request body remain local fallbacks while duplicate editors are removed from Settings', async () => {
   const app = mount({ reply: answer() });
   try {
     const { Usage, S } = app;
@@ -73,21 +73,13 @@ test('defaults, request body and the Settings sheet', async () => {
     assert.equal(Usage.summary(), 'Balanced · fact-check auto');
     app.App.show('settings');
     const v = app.document.querySelector('#v-settings');
-    assert.match(text(v), /Hallucination control.*Balanced · fact-check auto/);
-    [...v.querySelectorAll('.item')].find(b => /Hallucination control/.test(b.textContent)).click();
-    const sheet = app.document.querySelector('.sheet');
-    assert.match(text(sheet), /Jawab kitna pakka/);
-    [...sheet.querySelectorAll('.seg button')].find(b => b.textContent === 'Strict').click();
-    [...sheet.querySelectorAll('.seg button')].find(b => b.textContent === 'Hamesha').click();
-    assert.equal(S.settings.truthLevel, 'strict');
-    assert.equal(S.settings.factCheck, 'always');
-    assert.match(text(sheet), /temperature 0\.2/);
-    assert.equal(sheet.querySelectorAll('.seg button[aria-pressed="true"]').length, 2);
+    assert.doesNotMatch(text(v), /Hallucination control|Built-in web search|API usage/);
+    assert.equal(S.settings.truthLevel, 'balanced');
+    assert.equal(S.settings.factCheck, 'auto');
     await app.Chat.submit('Chandrayaan-3 kab land hua?');
     await until(() => app.sent.length === 1 && !app.Chat.isBusy());
-    assert.deepEqual(app.sent[0].truth, { level: 'strict', check: 'always' });
-    S.settings.truthLevel = 'bogus'; S.settings.factCheck = 7;
-    assert.deepEqual(JSON.parse(JSON.stringify(Usage.request())), { level: 'balanced', check: 'auto' }, 'bad values fall back');
+    assert.deepEqual(app.sent[0].truth, { level: 'balanced', check: 'auto' });
+    assert.deepEqual(JSON.parse(JSON.stringify(Usage.request())), { level: 'balanced', check: 'auto' }, 'stored values remain the offline fallback');
   } finally { app.close(); }
 });
 test('FACT-CHECK card: open with verdicts when something is wrong, closed when all is fine', async () => {
@@ -156,21 +148,17 @@ test('usage screen: totals, keys with state pills, models, features, days, hallu
     assert.deepEqual([...v().querySelectorAll('.us-frow .us-fn')].map(x => text(x)), ['Standard jawab', 'Council modes', 'Fact-check']);
     assert.equal(v().querySelectorAll('.us-day').length, 3);
     assert.ok(v().querySelector('.us-day.today'));
-    assert.match(text(v().querySelector('.us-truth')), /HALLUCINATION CONTROL.*Jawab kitna pakka.*Fact-check \(Standard\)/);
-    await until(() => /Aaj 4 jawab fact-check hue: 9 pakka, 2 shak, 1 galat/.test(text(v())));
-    [...v().querySelectorAll('.us-truth .seg button')].find(b => b.textContent === 'Creative').click();
-    assert.equal(app.S.settings.truthLevel, 'creative');
-    assert.match(text(v().querySelector('.us-truth')), /temperature 0\.8/);
+    assert.equal(v().querySelector('.us-truth'), null, 'local report view retains counters but no duplicated quality editor');
   } finally { app.close(); }
 });
-test('usage screen: Settings opens it, Refresh asks again, a backend without usage says so', async () => {
+test('usage history remains locally accessible without duplicate Settings navigation', async () => {
   let mode = 'ok';
   const app = mount({ reply: (req) => (req.usage ? (mode === 'ok' ? { type: 'usage', usage: REPORT } : { type: 'text', text: 'demo' }) : { type: 'text', text: 'ok' }) });
   try {
     app.App.show('settings');
     const v = app.document.querySelector('#v-settings');
-    assert.match(text(v), /API usage.*Aaj kitna chala, har key ka hisaab/);
-    [...v.querySelectorAll('.item')].find(b => /^API usage/.test(b.textContent.trim())).click();
+    assert.doesNotMatch(text(v), /API usage/);
+    app.App.show('usage');
     await until(() => app.document.querySelector('#v-usage .us-top'));
     assert.equal(app.document.querySelector('#v-usage').classList.contains('on'), true);
     assert.match(app.Usage.brief(), /Aaj 1\.5K requests · 2\.3M tokens/);
@@ -178,6 +166,32 @@ test('usage screen: Settings opens it, Refresh asks again, a backend without usa
     [...app.document.querySelectorAll('#v-usage .sech button')].find(b => b.textContent === 'Refresh').click();
     await until(() => /usage nahi aata/.test(text(app.document.querySelector('#v-usage .us-load'))));
     assert.equal(app.sent.filter(r => r.usage).length, 2);
+  } finally { app.close(); }
+});
+test('Android controller pairing exists only in its in-app sheet and clears the one-time code', async () => {
+  const pairCodes = [], syncCalls = [];
+  const native = {
+    controllerStatus: () => JSON.stringify({ linked: false, revision: 0, config_cached: false }),
+    controllerPair: (id, code) => { pairCodes.push(code); setTimeout(() => app.window.__adarshResult(id, JSON.stringify({ ok: true, revision: 7 }), null), 0); },
+    controllerSync: id => { syncCalls.push(true); setTimeout(() => app.window.__adarshResult(id, JSON.stringify({ ok: true, revision: 8 }), null), 0); }
+  };
+  const app = mount({ native });
+  try {
+    app.App.show('settings');
+    const settings = app.document.querySelector('#v-settings');
+    assert.doesNotMatch(text(settings), /Hallucination control|Built-in web search|API usage/);
+    [...settings.querySelectorAll('.item')].find(b => /ADARSH Control Center/.test(b.textContent)).click();
+    const sheet = app.document.querySelector('.sheet');
+    const input = sheet.querySelector('input');
+    assert.equal(input.getAttribute('autocomplete'), 'off');
+    input.value = 'one-time-code-123456';
+    [...sheet.querySelectorAll('button')].find(b => b.textContent === 'Pair phone').click();
+    assert.equal(input.value, '', 'raw pairing input is cleared immediately');
+    await until(() => /Phone pair hua/.test(text(sheet)));
+    assert.deepEqual(pairCodes, ['one-time-code-123456']);
+    [...sheet.querySelectorAll('button')].find(b => b.textContent === 'Sync now').click();
+    await until(() => /Sync hua/.test(text(sheet)));
+    assert.equal(syncCalls.length, 1);
   } finally { app.close(); }
 });
 test('Android bridge: the usage screen uses the quiet native path when it exists', async () => {

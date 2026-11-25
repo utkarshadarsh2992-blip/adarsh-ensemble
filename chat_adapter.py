@@ -38,7 +38,7 @@ CASUAL_SYSTEM = (
     "No headings, no lists, no disclaimers. Mirror the user's language (Hinglish stays Hinglish, Hindi stays Hindi)."
 )
 
-# Standard mode = Groq only: openai/gpt-oss-120b with Groq's built-in web search + a Wikipedia tool
+# Standard mode = Groq-only configured chain with Groq's built-in web search + a Wikipedia tool
 # (standard_agent.py). STANDARD_QUICK=0 (server operators only) sends it through the full 11-role council again.
 QUICK_STANDARD = os.getenv("STANDARD_QUICK", "1") != "0"
 MAX_CONTEXT_CHARS = 2000   # how much earlier chat is passed along as context
@@ -145,8 +145,27 @@ def _is_casual(text: str) -> bool:
     return bool(_CASUAL.match(t)) or (len(t) <= 4 and not any(c.isdigit() for c in t) and "?" not in t)
 
 
+def _effective_truth_options(body: dict) -> dict:
+    """Controller fields override stale phone values; omitted remote fields preserve the phone fallback."""
+    quality = getattr(config, "REMOTE_QUALITY", {}) or {}
+    options = truth.options(body)
+    if quality.get("truthLevel") in truth.LEVELS:
+        options["level"] = quality["truthLevel"]
+    if quality.get("factCheck") in truth.CHECKS:
+        options["check"] = quality["factCheck"]
+    return options
+
+
+def _effective_web_search(body: dict) -> bool:
+    quality = getattr(config, "REMOTE_QUALITY", {}) or {}
+    if "builtInWebSearch" in quality:
+        return bool(quality["builtInWebSearch"])
+    reply = body.get("reply") if isinstance(body.get("reply"), dict) else {}
+    return reply.get("web") != "off"
+
+
 async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "normal") -> dict | None:
-    """Standard small talk: one Groq gpt-oss-120b call, no tools. None means: use the normal Standard path."""
+    """Standard small talk: one call through the configured Groq chain, no tools. None means: use normal Standard."""
     health.set_stage("casual")
     try:
         out = await standard_agent.answer(
@@ -179,7 +198,7 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
                        research: bool = True, deep: bool = False, web: bool = True,
                        std: str = "2.9", learn: dict | None = None, deeper: bool = False,
                        truth_opts: dict | None = None) -> dict:
-    """Standard mode: Groq gpt-oss-120b only. It searches the web (Groq browser_search) and Wikipedia by itself
+    """Standard mode: the configured Groq-only chain. It searches the web (Groq browser_search) and Wikipedia by itself
     when that helps. Never falls back to another provider; a failure comes back as a clear text reply.
     std "2.9" = short core answer + 'Gehrai mein jao' button; "9.2" = one concept in full depth (learning.py).
     Not voice: the answer carries a hidden check block (questions + new words), split off here.
@@ -218,12 +237,13 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
         )
     except standard_agent.StandardError as e:
         return {"type": "text", "text": str(e), "uiMode": "standard", "steps": ["Standard · Groq only"]}
+    quota_spec = standard_agent._base_spec(out.get("used"))
     text_out, learned = learning.split_checks(out["text"], learn.get("known"))
     # fact-check: not for voice, and not for answers about sir's own records (research off = private context)
     checked = None
     wanted = research and truth.should_check(truth_opts, text_out, voice)
-    if wanted and truth_opts.get("check") == "auto" and 1.0 - health.used_frac(standard_agent._base_spec()) < truth.AUTO_MIN_LEFT:
-        wanted = False  # Groq's daily quota is running out: the optional call is the first thing to go (rate limits)
+    if wanted and truth_opts.get("check") == "auto" and 1.0 - health.used_frac(quota_spec) < truth.AUTO_MIN_LEFT:
+        wanted = False  # This Groq model's daily quota is running out: the optional call goes first
     if wanted:
         checked = await truth.check(text[:1500], text_out, out.get("evidence"), pipeline._language_hint(text, reply_lang))
     if not voice:
@@ -243,7 +263,7 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
     rep = {"type": "text", "text": text_out, "steps": steps, "std": std}
     if checked:
         rep["truth"] = {**checked, "level": truth_opts["level"]}
-    left = 1.0 - health.used_frac(standard_agent._base_spec())
+    left = 1.0 - health.used_frac(quota_spec)
     if left < 0.3:  # rate-limit awareness: the phone warns once a day when Groq's daily quota is running out
         rep["quota"] = {"provider": "groq", "left": round(max(0.0, left), 2)}
         steps.insert(-1, f"Groq ka aaj ka quota ~{int(round(max(0.0, left) * 100))}% bacha")
@@ -359,7 +379,8 @@ async def handle(body: dict) -> dict | list[dict]:
     rp = body.get("reply") if isinstance(body.get("reply"), dict) else {}
     reply_lang = rp.get("lang") if rp.get("lang") in ("auto", "hinglish", "english", "hindi") else "auto"
     depth = rp.get("depth") if rp.get("depth") in ("simple", "normal", "detailed") else "normal"
-    web_search = rp.get("web") != "off"  # Settings > Built-in web search (Standard mode); Wikipedia stays on
+    # Keep the stored phone setting as the pre-remote fallback, but a validated controller value always wins.
+    web_search = _effective_web_search(body)
 
     think = rp.get("think") if rp.get("think") in ("fast", "deep") else config.CHAT_MODE  # Settings > Reply style > Council
     source = body.get("source") if body.get("source") in ("auto", "manual", "hybrid") else "auto"
@@ -385,7 +406,7 @@ async def handle(body: dict) -> dict | list[dict]:
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
     extra = extra[:6000]
     learn = learning.options(body)
-    truth_opts = truth.options(body)
+    truth_opts = _effective_truth_options(body)
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra

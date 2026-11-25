@@ -276,7 +276,8 @@ class MainActivity : AppCompatActivity() {
         launchTarget = intent?.getStringExtra(UpdateCheckJob.EXTRA_OPEN)
         UpdateCheckJob.schedule(this)
         updater = UpdateManager(this) { value -> runOnUiThread { js("window.__adarshUpdate&&window.__adarshUpdate($value)") } }
-        web.addJavascriptInterface(AdarshBridge((application as AdarshApp).keys, Companion::progress, Companion::deliver), "AdarshNative")
+        val adarshApp = application as AdarshApp
+        web.addJavascriptInterface(AdarshBridge(adarshApp.keys, Companion::progress, Companion::deliver), "AdarshNative")
 
         // Back never closes the app mid-request: it sends it to the background.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
