@@ -1,9 +1,11 @@
 """Adarsh knows who sir is: the same background text reaches every mode that talks to him."""
 import pathlib
+import subprocess
+import sys
 
-import briefing
-import chat_adapter
 import prompts
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def test_about_sir_names_sir_and_the_goal():
@@ -13,13 +15,17 @@ def test_about_sir_names_sir_and_the_goal():
 
 
 def test_about_sir_reaches_standard_casual_briefing_and_council():
-    assert prompts.ABOUT_SIR in chat_adapter.QUICK_SYSTEM
-    assert prompts.ABOUT_SIR in chat_adapter.CASUAL_SYSTEM
-    assert prompts.ABOUT_SIR in briefing.NIGHT_SYSTEM
-    assert prompts.ABOUT_SIR in prompts.LEARNER_PROFILE
+    # subprocess: importing chat_adapter/briefing here would load health.py before test_quota reloads it
+    code = (
+        "import prompts, chat_adapter as c, briefing as b;"
+        "a = prompts.ABOUT_SIR;"
+        "assert a in c.QUICK_SYSTEM and a in c.CASUAL_SYSTEM and a in b.NIGHT_SYSTEM and a in prompts.LEARNER_PROFILE"
+    )
+    r = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
 
 
 def test_live_voice_prompt_has_the_same_background():
-    js = (pathlib.Path(__file__).resolve().parents[1] / "ui/src/js/05-voice.js").read_text()
+    js = (ROOT / "ui/src/js/05-voice.js").read_text()
     for needle in ("the user is Utkarsh", "same person", "MIT", "robots and rockets", "little support at home"):
         assert needle in js
