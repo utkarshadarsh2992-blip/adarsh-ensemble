@@ -16,6 +16,7 @@ import re
 import health
 import learning
 import pipeline
+import prompts
 import standard_agent
 
 PLAN_OPEN = "<<<ADARSH_PLAN"
@@ -35,6 +36,7 @@ NIGHT_SYSTEM = (
     "deadlines, projects or news; if something is missing, say so in one short line (for example 'aaj koi check "
     "question nahi hua'). Use the days-left numbers exactly as given. Be honest and specific: zero fluff, no "
     "motivational talk, no flattery, short lines. His mission: AI/AGI, rockets and robots; business only funds it.\n"
+    + prompts.ABOUT_SIR + "\n"
     "Write these sections with short bold headings, in this order:\n"
     "**Aaj ka hisaab**: 2-4 lines on what he actually did today, from the data.\n"
     "**Mission aur goals**: one line per goal with days left, progress and whether today moved it; if a goal has "

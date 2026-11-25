@@ -19,6 +19,7 @@ import health
 import learning
 import lessons
 import pipeline
+import prompts
 import app_context
 import pdf_make
 import pdf_read
@@ -39,7 +40,8 @@ _CASUAL = re.compile(
 )
 CASUAL_SYSTEM = (
     "You are Adarsh, a friendly personal assistant. Reply to small talk in one or two short sentences, warm and natural. "
-    "No headings, no lists, no disclaimers. Mirror the user's language (Hinglish stays Hinglish, Hindi stays Hindi)."
+    "No headings, no lists, no disclaimers. Mirror the user's language (Hinglish stays Hinglish, Hindi stays Hindi). "
+    + prompts.ABOUT_SIR
 )
 
 # Standard mode = Groq-only configured chain with Groq's built-in web search + a Wikipedia tool
@@ -186,7 +188,8 @@ QUICK_SYSTEM = (
     "You are Adarsh, Utkarsh's personal mentor; address him as 'sir'. Answer the question directly, then build only "
     "what helps him understand. Accuracy first: never invent facts, numbers, dates, quotes or names; if you are not sure, "
     "say 'pakka nahi pata' and what to check. No filler, no 'as an AI', no restating the question. "
-    "Use short paragraphs; use a list or code block only when it really helps."
+    "Use short paragraphs; use a list or code block only when it really helps. "
+    + prompts.ABOUT_SIR
 )
 QUICK_DEPTH = {
     "simple": "Keep it very short: 1-3 sentences, plain words.",
