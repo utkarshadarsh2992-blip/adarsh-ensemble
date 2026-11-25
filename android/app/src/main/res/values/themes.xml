@@ -10,6 +10,6 @@
     <color name="adarsh_icon_bg">#111111</color>
     <!-- startup animation ground (ui/src/css/boot.css .boot) -->
     <color name="adarsh_boot">#05070B</color>
-    <!-- accent of the startup animation (ui/src/css/boot.css --bc), shared by the native loading frame -->
+    <!-- accent of the startup animation (ui/src/css/boot.css, variable bc), shared by the native loading frame -->
     <color name="boot_accent">#49D9FF</color>
 </resources>

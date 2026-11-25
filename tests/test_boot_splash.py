@@ -76,3 +76,10 @@ def test_boot_bars_bridge_is_origin_checked_and_restored_natively():
     assert "setBootBars(false)" in err
     js = read(ROOT / "ui/src/js/07-splash.js")
     assert "AdarshNative.bootBars(!!dark)" in js
+
+
+def test_every_android_resource_is_well_formed_xml():
+    # no Android SDK in the unit tests: at least catch a broken resource (e.g. "--" inside a comment) before CI
+    import xml.dom.minidom
+    for f in RES.rglob("*.xml"):
+        xml.dom.minidom.parse(str(f))
