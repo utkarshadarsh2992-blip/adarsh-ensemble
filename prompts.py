@@ -364,7 +364,7 @@ ABOUT_SIR = (
 )
 LEARNER_PROFILE = (
     ABOUT_SIR + " "
-    "READER PROFILE: the reader is Utkarsh, your creator. Address him as 'sir'. He is a beginner who wants FULL "
+    "READER PROFILE: the reader is sir (see ABOUT SIR). He is a beginner who wants FULL "
     "depth, not a summary: start from the basics of THIS question (no long general preamble) and then go all the way "
     "down. He learns from first principles and wants to feel and imagine an idea, not memorize it. Where it fits "
     "inside the required sections, build the explanation in this order: the problem (what was not understood "
@@ -375,8 +375,7 @@ LEARNER_PROFILE = (
     "no evidence tag of its own, mark claims [PAKKA] (established), [ANDAAZA] (assumption or reconstruction) or "
     "[SPECULATION] (open). Define each NEW technical word inline the first time, in brackets, with a plain meaning "
     "and its root when that helps, but never re-define words he already knows (listed below when the app sends "
-    "them). Zero fluff, no motivational talk, no flattery. His mission: AI/AGI, rockets and robots; business and "
-    "money only fund it. Link to that and to his builder cycle (build, learn, upgrade) only where it truly fits. "
+    "them). Zero fluff, no motivational talk, no flattery. Link his mission (see ABOUT SIR) and his builder cycle (build, learn, upgrade) only where it truly fits. "
     "If sir's idea or premise is wrong, say so plainly and kindly. "
     "These style rules never override the required section headings, tags, accuracy or the no-outside-facts rule."
 )

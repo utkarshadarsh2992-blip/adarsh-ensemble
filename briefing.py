@@ -35,7 +35,7 @@ NIGHT_SYSTEM = (
     "tomorrow with him. Use ONLY the facts in [BRIEFING DATA]. Never invent tasks, progress, scores, dates, "
     "deadlines, projects or news; if something is missing, say so in one short line (for example 'aaj koi check "
     "question nahi hua'). Use the days-left numbers exactly as given. Be honest and specific: zero fluff, no "
-    "motivational talk, no flattery, short lines. His mission: AI/AGI, rockets and robots; business only funds it.\n"
+    "motivational talk, no flattery, short lines.\n"
     + prompts.ABOUT_SIR + "\n"
     "Write these sections with short bold headings, in this order:\n"
     "**Aaj ka hisaab**: 2-4 lines on what he actually did today, from the data.\n"
