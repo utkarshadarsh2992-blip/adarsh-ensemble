@@ -1077,7 +1077,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [], philosophy: '',
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, bootAnim: true, adarshLive: false, liveModel: 'gemini-3.8-live' },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, bootAnim: true, adarshLive: false, liveModel: 'auto' },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();
@@ -3660,7 +3660,7 @@ const App = (() => {
       const liveNative = !!(window.AdarshNative && window.AdarshNative.liveStart);
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
         on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
-        (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'gemini-3.8-live') === v) o.selected = true; return o; }));
+        (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
       const liveBlock = liveNative ? h('div', {}, h('div', { class: 'grp' },
         swItem('voice', 'Adarsh Live', 'Live voice · jarvis jaisi', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
         S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,
@@ -4090,14 +4090,30 @@ const STT = {
    screen, shows both transcripts and falls back to the old listen/answer/speak loop on any error.
    Changing the live model or voice is one line here (LIVE_MODELS / default model). */
 const LIVE_MODELS = [
-  ['gemini-3.8-live', 'Gemini 3.8 Live'],
+  ['auto', 'Auto · need ke hisaab se'],
   ['gemini-3.8-live-extended-thinking', 'Gemini 3.8 Live Extended Thinking'],
   ['gemini-2.5-flash-native-audio-preview-12-2025', 'Gemini 2.5 Flash Native Audio Dialog'],
   ['gemini-3.1-flash-live-preview', 'Gemini 3.1 Flash Live'],
   ['gemini-3.5-live-translate-preview', 'Gemini 3.5 Live Translate'],
   ['gemini-3.5-transcribe-live', 'Gemini 3.5 Transcribe Live']
 ];
-const LIVE_DEFAULT_MODEL = 'gemini-3.8-live';
+const LIVE_DEFAULT_MODEL = 'auto';
+/* One Live model per job. Auto routing picks the role, so changing a model is one line here.
+   Keep in sync with ROLE_MODEL in AdarshLive.kt. */
+const LIVE_ROLES = {
+  main: ['gemini-3.8-live', 'Main voice'],
+  think: ['gemini-3.8-live-extended-thinking', 'Advanced reasoning'],
+  transcribe: ['gemini-3.5-transcribe-live', 'Speech recognition'],
+  translate: ['gemini-3.5-live-translate-preview', 'Translation'],
+  backup: ['gemini-2.5-flash-native-audio-preview-12-2025', 'Backup'],
+  test: ['gemini-3.1-flash-live-preview', 'Backup/testing']
+};
+/* What the user is asking for, decided from their own words (no extra model call, works offline). */
+const LIVE_RE = {
+  translate: /(translate|translation|tarjuma|hindi\s*(me|mein)|english\s*(me|mein)|angrezi|isko\s+(hindi|english)|अनुवाद)/i,
+  transcribe: /(transcript|transcribe|likh\s*(ke|kar)|dictation|note\s*kar|type\s*kar)/i,
+  think: /(kyun|kyu|why|samjha|explain|prove|proof|derive|compare|difference|plan\s*kar|design|architect|code|debug|calculate|reason|analys|analy[sz]e|kaise\s*kaam)/i
+};
 /* Gemini Live prebuilt voices. Orus/Charon/Fenrir are the deeper male ones, so Jarvis-like by default. */
 const LIVE_VOICES = ['Orus', 'Charon', 'Fenrir', 'Puck', 'Kore', 'Aoede', 'Leda', 'Zephyr', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba', 'Sadaltager'];
 const Live = (() => {
@@ -4106,6 +4122,20 @@ const Live = (() => {
   const native = () => { const n = N(); return !!(n && n.liveStart); };
   const available = () => native() && S.settings.adarshLive === true;
   const liveModel = () => { const m = S.settings.liveModel; return LIVE_MODELS.some(x => x[0] === m) ? m : LIVE_DEFAULT_MODEL; };
+  let role = 'main';
+  /* Which role a sentence needs; '' means "leave it alone", 'main' means "back to everyday voice". */
+  function roleFor(text, current) {
+    const t = String(text || '').trim();
+    if (!t) return '';
+    if (LIVE_RE.translate.test(t)) return 'translate';
+    if (LIVE_RE.transcribe.test(t)) return 'transcribe';
+    if (LIVE_RE.think.test(t) || t.length > 140) return 'think';
+    return (current && current !== 'main') ? 'main' : '';
+  }
+  function switchTo(r) {
+    if (!native() || !N().liveSwitch) return false;
+    try { const out = JSON.parse(N().liveSwitch(r) || '{}'); if (out && out.ok) role = r; return !!(out && out.ok); } catch (e) { return false; }
+  }
   const voice = () => { const v = String(S.settings.voiceName || 'Orus'); return LIVE_VOICES.includes(v) ? v : 'Orus'; };
   /* Jarvis rules + the user's Philosophy page; the key stays on the phone (Kotlin reads SecureKeys). */
   function prompt() {
@@ -4129,6 +4159,7 @@ const Live = (() => {
     return true;
   }
   function stop() {
+    role = 'main';
     if (!on && !native()) return;
     on = false; handlers = null;
     try { N().liveStop(); } catch (e) {}
@@ -4143,13 +4174,15 @@ const Live = (() => {
       if (ev.type === 'state' && h.onState) h.onState(ev.state, ev.model, ev);
       else if (ev.type === 'notice' && h.onNotice) h.onNotice(ev.message);
       else if (ev.type === 'probe' && h.onProbe) h.onProbe(ev.message);
+      else if (ev.type === 'role') { role = ev.role || 'main'; if (h.onRole) h.onRole(ev.role, ev.label, ev.model); }
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
       else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
       else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
       else if (ev.type === 'closed' && h.onClosed) h.onClosed();
     } catch (e) {}
   };
-  return { available, native, start, stop, send, probe, model: () => model, get isOn() { return on; } };
+  return { available, native, start, stop, send, probe, roleFor, switch: switchTo,
+    get role() { return role; }, model: () => model, get isOn() { return on; } };
 })();
 
 const Voice = (() => {
@@ -4204,7 +4237,18 @@ const Voice = (() => {
         }
       },
       onNotice: (m) => { if (active(token)) caption(liveUser, m); },
-      onUser: (t) => { if (!active(token)) return; liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel); },
+      onUser: (t) => {
+        if (!active(token)) return;
+        liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel);
+        /* auto role routing: the sentence itself decides which Live model should answer it */
+        const want = Live.roleFor(t, Live.role);
+        if (want && want !== Live.role && Live.switch(want)) setState('thinking');
+      },
+      onRole: (r, label) => {
+        if (!active(token)) return;
+        if (r && r !== 'main' && label) { setState('thinking'); stateEl.textContent = label; }
+        else if (r === 'main') stateEl.textContent = 'Live · just speak';
+      },
       onModel: (t) => { if (!active(token)) return; liveModel = (liveModel + ' ' + t).trim().slice(-1200); caption(liveUser, liveModel); },
       onError: (m) => {
         if (!active(token)) return;

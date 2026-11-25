@@ -41,6 +41,7 @@ function bridge(calls) {
     liveStart: (json) => { calls.push(JSON.parse(json)); return JSON.stringify({ ok: true, state: 'connecting', model: JSON.parse(json).model }); },
     liveStop: () => { calls.push({ stop: true }); return JSON.stringify({ ok: true }); },
     liveSendText: (t) => { calls.push({ text: t }); return JSON.stringify({ ok: true }); },
+    liveSwitch: (r) => { calls.push({ switch: r }); return JSON.stringify({ ok: true, model: r }); },
     speechStart: () => true
   };
 }
@@ -49,7 +50,7 @@ test('Adarsh Live is off by default and the model list is the verified one', () 
   const app = mount();
   try {
     assert.equal(app.S.settings.adarshLive, false, 'never on without the user');
-    assert.equal(app.S.settings.liveModel, 'gemini-3.8-live');
+    assert.equal(app.S.settings.liveModel, 'auto', 'auto routing is the default');
     assert.equal(app.Live.available(), false, 'no native bridge in a browser');
   } finally { app.close(); }
 });
@@ -64,7 +65,7 @@ test('a live session sends the model, the chosen voice and the saved philosophy'
   await settle(20);
   const first = calls[0];
   assert.ok(first, 'liveStart called');
-  assert.equal(first.model, 'gemini-3.8-live');
+  assert.equal(first.model, 'auto', 'Kotlin resolves auto -> main voice');
   assert.equal(first.voice, 'Charon');
   assert.match(first.prompt, /Sach pehle, phir aaram\./);
   assert.match(first.prompt, /"Sir"/);
@@ -91,4 +92,40 @@ test('a failed live start falls back to the old voice loop instead of breaking t
   const cap = text(app.document.querySelector('#voice .v-cap'));
   assert.match(cap, /normal voice|Gemini API key/i);
   assert.equal(app.document.querySelector('#voice').hidden, false, 'screen still usable');
+});
+
+test('the sentence decides which Live model answers it', async (t) => {
+  const app = mount();
+  t.after(() => app.close());
+  const { roleFor } = app.Live;
+  // everyday talk stays on the main voice
+  assert.equal(roleFor('kal ka mausam kaisa hai', 'main'), '');
+  // deep reasoning upgrades to 3.8 extended thinking, instantly
+  assert.equal(roleFor('samjhao ki entropy kyun badhti hai', 'main'), 'think');
+  assert.equal(roleFor('why does this fail', 'main'), 'think');
+  assert.equal(roleFor('x'.repeat(160), 'main'), 'think');
+  // language asks use the translate model, dictation uses transcribe
+  assert.equal(roleFor('isko hindi me karo', 'main'), 'translate');
+  assert.equal(roleFor('translate this to english', 'main'), 'translate');
+  assert.equal(roleFor('iski transcript likh ke do', 'main'), 'transcribe');
+  // and a normal sentence afterwards brings the conversation back to the main voice
+  assert.equal(roleFor('theek hai shukriya', 'think'), 'main');
+  assert.equal(roleFor('', 'think'), '');
+});
+
+test('a live turn switches the model through the bridge', async (t) => {
+  const calls = [];
+  const app = mount({ settings: { adarshLive: true }, native: bridge(calls) });
+  t.after(() => app.close());
+  app.Voice.open();
+  await settle(20);
+  assert.equal(calls[0].model, 'auto');
+  app.window.__adarshLive({ type: 'role', role: 'main', label: 'Main voice', model: 'gemini-3.8-live' });
+  app.window.__adarshLive({ type: 'user', text: 'ye code debug kyun ho raha hai' });
+  await settle(10);
+  assert.ok(calls.some(c => c.switch === 'think'), 'deep question moves to extended thinking');
+  assert.equal(app.Live.role, 'think');
+  app.window.__adarshLive({ type: 'user', text: 'theek hai' });
+  await settle(10);
+  assert.ok(calls.some(c => c.switch === 'main'), 'plain talk returns to the main voice');
 });

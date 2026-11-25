@@ -284,7 +284,7 @@ const App = (() => {
       const liveNative = !!(window.AdarshNative && window.AdarshNative.liveStart);
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
         on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
-        (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'gemini-3.8-live') === v) o.selected = true; return o; }));
+        (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
       const liveBlock = liveNative ? h('div', {}, h('div', { class: 'grp' },
         swItem('voice', 'Adarsh Live', 'Live voice · jarvis jaisi', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
         S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,

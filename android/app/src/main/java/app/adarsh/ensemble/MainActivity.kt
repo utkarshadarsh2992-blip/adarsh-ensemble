@@ -482,6 +482,12 @@ class MainActivity : AppCompatActivity() {
             AdarshLive.probe(a) { ev -> a.js("window.__adarshLive&&window.__adarshLive($ev)") }
             JSONObject().put("ok", true).toString()
         }
+        /** Auto role routing: move the same live conversation to another Live model (main / think / translate / ...). */
+        fun liveSwitch(role: String): String = onMain {
+            val session = current?.live
+                ?: return@onMain JSONObject().put("ok", false).put("message", "live band hai").toString()
+            session.switchTo(role).toString()
+        }
         fun liveSendText(text: String): String = onMain {
             JSONObject().put("ok", current?.live?.sendText(text) ?: false).toString()
         }

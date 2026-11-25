@@ -73,10 +73,24 @@ def test_a_dead_network_fails_fast_instead_of_burning_every_timeout():
     # a network failure ends the sweep immediately; only endpoint/model answers move on to the next attempt
     assert "isNetwork(t)" in LIVE and "SETUP_TIMEOUT_MS = 8_000L" in LIVE
     # six attempts at most: the chosen model on all four endpoints, the fallbacks on the documented one
-    assert "variants.map { v -> v to model } + FALLBACK.map { m -> variants.first() to m }" in LIVE
+    assert "VARIANTS.map { v -> v to model } + FALLBACK.map { m -> VARIANTS.first() to m }" in LIVE
     # the page shows which attempt is running
     assert 'put("attempt", step + 1).put("total", plans.size)' in LIVE
     assert "onState(ev.state, ev.model, ev)" in VOICE and "'Connecting…' + n" in VOICE
+
+
+def test_auto_routing_roles_match_between_kotlin_and_the_ui():
+    kt = dict(re.findall(r'"(\w+)" to "(gemini-[a-z0-9.\-]+)"', LIVE.split("val ROLE_MODEL")[1].split(")")[0]))
+    js_block = VOICE.split("const LIVE_ROLES = {")[1].split("};")[0]
+    js = dict(re.findall(r"(\w+): \['(gemini-[a-z0-9.\-]+)'", js_block))
+    assert kt and kt == js, (kt, js)
+    assert kt["main"] == "gemini-3.8-live" and kt["think"] == "gemini-3.8-live-extended-thinking"
+    # the conversation moves to another model without losing it: resumption handle, else the recent transcript
+    assert "fun switchTo(asked: String)" in LIVE
+    assert 'put("sessionResumption"' in LIVE and "sessionResumptionUpdate" in LIVE
+    assert "Pichli baat" in LIVE
+    # auto is the default choice in Settings, and the classifier runs on the device
+    assert "['auto', 'Auto" in VOICE and "function roleFor(text, current)" in VOICE
 
 
 def test_models_match_between_kotlin_and_the_ui():
@@ -87,7 +101,7 @@ def test_models_match_between_kotlin_and_the_ui():
 
 
 def test_bridge_and_activity_expose_the_session():
-    for name in ("liveStart", "liveStop", "liveSendText", "liveStatus", "liveProbe"):
+    for name in ("liveStart", "liveStop", "liveSendText", "liveStatus", "liveProbe", "liveSwitch"):
         assert f"fun {name}(" in BRIDGE and f"fun {name}(" in ACTIVITY, name
     # the session is torn down with the screen: never background listening
     assert "live?.stop()" in ACTIVITY.split("override fun onDestroy")[1][:400]
@@ -95,7 +109,7 @@ def test_bridge_and_activity_expose_the_session():
 
 def test_toggle_is_off_by_default_and_only_on_the_voice_screen():
     assert "adarshLive: false" in CORE
-    assert "liveModel: 'gemini-3.8-live'" in CORE
+    assert "liveModel: 'auto'" in CORE
     assert "'Adarsh Live'" in VIEWS
     # started from Voice.open (the screen), not from the background service or Standard text chat
     assert "S.settings.adarshLive && Live.native()" in VOICE

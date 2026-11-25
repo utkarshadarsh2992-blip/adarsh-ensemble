@@ -44,6 +44,24 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             "gemini-3.5-live-translate-preview",
             "gemini-3.5-transcribe-live"
         )
+        /** What each Live model is for; the page asks for a role, the client picks the model. */
+        val ROLE_MODEL = mapOf(
+            "main" to "gemini-3.8-live",                                   // everyday voice, Jarvis-like
+            "think" to "gemini-3.8-live-extended-thinking",                // deep reasoning, auto-upgraded
+            "transcribe" to "gemini-3.5-transcribe-live",                  // speech recognition / dictation
+            "translate" to "gemini-3.5-live-translate-preview",            // "isko Hindi/English me karo"
+            "backup" to "gemini-2.5-flash-native-audio-preview-12-2025",   // backup voice
+            "test" to "gemini-3.1-flash-live-preview"                      // backup / testing
+        )
+        val ROLE_LABEL = mapOf(
+            "main" to "Main voice", "think" to "Advanced reasoning", "transcribe" to "Speech recognition",
+            "translate" to "Translation", "backup" to "Backup", "test" to "Backup/testing"
+        )
+        /** v1beta + header first: the documented WebSocket service, verified from the sandbox. */
+        private val VARIANTS = listOf(
+            Variant("v1beta", true), Variant("v1alpha", true),
+            Variant("v1beta", false), Variant("v1alpha", false)
+        )
         /** Tried in order when the chosen model is refused for this key. Each is a normal Live dialogue model. */
         private val FALLBACK = listOf("gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview")
         /** Note the trailing dot: the service name is "google.ai.generativelanguage.<api>.GenerativeService". */
@@ -82,7 +100,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     }
 
     /** One endpoint + auth form. v1alpha is what the Gemini 3.8 Live docs use; v1beta is the WebSocket guide. */
-    private data class Variant(val api: String, val header: Boolean) {
+    data class Variant(val api: String, val header: Boolean) {
         val label: String get() = api + "/" + (if (header) "header" else "key")
         fun url(key: String) = HOST + api + METHOD + if (header) "" else "?key=" + key
     }
@@ -93,6 +111,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private var client: OkHttpClient? = null
     private var ws: WebSocket? = null
     private var key = ""
+    private var model = ROLE_MODEL.getValue("main")
+    private var resumeHandle: String? = null
+    private var lastGood: Variant? = null
+    private val recent = StringBuilder()   // both sides of the talk, kept so a switch without a handle still has context
     private var voice = "Orus"
     private var prompt = ""
     private var plans: List<Pair<Variant, String>> = emptyList()   // every endpoint/model combination, in order
@@ -136,19 +158,19 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         if (!closed.get()) stop()
         val k = cfg.optString("key").trim()
         if (k.isEmpty()) return JSONObject().put("ok", false).put("state", "error").put("message", "Gemini API key nahi mili.")
-        val model = cfg.optString("model", "gemini-3.8-live").removePrefix("models/")
+        val asked = cfg.optString("model", "auto").removePrefix("models/")
+        val model = if (asked.isBlank() || asked == "auto") ROLE_MODEL.getValue("main") else asked
         if (model !in MODELS) return JSONObject().put("ok", false).put("state", "error").put("message", "Live model id galat hai: $model")
+        this.model = model
+        resumeHandle = null
+        lastGood = null
+        recent.setLength(0)
         key = k
         voice = cfg.optString("voice", "Orus").take(40)
         prompt = cfg.optString("prompt").take(MAX_PROMPT)
-        // v1beta + header first: it is the documented WebSocket service and the one verified from the sandbox.
-        val variants = listOf(
-            Variant("v1beta", true), Variant("v1alpha", true),
-            Variant("v1beta", false), Variant("v1alpha", false)
-        )
         // chosen model on every endpoint, then the fallback models on the documented endpoint only: six attempts,
         // and a network failure ends the sweep at once, so the screen never sits on "Connecting…" for a minute.
-        plans = variants.map { v -> v to model } + FALLBACK.map { m -> variants.first() to m }
+        plans = VARIANTS.map { v -> v to model } + FALLBACK.map { m -> VARIANTS.first() to m }
         step = 0
         gotSetup = false
         lastWhy = ""
@@ -175,9 +197,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
                 .put("responseModalities", JSONArray().put("AUDIO"))
                 .put("speechConfig", JSONObject().put("voiceConfig",
                     JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))))
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt))))
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", instruction()))))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
+            .put("sessionResumption", resumeHandle?.let { JSONObject().put("handle", it) } ?: JSONObject())
         return JSONObject().put("setup", setup).toString()
     }
 
@@ -210,6 +233,40 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     /** Stops everything with one plain sentence (used when retrying other endpoints cannot possibly help). */
     private fun fail(message: String) {
         finish(message)
+    }
+
+    /** System prompt, plus the recent talk when a model switch could not resume the previous session. */
+    private fun instruction(): String {
+        val extra = if (resumeHandle != null || recent.isBlank()) "" else
+            "\n\nPichli baat (isi conversation se, model badal gaya hai):\n" + recent.takeLast(1200)
+        return prompt + extra
+    }
+
+    /**
+     * Move the live conversation to another model (auto role routing: deep question -> extended thinking,
+     * "Hindi me karo" -> translate, dictation -> transcribe). Uses the session resumption handle when the server
+     * gave one, otherwise carries the recent transcript so the new model is not blind.
+     */
+    fun switchTo(asked: String): JSONObject {
+        val target = ROLE_MODEL[asked] ?: asked.removePrefix("models/")
+        if (target !in MODELS) return JSONObject().put("ok", false).put("message", "unknown live model: " + asked)
+        if (closed.get()) return JSONObject().put("ok", false).put("message", "live band hai")
+        if (target == model && gotSetup) return JSONObject().put("ok", true).put("model", target).put("same", true)
+        model = target
+        gotSetup = false
+        main.removeCallbacks(setupTimeout)
+        val old = ws
+        ws = null
+        try { old?.close(1000, "switch") } catch (_: Exception) { }
+        stopAudio()
+        val order = listOfNotNull(lastGood) + VARIANTS.filter { it != lastGood }
+        plans = order.map { it to target }
+        step = 0
+        trace.clear()
+        say(JSONObject().put("type", "state").put("state", "connecting").put("model", target)
+            .put("attempt", 1).put("total", plans.size))
+        connect()
+        return JSONObject().put("ok", true).put("model", target)
     }
 
     private fun connect() {
@@ -300,8 +357,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         if (obj.has("setupComplete")) {
             main.removeCallbacks(setupTimeout)
             gotSetup = true
+            lastGood = plans.getOrNull(step)?.first ?: lastGood
             val model = plans.getOrNull(step)?.second ?: ""
-            say(JSONObject().put("type", "state").put("state", "listening").put("model", model))
+            say(JSONObject().put("type", "role").put("role", roleOf(model)).put("label", ROLE_LABEL[roleOf(model)] ?: "").put("model", model))
+            say(JSONObject().put("type", "state").put("state", "listening").put("model", model).put("role", roleOf(model)))
             startMic()
             return
         }
@@ -311,12 +370,18 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             if (!gotSetup) next() else finish()
             return
         }
+        obj.optJSONObject("sessionResumptionUpdate")?.let { up ->
+            val h = up.optString("newHandle")
+            if (up.optBoolean("resumable") && h.isNotBlank()) resumeHandle = h
+        }
         val sc = obj.optJSONObject("serverContent") ?: return
         if (sc.optBoolean("interrupted")) { queue.clear(); try { track?.pause(); track?.flush() } catch (_: Exception) { }; speaking = false }
         sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let {
+            remember("Sir: " + it)
             say(JSONObject().put("type", "user").put("text", it))
         }
         sc.optJSONObject("outputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let {
+            remember("Adarsh: " + it)
             say(JSONObject().put("type", "model").put("text", it))
         }
         val parts = sc.optJSONObject("modelTurn")?.optJSONArray("parts")
@@ -337,6 +402,13 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             speaking = false
             say(JSONObject().put("type", "state").put("state", "listening"))
         }
+    }
+
+    private fun roleOf(m: String): String = ROLE_MODEL.entries.firstOrNull { it.value == m }?.key ?: "main"
+
+    private fun remember(line: String) {
+        recent.append(if (recent.isEmpty()) line else " " + line)
+        if (recent.length > 2000) recent.delete(0, recent.length - 2000)
     }
 
     private fun startMic() {
