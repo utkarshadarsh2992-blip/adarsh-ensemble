@@ -154,11 +154,12 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         override fun onOpen(webSocket: WebSocket, response: Response) { }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
+            if (webSocket !== ws) return   // a socket replaced by the model fallback must not speak any more
             try { handle(JSONObject(text)) } catch (_: Exception) { }
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            if (closed.get()) return
+            if (closed.get() || webSocket !== ws) return
             val code = response?.code ?: 0
             if ((code == 401 || code == 403) && !usedHeader) {   // handshake rejected: retry once in the query form
                 usedHeader = true
@@ -170,13 +171,14 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+            if (webSocket !== ws) return
             // The server explains real failures here ("API key not valid", "model not found", ...).
             if (reason.isNotBlank()) lastWhy = reason.take(300)
             try { webSocket.close(code, null) } catch (_: Exception) { }
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            if (closed.get()) return
+            if (closed.get() || webSocket !== ws) return
             if (reason.isNotBlank()) lastWhy = reason.take(300)
             if (!gotSetup) { tryNext("closed $code"); return }
             finish("Live band ho gaya" + if (reason.isNotBlank()) ": " + reason.take(120) else "")
