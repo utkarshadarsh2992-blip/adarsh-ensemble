@@ -87,23 +87,23 @@ class ControllerLink(context: Context) {
             val body = JSONObject().put("action", "pair").put("code", code)
                 .put("name", deviceName())
             val response = post(body, null)
-            if (!response.optBoolean("ok")) return failure("Pairing code expire ya invalid ho sakta hai.")
+            if (!response.optBoolean("ok")) return failureJson("Pairing code expire ya invalid ho sakta hai.")
             val deviceToken = response.optString("device_token")
             val config = response.optJSONObject("config")
             val revision = response.optLong("revision", 0L)
             if (deviceToken.length !in 32..256 || !deviceToken.matches(Regex("[A-Za-z0-9_-]+")) || config == null || revision < 0) {
-                return failure("Controller ka pairing jawab valid nahi tha.")
+                return failureJson("Controller ka pairing jawab valid nahi tha.")
             }
-            if (!stageConfig(config, revision)) return failure("Controller config bahut badi ya unreadable hai.")
+            if (!stageConfig(config, revision)) return failureJson("Controller config bahut badi ya unreadable hai.")
             if (!tokenPrefs.edit().putString(TOKEN_KEY, deviceToken).commit()) {
                 try { configPending.delete() } catch (_: Exception) {}
-                return failure("Encrypted controller token save nahi hua.")
+                return failureJson("Encrypted controller token save nahi hua.")
             }
             meta.edit().putLong("revision", revision).putLong("last_sync", System.currentTimeMillis()).apply()
             lastAttemptStatus = "paired"
             JSONObject().put("ok", true).put("revision", revision).toString()
         } catch (_: Exception) {
-            failure("Controller se secure connection nahi ho paya. Dobara try karo.")
+            failureJson("Controller se secure connection nahi ho paya. Dobara try karo.")
         }
     }
 
@@ -210,7 +210,7 @@ class ControllerLink(context: Context) {
                     output.write(buffer, 0, count)
                 }
             }
-            JSONObject(output.toString(Charsets.UTF_8.name()))
+            return JSONObject(output.toString(Charsets.UTF_8.name()))
         } finally {
             connection.disconnect()
         }
@@ -218,6 +218,7 @@ class ControllerLink(context: Context) {
 
     private fun deviceName(): String = (Build.MODEL.ifBlank { "Android device" }).take(60)
     private fun appVersion(): String = try { app.packageManager.getPackageInfo(app.packageName, 0).versionName ?: "unknown" } catch (_: Exception) { "unknown" }
+    private fun failureJson(message: String): String = failure(message).toString()
     private fun failure(message: String): JSONObject {
         lastAttemptStatus = "failed"
         return JSONObject().put("ok", false).put("error", message)
