@@ -248,12 +248,16 @@ const Productivity = (() => {
   const askedOldChats = (q) => OLD_CHAT_RE.test(q) && READ_VERB.test(q);
   function modelContext(query, chatId) {
     const a = access();
+    query = String(query || '');
     const askedR = askedRecords(query), askedC = askedOldChats(query);
     if (!a.localRead || (!a.personalOnline && !askedR && !askedC)) return undefined;
     const low = query.toLowerCase();
     const relevant = /\b(my|mera|mere|meri|apne|apna|today|aaj|progress|brief|summary|summari[sz]e|plan|analy[sz]e|records?|tasks?|work|notes?|reminders?|memor(?:y|ies)|projects?|kaam|padhai)\b|old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query);
-    if (!relevant && !askedC) return undefined;
     if (!sync()) return undefined;
+    const stop = new Set(('the a an and or is are was were what how why explain tell me please about with from into for this that these those my mera mere meri apne apna hai ho kya kaise mujhe sir').split(' '));
+    const words = value => new Set((String(value || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []).filter(w => !stop.has(w)));
+    const queryWords = words(query);
+    const score = value => { const rowWords = words(value); let n = 0; queryWords.forEach(w => { if (rowWords.has(w)) n++; }); return n; };
     const kinds = [];
     if (/task|plan|today|aaj|brief/i.test(low)) kinds.push('task');
     if (/work|project|progress|kaam/i.test(low)) kinds.push('work');
@@ -261,17 +265,40 @@ const Productivity = (() => {
     if (/reminder/i.test(low)) kinds.push('reminder');
     if (/alarm/i.test(low)) kinds.push('alarm');
     if (/memor|remember|meri preference/i.test(low)) kinds.push('memory');
-    const tokens = low.match(/[\p{L}\p{N}]{3,}/gu) || [];
     const rows = [...new Set(kinds)].flatMap(k => list(k).map(r => ({ ...r, kind: k })));
+    const memoryRows = a.personalOnline ? (S.memories || []).map(r => ({ ...r, kind: 'memory' }))
+      .filter(r => score(r.text) > 0).slice(0, 4) : [];
+    const projectRows = [];
+    if (a.personalOnline && typeof Mission !== 'undefined' && Mission.summary) {
+      const projectCue = /\b(?:projects?|builder cycle|version|upgrade|progress|my work|mera project|mere project)\b/i.test(query);
+      const all = Mission.summary().projects || [];
+      for (const p of all) {
+        const raw = (S.projects || []).find(x => String(x.name || '').toLowerCase() === String(p.name || '').toLowerCase()) || {};
+        const history = (Array.isArray(raw.versions) ? raw.versions : []).map(v => ({
+          version: Number(v.v) || 1, aim: String(v.aim || ''), built: String(v.built || ''),
+          learned: String(v.learned || ''), next: String(v.next || '')
+        }));
+        const versions = history.filter(v => projectCue || score([v.aim, v.built, v.learned, v.next].join(' ')) > 0).slice(-3);
+        const searchable = [p.name, p.goal, p.built, p.learned, p.next, p.concepts, raw.why,
+          ...history.flatMap(v => [v.aim, v.built, v.learned, v.next])].join(' ');
+        if (projectCue || score(searchable) > 0) projectRows.push({ ...p, id: raw.id || '', kind: 'project', why: raw.why || '', versions });
+        if (projectRows.length >= 3) break;
+      }
+    }
+    const tokens = [...queryWords];
     rows.sort((x, y) => {
-      const score = r => tokens.reduce((n, w) => n + ((r.title || r.text || '').toLowerCase().includes(w) ? 1 : 0), 0);
-      return score(y) - score(x) || (y.updated || y.created || y.ts || 0) - (x.updated || x.created || x.ts || 0);
+      const recordScore = r => score([r.title, r.text, r.category, r.goal, r.outcome,
+        ...(r.entries || []).flatMap(e => [e.text, e.outcome])].join(' '));
+      return recordScore(y) - recordScore(x) || (y.updated || y.created || y.ts || 0) - (x.updated || x.created || x.ts || 0);
     });
+    if (!relevant && !askedC && !memoryRows.length && !projectRows.length) return undefined;
     const redact = v => v.replace(/\b(?:api[_ -]?key|password|secret|token|pin)\s*[:=]\s*\S+|\b(?:sk-|AIza)[\w-]{12,}/gi, '[redacted]');
     const selected = []; let size = 0;
-    for (const r of (a.personalOnline || askedR ? rows : []).slice(0, 12)) {
+    for (const r of [...(a.personalOnline || askedR ? rows : []), ...memoryRows, ...projectRows].slice(0, 12)) {
       const out = {};
-      onlineFields.forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
+      [...onlineFields, 'name', 'why', 'version', 'status', 'built', 'learned', 'next'].forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
+      if (Array.isArray(r.concepts)) out.concepts = r.concepts.filter(x => typeof x === 'string').slice(0, 8).map(x => redact(x).slice(0, 80));
+      if (Array.isArray(r.versions)) out.versions = r.versions.slice(-3).map(v => Object.fromEntries(Object.entries(v).filter(([k, x]) => ['version', 'aim', 'built', 'learned', 'next'].includes(k) && (typeof x === 'string' || typeof x === 'number')).map(([k, x]) => [k, typeof x === 'string' ? redact(x).slice(0, 160) : x])));
       if (r.kind === 'work') out.entries = (r.entries || []).slice(-3).map(e => ({ date: e.date, minutes: e.minutes, text: redact(String(e.text || '')).slice(0, 160), progress: e.progress, outcome: redact(String(e.outcome || '')).slice(0, 160) }));
       const len = JSON.stringify(out).length; if (size + len > 2300) break; selected.push(out); size += len;
     }

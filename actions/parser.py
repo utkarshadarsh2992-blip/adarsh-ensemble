@@ -333,8 +333,15 @@ def one(text: str, now: int) -> dict | None:
         query, value = _clean(natural_note.group(1)), _clean(natural_note.group(2))
         if query and value:
             return _step("note.edit", query=query, text=value)
-    if re.search(r"\b(?:note|notes|likh lo|likh do|yaad rakho|save karo|save kar)\b", padded):
-        body = re.sub(r"\b(?:note|notes|banao|bana do|bana|likh lo|likh do|yaad rakho|save karo|save kar|mein|me|bhi|ek|new|naya|nayi|karo|kar do|ki|that)\b", " ", source, flags=re.I)
+    # A direct "yaad rakho / remember" request is the user's explicit daytime memory approval: save it now.
+    # Keep this before the Note handler so it cannot silently become a note.
+    if re.search(r"\b(?:memory|yaad|remember)\b", padded) and re.search(r"\b(?:add|save|remember|yaad rakh(?:o|na)|banao|create)\b", padded):
+        body = re.sub(r"\b(?:memory|add|save|remember|yaad rakh(?:o|na)|banao|create|karo|kar|do|ki|that|ye baat|is baat ko|this)\b", " ", source, flags=re.I)
+        body = _clean(body)
+        if not body: return _clarify("Memory mein kya save karna hai?")
+        return _step("memory.add", text=body)
+    if re.search(r"\b(?:note|notes|likh lo|likh do|save karo|save kar)\b", padded):
+        body = re.sub(r"\b(?:note|notes|banao|bana do|bana|likh lo|likh do|save karo|save kar|mein|me|bhi|ek|new|naya|nayi|karo|kar do|ki|that)\b", " ", source, flags=re.I)
         body = _clean(body)
         if not body: return _clarify("Note ka text batao.")
         return _step("note.add", text=body)
@@ -346,11 +353,6 @@ def one(text: str, now: int) -> dict | None:
         query, value = _parse_ref_and_value(source, "memory")
         if not query or not value: return _clarify("Memory edit ke liye memory ka reference aur naya text batao.")
         return _step("memory.edit", query=query, text=value)
-    if re.search(r"\b(?:memory|yaad)\b", padded) and re.search(r"\b(?:add|save|remember|yaad rakho|banao|create)\b", padded):
-        body = re.sub(r"\b(?:memory|add|save|remember|yaad rakho|banao|create|karo|kar|do|ki|that)\b", " ", source, flags=re.I)
-        body = _clean(body)
-        if not body: return _clarify("Memory mein kya save karna hai?")
-        return _step("memory.add", text=body)
     if re.search(r"\b(?:settings?|preference|preferences)\b", padded):
         if re.search(r"\b(?:open|kholo|launch)\b", padded):
             return _step("app.open", app="settings")

@@ -919,8 +919,19 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .bplan .bp-foot{display:flex;flex-direction:column;gap:8px;padding:12px 14px}
 .bplan .bp-foot .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .bplan .bp-note{font-size:12px;color:var(--muted);line-height:1.4}
+.bmem{margin-top:10px;padding:13px 14px;border:1px solid var(--line2);background:var(--paper)}
+.bm-head{display:flex;align-items:center;gap:7px;color:var(--accent);font:500 11px var(--mono);letter-spacing:.06em}
+.bm-head .i{width:16px;height:16px}
+.bm-note{margin:6px 0 2px;color:var(--muted);font-size:12px;line-height:1.45}
+.bm-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+.bm-copy{display:flex;flex-direction:column;gap:4px;min-width:0}
+.bm-copy b{font-size:14px;font-weight:500;line-height:1.4;overflow-wrap:anywhere}
+.bm-copy small,.bm-state{color:var(--muted);font-size:11px;line-height:1.35}
+.bm-actions{display:flex;flex:none;gap:6px}
+.bm-actions .btn{min-height:34px;padding:0 10px}
 .bp-consent ul{margin:6px 0 10px;padding-left:20px;line-height:1.5}
 .bp-consent p{margin:0 0 6px;line-height:1.5}
+@media(max-width:540px){.bm-row{align-items:flex-start;flex-direction:column}.bm-actions{width:100%}.bm-actions .btn{flex:1}}
 
 /* usage.css : API usage screen + FACT-CHECK card + hallucination controls (change 1.4). Same techy look as learn.css / mission.css. */
 .us-box{display:flex;flex-direction:column;gap:12px}
@@ -3494,12 +3505,16 @@ const Productivity = (() => {
   const askedOldChats = (q) => OLD_CHAT_RE.test(q) && READ_VERB.test(q);
   function modelContext(query, chatId) {
     const a = access();
+    query = String(query || '');
     const askedR = askedRecords(query), askedC = askedOldChats(query);
     if (!a.localRead || (!a.personalOnline && !askedR && !askedC)) return undefined;
     const low = query.toLowerCase();
     const relevant = /\b(my|mera|mere|meri|apne|apna|today|aaj|progress|brief|summary|summari[sz]e|plan|analy[sz]e|records?|tasks?|work|notes?|reminders?|memor(?:y|ies)|projects?|kaam|padhai)\b|old chat|purane chat|previous chat|pichli baat|past conversation/i.test(query);
-    if (!relevant && !askedC) return undefined;
     if (!sync()) return undefined;
+    const stop = new Set(('the a an and or is are was were what how why explain tell me please about with from into for this that these those my mera mere meri apne apna hai ho kya kaise mujhe sir').split(' '));
+    const words = value => new Set((String(value || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []).filter(w => !stop.has(w)));
+    const queryWords = words(query);
+    const score = value => { const rowWords = words(value); let n = 0; queryWords.forEach(w => { if (rowWords.has(w)) n++; }); return n; };
     const kinds = [];
     if (/task|plan|today|aaj|brief/i.test(low)) kinds.push('task');
     if (/work|project|progress|kaam/i.test(low)) kinds.push('work');
@@ -3507,17 +3522,40 @@ const Productivity = (() => {
     if (/reminder/i.test(low)) kinds.push('reminder');
     if (/alarm/i.test(low)) kinds.push('alarm');
     if (/memor|remember|meri preference/i.test(low)) kinds.push('memory');
-    const tokens = low.match(/[\p{L}\p{N}]{3,}/gu) || [];
     const rows = [...new Set(kinds)].flatMap(k => list(k).map(r => ({ ...r, kind: k })));
+    const memoryRows = a.personalOnline ? (S.memories || []).map(r => ({ ...r, kind: 'memory' }))
+      .filter(r => score(r.text) > 0).slice(0, 4) : [];
+    const projectRows = [];
+    if (a.personalOnline && typeof Mission !== 'undefined' && Mission.summary) {
+      const projectCue = /\b(?:projects?|builder cycle|version|upgrade|progress|my work|mera project|mere project)\b/i.test(query);
+      const all = Mission.summary().projects || [];
+      for (const p of all) {
+        const raw = (S.projects || []).find(x => String(x.name || '').toLowerCase() === String(p.name || '').toLowerCase()) || {};
+        const history = (Array.isArray(raw.versions) ? raw.versions : []).map(v => ({
+          version: Number(v.v) || 1, aim: String(v.aim || ''), built: String(v.built || ''),
+          learned: String(v.learned || ''), next: String(v.next || '')
+        }));
+        const versions = history.filter(v => projectCue || score([v.aim, v.built, v.learned, v.next].join(' ')) > 0).slice(-3);
+        const searchable = [p.name, p.goal, p.built, p.learned, p.next, p.concepts, raw.why,
+          ...history.flatMap(v => [v.aim, v.built, v.learned, v.next])].join(' ');
+        if (projectCue || score(searchable) > 0) projectRows.push({ ...p, id: raw.id || '', kind: 'project', why: raw.why || '', versions });
+        if (projectRows.length >= 3) break;
+      }
+    }
+    const tokens = [...queryWords];
     rows.sort((x, y) => {
-      const score = r => tokens.reduce((n, w) => n + ((r.title || r.text || '').toLowerCase().includes(w) ? 1 : 0), 0);
-      return score(y) - score(x) || (y.updated || y.created || y.ts || 0) - (x.updated || x.created || x.ts || 0);
+      const recordScore = r => score([r.title, r.text, r.category, r.goal, r.outcome,
+        ...(r.entries || []).flatMap(e => [e.text, e.outcome])].join(' '));
+      return recordScore(y) - recordScore(x) || (y.updated || y.created || y.ts || 0) - (x.updated || x.created || x.ts || 0);
     });
+    if (!relevant && !askedC && !memoryRows.length && !projectRows.length) return undefined;
     const redact = v => v.replace(/\b(?:api[_ -]?key|password|secret|token|pin)\s*[:=]\s*\S+|\b(?:sk-|AIza)[\w-]{12,}/gi, '[redacted]');
     const selected = []; let size = 0;
-    for (const r of (a.personalOnline || askedR ? rows : []).slice(0, 12)) {
+    for (const r of [...(a.personalOnline || askedR ? rows : []), ...memoryRows, ...projectRows].slice(0, 12)) {
       const out = {};
-      onlineFields.forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
+      [...onlineFields, 'name', 'why', 'version', 'status', 'built', 'learned', 'next'].forEach(k => { const v = r[k]; if (typeof v === 'string') out[k] = redact(v).slice(0, 240); else if (typeof v === 'number' || typeof v === 'boolean') out[k] = v; });
+      if (Array.isArray(r.concepts)) out.concepts = r.concepts.filter(x => typeof x === 'string').slice(0, 8).map(x => redact(x).slice(0, 80));
+      if (Array.isArray(r.versions)) out.versions = r.versions.slice(-3).map(v => Object.fromEntries(Object.entries(v).filter(([k, x]) => ['version', 'aim', 'built', 'learned', 'next'].includes(k) && (typeof x === 'string' || typeof x === 'number')).map(([k, x]) => [k, typeof x === 'string' ? redact(x).slice(0, 160) : x])));
       if (r.kind === 'work') out.entries = (r.entries || []).slice(-3).map(e => ({ date: e.date, minutes: e.minutes, text: redact(String(e.text || '')).slice(0, 160), progress: e.progress, outcome: redact(String(e.outcome || '')).slice(0, 160) }));
       const len = JSON.stringify(out).length; if (size + len > 2300) break; selected.push(out); size += len;
     }
@@ -4308,7 +4346,7 @@ const Briefing = (() => {
       b.append(h('div', { class: 'bp-consent' },
         h('p', {}, 'Briefing ke liye ek chhota summary Groq (Standard mode ka AI) ko jayega:'),
         h('ul', {}, ['Mission, goals (deadline, progress) aur projects (built / learned / next)', 'Aaj ke concepts, naye shabd, check score aur galat sawaal', 'Aaj ke done / open tasks, work minutes, kal ke fixed time'].map(t => h('li', {}, t))),
-        h('p', { class: 'muted' }, 'Chats ka text nahi jata.')),
+        h('p', { class: 'muted' }, 'Chats ka text nahi jata. Briefing 0–3 memory suggestions de sakti hai; sir “Yaad rakho” dabayenge tabhi phone ki Memory mein save hogi. Din mein “yaad rakho…” bolne par seedha save hoga.')),
         h('div', { class: 'frow' },
           h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { if (S.settings.briefingConsent) { S.settings.briefingConsent = false; save(); toast('Consent hata diya. Agli briefing par phir poochega.'); } close(); if (then) then(false); } } }, S.settings.briefingConsent ? 'Consent hatao' : 'Abhi nahi'),
           h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { S.settings.briefingConsent = true; save(); close(); if (then) then(true); } } }, S.settings.briefingConsent ? 'Theek hai' : 'Theek hai, chalao')));
@@ -4362,10 +4400,16 @@ const Briefing = (() => {
   }
   function extras(m, ctx) {
     const B = m.reply && m.reply.briefing;
-    if (!B || typeof B !== 'object' || !Array.isArray(B.plan) || (!B.plan.length && !B.focus)) return [];
-    if (!Array.isArray(B.pick) || B.pick.length !== B.plan.length) B.pick = B.plan.map(() => true);
-    const saved = B.saved > 0, n = B.pick.filter(x => x !== false).length;
-    const rows = B.plan.map((it, i) => {
+    if (!B || typeof B !== 'object') return [];
+    const suggestions = (Array.isArray(B.memorySuggestions) ? B.memorySuggestions : []).slice(0, 3)
+      .map(x => ({ text: clean(typeof x === 'string' ? x : x && x.text, 180), reason: clean(x && x.reason, 120) }))
+      .filter(x => x.text);
+    const extras = [];
+    const hasPlan = Array.isArray(B.plan) && (B.plan.length || B.focus);
+    if (hasPlan) {
+      if (!Array.isArray(B.pick) || B.pick.length !== B.plan.length) B.pick = B.plan.map(() => true);
+      const saved = B.saved > 0, n = B.pick.filter(x => x !== false).length;
+      const rows = B.plan.map((it, i) => {
       const on = B.pick[i] !== false;
       const tags = [it.goal ? h('span', { class: 'bp-tag' }, 'GOAL · ' + clean(it.goal, 40)) : null, it.project ? h('span', { class: 'bp-tag' }, 'PROJECT · ' + clean(it.project, 40)) : null].filter(Boolean);
       return h('button', { type: 'button', class: 'bp-row' + (on ? ' on' : ''), role: 'checkbox', 'aria-checked': String(on), disabled: saved,
@@ -4374,15 +4418,42 @@ const Briefing = (() => {
         h('span', { class: 'bp-time' }, it.time || '--:--'),
         h('span', { class: 'bp-main' }, h('b', {}, it.title), tags.length ? h('span', { class: 'bp-tags' }, tags) : null),
         it.minutes ? h('span', { class: 'bp-min' }, it.minutes + 'm') : null);
-    });
-    const total = B.plan.reduce((s, it, i) => s + (B.pick[i] !== false ? +it.minutes || 0 : 0), 0);
-    const btn = h('button', { class: 'btn ' + (saved ? 'ghost' : 'pri'), disabled: saved || !n, on: { click: (e) => savePlan(B, { ...ctx, chatId: (S.cur || '') }, e.currentTarget) } },
+      });
+      const total = B.plan.reduce((s, it, i) => s + (B.pick[i] !== false ? +it.minutes || 0 : 0), 0);
+      const btn = h('button', { class: 'btn ' + (saved ? 'ghost' : 'pri'), disabled: saved || !n, on: { click: (e) => savePlan(B, { ...ctx, chatId: (S.cur || '') }, e.currentTarget) } },
       saved ? icon('check', 's') : icon('plus', 's'), saved ? B.saved + ' tasks save ho gaye' : n + ' tasks save karo');
-    return [h('div', { class: 'bplan', role: 'group', 'aria-label': 'Kal ka plan' },
+      extras.push(h('div', { class: 'bplan', role: 'group', 'aria-label': 'Kal ka plan' },
       h('div', { class: 'bp-head' }, h('span', { class: 'bp-k' }, icon('moon', 's'), 'KAL KA PLAN'), h('span', { class: 'bp-d' }, dayLabel(B.for) + (total ? ' · ' + Math.round(total / 6) / 10 + ' h' : ''))),
       B.focus ? h('div', { class: 'bp-focus' }, h('span', { class: 'bp-fk' }, 'FOCUS'), h('span', {}, B.focus)) : null,
       rows.length ? h('div', { class: 'bp-rows' }, rows) : null,
-      rows.length ? h('div', { class: 'bp-foot' }, btn, h('span', { class: 'bp-note' }, saved ? 'Tasks list mein hain; time wale par alert aayega.' : 'Tap = item hatao / jodo. Time wale tasks par alert aayega.')) : null)];
+      rows.length ? h('div', { class: 'bp-foot' }, btn, h('span', { class: 'bp-note' }, saved ? 'Tasks list mein hain; time wale par alert aayega.' : 'Tap = item hatao / jodo. Time wale tasks par alert aayega.')) : null));
+    }
+    if (suggestions.length) {
+      if (!Array.isArray(B.memoryDecisions)) B.memoryDecisions = [];
+      const normalized = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+      const rows = suggestions.map((item, i) => {
+        const already = (S.memories || []).some(x => normalized(x.text) === normalized(item.text));
+        const status = B.memoryDecisions[i] || (already ? 'existing' : '');
+        if (status) {
+          const label = status === 'saved' || status === 'existing' ? (status === 'saved' ? 'Memory mein save ho gayi' : 'Pehle se Memory mein hai') : 'Skip kiya';
+          return h('div', { class: 'bm-row' }, h('div', { class: 'bm-copy' }, h('b', {}, item.text), item.reason ? h('small', {}, item.reason) : null), h('span', { class: 'bm-state' }, label));
+        }
+        const decide = keep => {
+          if (keep && !already) S.memories.unshift({ id: uid('mem'), text: item.text, pin: false, ts: Date.now(), source: 'night-briefing' });
+          B.memoryDecisions[i] = keep ? 'saved' : 'skipped'; save(); ctx.redraw();
+          if (keep) toast(already ? 'Ye memory pehle se hai.' : 'Memory phone par save ho gayi.');
+        };
+        return h('div', { class: 'bm-row' }, h('div', { class: 'bm-copy' }, h('b', {}, item.text), item.reason ? h('small', {}, item.reason) : null),
+          h('div', { class: 'bm-actions' },
+            h('button', { class: 'btn pri bm-yes', on: { click: () => decide(true) } }, 'Yaad rakho'),
+            h('button', { class: 'btn ghost bm-no', on: { click: () => decide(false) } }, 'Skip')));
+      });
+      extras.push(h('div', { class: 'bmem', role: 'group', 'aria-label': 'Memory approval' },
+        h('div', { class: 'bm-head' }, icon('brain', 's'), h('b', {}, 'YAAD RAKHUN?')),
+        h('p', { class: 'bm-note' }, 'Ye aaj ke records se AI ke suggestions hain. “Yaad rakho” par hi local Memory mein save honge.'),
+        rows));
+    }
+    return extras;
   }
 
   /* ---------- schedule (Android alarm) + in-app due banner ---------- */

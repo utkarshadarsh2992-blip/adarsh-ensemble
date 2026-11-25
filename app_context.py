@@ -5,9 +5,20 @@ import re
 
 ACCESS_DEFAULTS = {"localRead": True, "localEdit": True, "personalOnline": False, "oldChats": False,
                    "currentChat": True, "architecture": True}
-KINDS = {"task", "reminder", "alarm", "timer", "note", "work", "memory"}
-FIELDS = {"id", "kind", "title", "text", "at", "done", "category", "goal", "progress", "minutes", "outcome", "date"}
+KINDS = {"task", "reminder", "alarm", "timer", "note", "work", "memory", "project"}
+FIELDS = {"id", "kind", "title", "text", "at", "done", "category", "goal", "progress", "minutes", "outcome", "date",
+          "name", "why", "version", "status", "built", "learned", "next", "concepts", "versions"}
 SECRET = re.compile(r"(?:\b(?:api[_ -]?key|password|secret|token|pin)\s*[:=]\s*\S+|\b(?:sk-|AIza)[\w-]{12,})", re.I)
+_STOP = {"the", "and", "for", "what", "how", "why", "with", "from", "this", "that", "my", "mera", "mere", "meri", "sir", "hai", "kya", "kaise"}
+_KIND_TERMS = {"task": {"tasks"}, "note": {"notes"}, "reminder": {"reminders"},
+               "alarm": {"alarms"}, "memory": {"memories", "remember"}, "project": {"projects"}}
+_BROAD_KIND_TERMS = {"task": {"progress", "summary", "plan", "today", "aaj"},
+                     "work": {"progress", "summary", "plan"},
+                     "project": {"progress", "summary", "upgrade", "version"}}
+
+
+def _words(value: str) -> set[str]:
+    return {w.casefold() for w in re.findall(r"[\w\u0900-\u097f]{3,}", value, re.UNICODE) if w.casefold() not in _STOP}
 
 
 def access(body: dict) -> dict:
@@ -29,6 +40,22 @@ def clean_record(raw: dict) -> dict | None:
             out[k] = SECRET.sub("[redacted]", val)[:240]
         elif isinstance(val, (int, float, bool)):
             out[k] = val
+    if raw.get("kind") == "project":
+        concepts = raw.get("concepts") if isinstance(raw.get("concepts"), list) else []
+        out["concepts"] = [SECRET.sub("[redacted]", x)[:80] for x in concepts[:8] if isinstance(x, str)]
+        versions = raw.get("versions") if isinstance(raw.get("versions"), list) else []
+        out["versions"] = []
+        for v in versions[-3:]:
+            if not isinstance(v, dict):
+                continue
+            item = {}
+            for k in ("version", "aim", "built", "learned", "next"):
+                value = v.get(k)
+                if isinstance(value, str):
+                    item[k] = SECRET.sub("[redacted]", value)[:160]
+                elif isinstance(value, (int, float)):
+                    item[k] = value
+            out["versions"].append(item)
     if raw.get("kind") == "work" and isinstance(raw.get("entries"), list):
         entries = []
         for item in raw["entries"][-3:]:
@@ -39,6 +66,13 @@ def clean_record(raw: dict) -> dict | None:
                             and isinstance(v, (str, int, float, bool))})
         out["entries"] = entries
     return out
+
+
+def _matches_query(row: dict, query_words: set[str], broad: bool = False) -> bool:
+    row_words = _words(json.dumps(row, ensure_ascii=False))
+    kind = row.get("kind")
+    terms = _KIND_TERMS.get(kind, set()) | (_BROAD_KIND_TERMS.get(kind, set()) if broad else set())
+    return bool(query_words & row_words or query_words & terms)
 
 
 def philosophy(body: dict) -> str:
@@ -56,15 +90,27 @@ def philosophy(body: dict) -> str:
 
 def context(body: dict, text: str) -> str:
     perms = access(body)
-    if not perms["personalOnline"] or not perms["localRead"] or not relevant(text):
+    if not perms["personalOnline"] or not perms["localRead"]:
         return ""
     raw = body.get("app_context") if isinstance(body.get("app_context"), dict) else {}
     rows = raw.get("records") if isinstance(raw.get("records"), list) else []
+    query_words = _words(text)
+    if not relevant(text):
+        matched = False
+        for row in rows[:12]:
+            if isinstance(row, dict) and _matches_query(row, query_words):
+                matched = True
+                break
+        if not matched:
+            return ""
     out, used = [], 0
+    asks_project_history = bool(re.search(r"\b(?:projects?|builder cycle|version|upgrade|progress|my work|mera project|mere project)\b", text, re.I))
     for r in rows[:12]:
         row = clean_record(r)
-        if row is None:
+        if row is None or not _matches_query(row, query_words, broad=relevant(text)):
             continue
+        if row["kind"] == "project" and row.get("versions") and not asks_project_history:
+            row["versions"] = [v for v in row["versions"] if query_words & _words(json.dumps(v, ensure_ascii=False))][-3:]
         s = json.dumps(row, ensure_ascii=False)
         if used + len(s) > 2300:
             break

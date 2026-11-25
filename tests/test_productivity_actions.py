@@ -79,6 +79,11 @@ def test_natural_project_log_and_progress_edit():
 
 def test_memory_and_safe_settings():
     assert step("memory add karo mera birthday 1 jan")["args"]["text"] == "mera birthday 1 jan"
+    direct = step("ye baat yaad rakhna ki mujhe Hinglish pasand hai")
+    assert direct["action"] == "memory.add"
+    assert "Hinglish pasand hai" in direct["args"]["text"]
+    assert step("remember that I prefer structured answers")["action"] == "memory.add"
+    assert step("note banao ki kal exam hai")["action"] == "note.add"
     assert step("memory edit birthday to 2 jan")["action"] == "memory.edit"
     assert step("memory list dikhao")["action"] == "memory.list"
     assert step("settings theme dark")["args"] == {"key": "theme", "value": "dark"}

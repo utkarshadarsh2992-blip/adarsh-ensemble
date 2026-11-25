@@ -24,6 +24,7 @@ PLAN_CLOSE = "ADARSH_PLAN>>>"
 MAX_PLAN = 8
 MAX_GOALS = 8
 MAX_PROJECTS = 8
+MAX_MEMORY_SUGGESTIONS = 3
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 _STATUS = ("active", "paused", "done")
@@ -55,10 +56,16 @@ NIGHT_SYSTEM = (
 PLAN_RULES = (
     "After everything else, append exactly one hidden block, nothing after it:\n"
     f'{PLAN_OPEN}\n{{"focus":"one line: tomorrow\'s single most important outcome","plan":[{{"title":"...",'
-    '"time":"HH:MM","minutes":45,"goal":"goal title or empty","project":"project name or empty"}]}}\n'
+    '"time":"HH:MM","minutes":45,"goal":"goal title or empty","project":"project name or empty"}],'
+    '"memories":[{"text":"durable fact grounded in today’s data","reason":"why it may help later"}]}\n'
     f"{PLAN_CLOSE}\n"
     "plan holds exactly the items of 'Kal ka plan' in the same order; time is 24-hour local time tomorrow, or empty "
-    "when no fixed time fits. The app reads and hides this block; never mention it."
+    "when no fixed time fits. memories holds zero to three optional, durable memory suggestions grounded ONLY in "
+    "BRIEFING DATA (a real learning milestone, project knowledge or explicit preference); each text is <=180 chars "
+    "and reason <=120 chars. Do not infer mastery, repeat ABOUT SIR/profile facts, suggest transient tasks/schedules, "
+    "sensitive family/private details, or invent anything. Use [] if nothing is worth remembering. These are proposals: "
+    "the app will ask sir at night and save only if he taps Yaad rakho. The app reads and hides this block; never "
+    "mention the block itself."
 )
 
 
@@ -244,7 +251,18 @@ def clean_plan(raw) -> dict:
             continue
         items.append({"title": title, "time": _time(p.get("time")), "minutes": _int(p.get("minutes"), 0, 600) or 0,
                       "goal": _s(p.get("goal"), 120), "project": _s(p.get("project"), 80)})
-    return {"focus": _s(raw.get("focus"), 200), "items": items}
+    memories = []
+    seen = set()
+    for item in _items(raw.get("memories"), 20):
+        if not isinstance(item, dict) or len(memories) >= MAX_MEMORY_SUGGESTIONS:
+            continue
+        text = _s(item.get("text"), 180)
+        key = re.sub(r"\W+", " ", text.casefold()).strip()
+        if not text or not key or key in seen:
+            continue
+        seen.add(key)
+        memories.append({"text": text, "reason": _s(item.get("reason"), 120)})
+    return {"focus": _s(raw.get("focus"), 200), "items": items, "memories": memories}
 
 
 def split_plan(text: str) -> tuple[str, dict]:
@@ -252,7 +270,7 @@ def split_plan(text: str) -> tuple[str, dict]:
     text = text or ""
     i = text.rfind(PLAN_OPEN)
     if i < 0:
-        return text, {"focus": "", "items": []}
+        return text, {"focus": "", "items": [], "memories": []}
     m = _PLAN_RE.match(text, i)
     return text[:i].rstrip(), clean_plan(learning._json_obj(m.group(1) if m else ""))
 
@@ -288,7 +306,8 @@ async def reply(body: dict) -> list[dict]:
         "steps": [f"Raat ki briefing · Groq {out['used']} (sirf Groq · web/Wikipedia off: personal data)",
                   f"{len(ctx['goals'])} goals · {len(ctx['projects'])} projects · {ctx['today']['total']} checks aaj",
                   f"{out['secs']}s"],
-        "briefing": {"date": ctx["date"], "for": ctx["tomorrow"], "focus": plan["focus"], "plan": plan["items"]},
+        "briefing": {"date": ctx["date"], "for": ctx["tomorrow"], "focus": plan["focus"],
+                     "plan": plan["items"], "memorySuggestions": plan["memories"]},
     }
     if learned:
         if not learn["checks"]:

@@ -50,7 +50,11 @@ const nightReply = (req) => {
     briefing: { date: req.briefing.date, for: req.briefing.tomorrow, focus: 'Line-follower v2 ka sensor', plan: [
       { title: 'Physics: Newton ka 2nd law', time: '07:00', minutes: 45, goal: 'MIT', project: '' },
       { title: 'Robot v2: IR sensor jodna', time: '18:30', minutes: 60, goal: '', project: 'Line-follower' },
-      { title: 'Economics: demand curve', time: '', minutes: 30, goal: 'MIT', project: '' }] } };
+      { title: 'Economics: demand curve', time: '', minutes: 30, goal: 'MIT', project: '' }],
+      memorySuggestions: [
+        { text: 'Sir ne Inertia ka pehla niyam padha.', reason: 'Aage revision mein madad karega.' },
+        { text: 'Robot v2 mein IR sensor agla upgrade hai.', reason: 'Project continuity ke liye.' }
+      ] } };
 };
 
 test('starter adds the mission and the MIT goal; days left and progress come from the phone', () => {
@@ -192,6 +196,28 @@ test('briefing runs in Standard even from another mode, shows KAL KA PLAN and sa
     app.Briefing.start();
     await settle(30);
     assert.equal(app.sent.length, 1);
+  } finally { app.close(); }
+});
+
+test('night memory suggestions ask first: approve saves locally, skip saves nothing', async () => {
+  const app = mount({ settings: { briefingConsent: true }, reply: nightReply });
+  try {
+    app.Briefing.start();
+    await until(() => app.sent.length === 1 && !app.Chat.isBusy());
+    const card = app.document.querySelector('.bmem');
+    assert.ok(card);
+    assert.match(text(card), /YAAD RAKHUN\?/);
+    assert.equal(app.S.memories.length, 0, 'model proposal alone never writes memory');
+    [...card.querySelectorAll('button')].find(b => b.textContent === 'Yaad rakho').click();
+    assert.equal(app.S.memories.length, 1);
+    assert.equal(app.S.memories[0].text, 'Sir ne Inertia ka pehla niyam padha.');
+    assert.equal(app.S.memories[0].source, 'night-briefing');
+    assert.match(text(app.document.querySelector('.bmem')), /Memory mein save ho gayi/);
+    [...app.document.querySelector('.bmem').querySelectorAll('button')].find(b => b.textContent === 'Skip').click();
+    assert.equal(app.S.memories.length, 1, 'skip leaves the memory list unchanged');
+    assert.match(text(app.document.querySelector('.bmem')), /Skip kiya/);
+    const reply = app.S.chats.find(c => c.id === app.S.cur).msgs.find(m => m.role === 'ai' && m.reply && m.reply.briefing).reply.briefing;
+    assert.equal(reply.memoryDecisions.join(','), 'saved,skipped');
   } finally { app.close(); }
 });
 

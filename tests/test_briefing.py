@@ -18,7 +18,7 @@ import pipeline  # noqa: E402
 PLAN = {"focus": "Robot arm v2 ka gripper", "plan": [
     {"title": "Inertia revise", "time": "07:00", "minutes": 20, "goal": "MIT", "project": ""},
     {"title": "Gripper ka code", "time": "18:30", "minutes": 60, "goal": "", "project": "Robot arm"},
-]}
+], "memories": [{"text": "Sir ne Inertia ke first law ko revise kiya", "reason": "Kal revision mein kaam aa sakta hai"}]}
 
 CTX = {
     "date": "2026-11-24", "tomorrow": "2026-11-25", "weekday": "Tuesday", "tomorrowDay": "Wednesday", "now": "21:30",
@@ -116,6 +116,22 @@ def test_split_plan_removes_block_and_cleans_items():
     assert plan["focus"] == "Robot arm v2 ka gripper"
     assert [p["title"] for p in plan["items"]] == ["Inertia revise", "Gripper ka code"]
     assert plan["items"][1] == {"title": "Gripper ka code", "time": "18:30", "minutes": 60, "goal": "", "project": "Robot arm"}
+    assert plan["memories"] == [{"text": "Sir ne Inertia ke first law ko revise kiya", "reason": "Kal revision mein kaam aa sakta hai"}]
+
+
+def test_memory_suggestions_are_optional_unique_and_capped():
+    raw = {"memories": [
+        {"text": "Torque padhi", "reason": "Project note"},
+        {"text": " TORQUE   PADHI! ", "reason": "Duplicate"},
+        {"text": "M" * 400, "reason": "R" * 300},
+        {"text": "Fourth item"},
+        "not an object",
+    ]}
+    cleaned = briefing.clean_plan(raw)["memories"]
+    assert len(cleaned) == briefing.MAX_MEMORY_SUGGESTIONS
+    assert cleaned[0]["text"] == "Torque padhi"
+    assert len(cleaned[1]["text"]) == 180 and len(cleaned[1]["reason"]) == 120
+    assert cleaned[2] == {"text": "Fourth item", "reason": ""}
 
 
 def test_plan_is_capped_and_bad_times_become_empty():
@@ -127,7 +143,7 @@ def test_plan_is_capped_and_bad_times_become_empty():
 
 def test_unclosed_or_broken_plan_block_never_leaks():
     text, plan = briefing.split_plan("Briefing.\n" + briefing.PLAN_OPEN + '\n{"plan": [ broken')
-    assert text == "Briefing." and plan == {"focus": "", "items": []}
+    assert text == "Briefing." and plan == {"focus": "", "items": [], "memories": []}
     text, plan = briefing.split_plan("Sirf text")
     assert text == "Sirf text" and plan["items"] == []
 
@@ -147,13 +163,14 @@ def test_reply_is_one_groq_call_without_tools(groq):
     messages, kw = groq[0]
     assert kw["tools"] is False and kw["web"] is False and kw["max_tokens"] == 3200
     system, user = messages[0]["content"], messages[1]["content"]
-    assert "**Kal ka plan**" in system and briefing.PLAN_OPEN in system
+    assert "**Kal ka plan**" in system and briefing.PLAN_OPEN in system and "Yaad rakho" in system
     assert "REVISION CHECK" in system  # wrong answers today + checks on
     assert user.startswith("[BRIEFING DATA") and "Sir's note" not in user
     rep = out[0]
     assert rep["type"] == "text" and rep["uiMode"] == "standard" and briefing.PLAN_OPEN not in rep["text"]
     assert rep["briefing"]["date"] == "2026-11-24" and rep["briefing"]["for"] == "2026-11-25"
     assert rep["briefing"]["focus"] and len(rep["briefing"]["plan"]) == 2
+    assert rep["briefing"]["memorySuggestions"][0]["text"].startswith("Sir ne Inertia")
     assert "web/Wikipedia off" in rep["steps"][0]
 
 

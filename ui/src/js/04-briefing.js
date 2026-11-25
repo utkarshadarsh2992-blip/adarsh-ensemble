@@ -63,7 +63,7 @@ const Briefing = (() => {
       b.append(h('div', { class: 'bp-consent' },
         h('p', {}, 'Briefing ke liye ek chhota summary Groq (Standard mode ka AI) ko jayega:'),
         h('ul', {}, ['Mission, goals (deadline, progress) aur projects (built / learned / next)', 'Aaj ke concepts, naye shabd, check score aur galat sawaal', 'Aaj ke done / open tasks, work minutes, kal ke fixed time'].map(t => h('li', {}, t))),
-        h('p', { class: 'muted' }, 'Chats ka text nahi jata.')),
+        h('p', { class: 'muted' }, 'Chats ka text nahi jata. Briefing 0–3 memory suggestions de sakti hai; sir “Yaad rakho” dabayenge tabhi phone ki Memory mein save hogi. Din mein “yaad rakho…” bolne par seedha save hoga.')),
         h('div', { class: 'frow' },
           h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { if (S.settings.briefingConsent) { S.settings.briefingConsent = false; save(); toast('Consent hata diya. Agli briefing par phir poochega.'); } close(); if (then) then(false); } } }, S.settings.briefingConsent ? 'Consent hatao' : 'Abhi nahi'),
           h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { S.settings.briefingConsent = true; save(); close(); if (then) then(true); } } }, S.settings.briefingConsent ? 'Theek hai' : 'Theek hai, chalao')));
@@ -117,10 +117,16 @@ const Briefing = (() => {
   }
   function extras(m, ctx) {
     const B = m.reply && m.reply.briefing;
-    if (!B || typeof B !== 'object' || !Array.isArray(B.plan) || (!B.plan.length && !B.focus)) return [];
-    if (!Array.isArray(B.pick) || B.pick.length !== B.plan.length) B.pick = B.plan.map(() => true);
-    const saved = B.saved > 0, n = B.pick.filter(x => x !== false).length;
-    const rows = B.plan.map((it, i) => {
+    if (!B || typeof B !== 'object') return [];
+    const suggestions = (Array.isArray(B.memorySuggestions) ? B.memorySuggestions : []).slice(0, 3)
+      .map(x => ({ text: clean(typeof x === 'string' ? x : x && x.text, 180), reason: clean(x && x.reason, 120) }))
+      .filter(x => x.text);
+    const extras = [];
+    const hasPlan = Array.isArray(B.plan) && (B.plan.length || B.focus);
+    if (hasPlan) {
+      if (!Array.isArray(B.pick) || B.pick.length !== B.plan.length) B.pick = B.plan.map(() => true);
+      const saved = B.saved > 0, n = B.pick.filter(x => x !== false).length;
+      const rows = B.plan.map((it, i) => {
       const on = B.pick[i] !== false;
       const tags = [it.goal ? h('span', { class: 'bp-tag' }, 'GOAL · ' + clean(it.goal, 40)) : null, it.project ? h('span', { class: 'bp-tag' }, 'PROJECT · ' + clean(it.project, 40)) : null].filter(Boolean);
       return h('button', { type: 'button', class: 'bp-row' + (on ? ' on' : ''), role: 'checkbox', 'aria-checked': String(on), disabled: saved,
@@ -129,15 +135,42 @@ const Briefing = (() => {
         h('span', { class: 'bp-time' }, it.time || '--:--'),
         h('span', { class: 'bp-main' }, h('b', {}, it.title), tags.length ? h('span', { class: 'bp-tags' }, tags) : null),
         it.minutes ? h('span', { class: 'bp-min' }, it.minutes + 'm') : null);
-    });
-    const total = B.plan.reduce((s, it, i) => s + (B.pick[i] !== false ? +it.minutes || 0 : 0), 0);
-    const btn = h('button', { class: 'btn ' + (saved ? 'ghost' : 'pri'), disabled: saved || !n, on: { click: (e) => savePlan(B, { ...ctx, chatId: (S.cur || '') }, e.currentTarget) } },
+      });
+      const total = B.plan.reduce((s, it, i) => s + (B.pick[i] !== false ? +it.minutes || 0 : 0), 0);
+      const btn = h('button', { class: 'btn ' + (saved ? 'ghost' : 'pri'), disabled: saved || !n, on: { click: (e) => savePlan(B, { ...ctx, chatId: (S.cur || '') }, e.currentTarget) } },
       saved ? icon('check', 's') : icon('plus', 's'), saved ? B.saved + ' tasks save ho gaye' : n + ' tasks save karo');
-    return [h('div', { class: 'bplan', role: 'group', 'aria-label': 'Kal ka plan' },
+      extras.push(h('div', { class: 'bplan', role: 'group', 'aria-label': 'Kal ka plan' },
       h('div', { class: 'bp-head' }, h('span', { class: 'bp-k' }, icon('moon', 's'), 'KAL KA PLAN'), h('span', { class: 'bp-d' }, dayLabel(B.for) + (total ? ' · ' + Math.round(total / 6) / 10 + ' h' : ''))),
       B.focus ? h('div', { class: 'bp-focus' }, h('span', { class: 'bp-fk' }, 'FOCUS'), h('span', {}, B.focus)) : null,
       rows.length ? h('div', { class: 'bp-rows' }, rows) : null,
-      rows.length ? h('div', { class: 'bp-foot' }, btn, h('span', { class: 'bp-note' }, saved ? 'Tasks list mein hain; time wale par alert aayega.' : 'Tap = item hatao / jodo. Time wale tasks par alert aayega.')) : null)];
+      rows.length ? h('div', { class: 'bp-foot' }, btn, h('span', { class: 'bp-note' }, saved ? 'Tasks list mein hain; time wale par alert aayega.' : 'Tap = item hatao / jodo. Time wale tasks par alert aayega.')) : null));
+    }
+    if (suggestions.length) {
+      if (!Array.isArray(B.memoryDecisions)) B.memoryDecisions = [];
+      const normalized = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+      const rows = suggestions.map((item, i) => {
+        const already = (S.memories || []).some(x => normalized(x.text) === normalized(item.text));
+        const status = B.memoryDecisions[i] || (already ? 'existing' : '');
+        if (status) {
+          const label = status === 'saved' || status === 'existing' ? (status === 'saved' ? 'Memory mein save ho gayi' : 'Pehle se Memory mein hai') : 'Skip kiya';
+          return h('div', { class: 'bm-row' }, h('div', { class: 'bm-copy' }, h('b', {}, item.text), item.reason ? h('small', {}, item.reason) : null), h('span', { class: 'bm-state' }, label));
+        }
+        const decide = keep => {
+          if (keep && !already) S.memories.unshift({ id: uid('mem'), text: item.text, pin: false, ts: Date.now(), source: 'night-briefing' });
+          B.memoryDecisions[i] = keep ? 'saved' : 'skipped'; save(); ctx.redraw();
+          if (keep) toast(already ? 'Ye memory pehle se hai.' : 'Memory phone par save ho gayi.');
+        };
+        return h('div', { class: 'bm-row' }, h('div', { class: 'bm-copy' }, h('b', {}, item.text), item.reason ? h('small', {}, item.reason) : null),
+          h('div', { class: 'bm-actions' },
+            h('button', { class: 'btn pri bm-yes', on: { click: () => decide(true) } }, 'Yaad rakho'),
+            h('button', { class: 'btn ghost bm-no', on: { click: () => decide(false) } }, 'Skip')));
+      });
+      extras.push(h('div', { class: 'bmem', role: 'group', 'aria-label': 'Memory approval' },
+        h('div', { class: 'bm-head' }, icon('brain', 's'), h('b', {}, 'YAAD RAKHUN?')),
+        h('p', { class: 'bm-note' }, 'Ye aaj ke records se AI ke suggestions hain. “Yaad rakho” par hi local Memory mein save honge.'),
+        rows));
+    }
+    return extras;
   }
 
   /* ---------- schedule (Android alarm) + in-app due banner ---------- */

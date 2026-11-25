@@ -401,6 +401,33 @@ test('personalOnline defaults off, then sends only bounded relevant redacted rec
   assert.ok(context.records.length <= 12);
 });
 
+test('online context selects matching memories and recent project versions, excluding unrelated records', async t => {
+  const app = makeHarness();
+  t.after(() => app.close());
+  app.S.settings.aiAccess = { ...app.Productivity.access(), personalOnline: true };
+  app.S.memories = [
+    { id: 'mem-style', text: 'Sir ko Hinglish mein step-by-step robot concepts samajhna pasand hai', created: Date.now() },
+    { id: 'mem-unrelated', text: 'Favourite cricket team ka match schedule', created: Date.now() }
+  ];
+  app.S.projects = [{ id: 'project-1', name: 'Robot arm', why: '', status: 'active', concepts: [], created: Date.now(), updated: Date.now(), versions: [
+    { v: 1, aim: 'Old unrelated idea', learned: 'old', next: 'old' },
+    { v: 2, aim: 'Robot arm torque tests', learned: 'motor stalls', next: 'measure torque' },
+    { v: 3, aim: 'Improve robot arm torque', learned: 'gear ratio matters', next: 'test new gears' }
+  ] }];
+
+  const context = app.Productivity.modelContext('Explain torque for the robot arm in Hinglish', null);
+  assert.ok(context);
+  const encoded = JSON.stringify(context);
+  assert.match(encoded, /Sir ko Hinglish/);
+  assert.doesNotMatch(encoded, /cricket team/);
+  assert.match(encoded, /Robot arm torque tests/);
+  assert.match(encoded, /Improve robot arm torque/);
+  assert.doesNotMatch(encoded, /Old unrelated idea/);
+
+  app.S.settings.aiAccess.personalOnline = false;
+  assert.equal(app.Productivity.modelContext('Explain torque for the robot arm in Hinglish', null), undefined);
+});
+
 test('old-chat context requires its separate opt-in and follows the old-chat intent', async t => {
   const app = makeHarness();
   t.after(() => app.close());
