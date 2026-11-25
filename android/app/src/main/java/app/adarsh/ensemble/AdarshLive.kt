@@ -46,7 +46,8 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         )
         /** Tried in order when the chosen model is refused for this key. Each is a normal Live dialogue model. */
         private val FALLBACK = listOf("gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview")
-        private const val HOST = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage"
+        /** Note the trailing dot: the service name is "google.ai.generativelanguage.<api>.GenerativeService". */
+        private const val HOST = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage."
         private const val METHOD = ".GenerativeService.BidiGenerateContent"
         private const val IN_RATE = 16000
         private const val OUT_RATE = 24000
@@ -133,9 +134,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         key = k
         voice = cfg.optString("voice", "Orus").take(40)
         prompt = cfg.optString("prompt").take(MAX_PROMPT)
+        // v1beta + header first: it is the documented WebSocket service and the one verified from the sandbox.
         val variants = listOf(
-            Variant("v1alpha", true), Variant("v1beta", true),
-            Variant("v1alpha", false), Variant("v1beta", false)
+            Variant("v1beta", true), Variant("v1alpha", true),
+            Variant("v1beta", false), Variant("v1alpha", false)
         )
         // chosen model on every endpoint first, then the fallback models; at most 8 attempts (~12 s each at worst)
         plans = (listOf(model) + FALLBACK).flatMap { m -> variants.map { v -> v to m } }.take(8)
@@ -207,7 +209,8 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         stopAudio()
         try { ws?.close(1000, "bye") } catch (_: Exception) { }
         ws = null
-        val detail = if (trace.isEmpty()) (lastWhy.ifBlank { "koi jawab nahi aaya" }) else trace.joinToString(" | ")
+        val detail = if (trace.isEmpty()) (lastWhy.ifBlank { "koi jawab nahi aaya" })
+        else trace.takeLast(3).joinToString(" | ")
         say(JSONObject().put("type", "error").put("message", "Live nahi chala — " + detail.take(600)))
     }
 

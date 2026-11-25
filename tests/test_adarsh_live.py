@@ -19,6 +19,10 @@ CORE = (ROOT / "ui/src/js/01-core.js").read_text()
 def test_endpoint_and_audio_format():
     assert "generativelanguage.googleapis.com" in LIVE
     assert "BidiGenerateContent" in LIVE
+    # the service name needs its separator: ".../google.ai.generativelanguage." + api + ".GenerativeService..."
+    # without the trailing dot every attempt is answered with HTTP 404 (this shipped once and broke Live)
+    assert 'google.ai.generativelanguage."' in LIVE
+    assert 'METHOD = ".GenerativeService.BidiGenerateContent"' in LIVE
     assert "IN_RATE = 16000" in LIVE and "OUT_RATE = 24000" in LIVE   # documented PCM rates
     assert "MediaRecorder.AudioSource.VOICE_RECOGNITION" in LIVE
     assert "Base64.NO_WRAP" in LIVE
@@ -44,11 +48,11 @@ def test_setup_message_shape():
 
 def test_every_endpoint_and_auth_variant_is_tried():
     # the Gemini 3.8 Live docs use v1alpha, the WebSocket guide uses v1beta; both auth forms are documented
-    assert 'Variant("v1alpha", true), Variant("v1beta", true)' in LIVE
-    assert 'Variant("v1alpha", false), Variant("v1beta", false)' in LIVE
+    assert 'Variant("v1beta", true), Variant("v1alpha", true)' in LIVE
+    assert 'Variant("v1beta", false), Variant("v1alpha", false)' in LIVE
     # each attempt is time-boxed and its outcome is kept, so the failure message says which one failed and why
     assert "SETUP_TIMEOUT_MS = 12_000L" in LIVE
-    assert 'note("timeout")' in LIVE and 'trace.joinToString(" | ")' in LIVE
+    assert 'note("timeout")' in LIVE and 'trace.takeLast(3).joinToString(" | ")' in LIVE
     # Settings > Test Adarsh Live checks key + network with plain HTTPS before blaming the socket
     assert 'fun probe(ctx: Context, emit: (JSONObject) -> Unit)' in LIVE
     assert "https://generativelanguage.googleapis.com/v1beta/models/" in LIVE
