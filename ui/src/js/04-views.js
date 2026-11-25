@@ -16,8 +16,13 @@ const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
+<<<<<<< HEAD
   const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities']];
   const TITLES = { today: 'Today', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', settings: 'Settings' };
+=======
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['goals', 'target', 'Mission & goals'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['reminders', 'bell', 'Reminders'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['missions', 'flag', 'Missions'], ['library', 'brain', 'Memory'], ['abilities', 'bolt', 'Abilities'], ['usage', 'bars', 'API usage']];
+  const TITLES = { today: 'Today', goals: 'Mission & goals', tasks: 'Tasks', work: 'Work', reminders: 'Reminders', alarms: 'Alarms & timers', notes: 'Notes', missions: 'Missions', library: 'Memory', abilities: 'Abilities', usage: 'API usage', settings: 'Settings' };
+>>>>>>> 40c4c93 (change 1.4: API usage screen + hallucination controls (truth.py, fact-check card, quota hint))
   const BUILD = {};
   let q = '';
 
@@ -114,6 +119,18 @@ const App = (() => {
   ['tasks', 'work', 'reminders', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
   Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'reminders', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
 
+<<<<<<< HEAD
+=======
+  /* ================= Mission & goals (change 1.3) ================= */
+  BUILD.goals = (st, redraw) => Mission.view(st, redraw);
+  BUILD.usage = (st, redraw) => Usage.view(st, redraw);
+  Bus.on('mission:changed', () => {
+    if (view === 'today') build('today');
+    if (view !== 'goals') return;
+    const y = ($('#v-goals .scroll') || {}).scrollTop || 0;   /* keep the scroll position on milestone taps */
+    build('goals'); const sc = $('#v-goals .scroll'); if (sc) sc.scrollTop = y;
+  });
+>>>>>>> 40c4c93 (change 1.4: API usage screen + hallucination controls (truth.py, fact-check card, quota hint))
   /* ================= Missions ================= */
   BUILD.missions = (st, redraw) => {
     if (!S.missions.length) { st.append(h('div', { class: 'empty' }, icon('flag'), h('div', {}, 'Abhi koi mission nahi.'), h('div', { class: 'muted' }, 'Chat mein goal batao.'), h('button', { class: 'btn pri', on: { click: () => draft('Start a mission: ') } }, 'Start a mission'))); return; }
@@ -159,6 +176,7 @@ const App = (() => {
     st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto · six models write the answers', manual: 'Manual · you paste answers from other AIs', hybrid: 'Hybrid · your answers plus the six models' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
+      navItem('shield', 'Hallucination control', Usage.summary() + ' · galat jawab kam karne ke niyam', () => Usage.truthSheet(redraw)),
       swItem('globe', 'Built-in web search', 'Standard mode: Groq ka live web search on/off. Wikipedia research hamesha on rehta hai', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Built-in web search on' : 'Built-in web search off · Wikipedia on'); }),
       navItem('book', 'Lessons', 'Manual master answer ke seekhe hue rules', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', ({ auto: 'Natural voice (auto)', natural: 'Natural voice', device: 'Phone voice' })[S.settings.voiceEngine || 'auto'] + ' · ' + (S.settings.voiceName || 'Orus') + ' · ' + (S.settings.speak ? 'reads chat replies' : 'voice mode only') + ' · ' + S.settings.lang, voiceSheet)));
@@ -189,7 +207,12 @@ const App = (() => {
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
       window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
+<<<<<<< HEAD
       navItem('server', 'Connection', Backend.isNative() ? 'On-device' : Backend.isDemo() ? 'Demo' : (S.conn.url || 'Server'), connSheet)));
+=======
+      navItem('bars', 'API usage', Usage.brief(), () => show('usage')),
+      navItem('server', 'Connection', Backend.isNative() ? 'On-device engine · tap for status' : Backend.isDemo() ? 'Demo mode · no backend connected' : (S.conn.url || 'This server (/api/chat)'), connSheet)));
+>>>>>>> 40c4c93 (change 1.4: API usage screen + hallucination controls (truth.py, fact-check card, quota hint))
     st.append(label('Data'), h('div', { class: 'grp' },
       navItem('download', 'Export data', '', exportSheet),
       navItem('upload', 'Import data', '', () => $('#f-import').click()),

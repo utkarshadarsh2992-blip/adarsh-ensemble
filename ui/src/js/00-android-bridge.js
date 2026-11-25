@@ -59,6 +59,8 @@
     native: true,
     /* {type:'audio', file} | {type:'error', error} */
     tts(req, ms) { return quiet({ tts: req }, ms); },
+    /* API usage screen: local counters only, no model call, no foreground service */
+    usage() { return quiet({ usage: true }, 15000); },
     status() { try { return JSON.parse(N.status()); } catch (e) { return { ready: false }; } },
     send(req, o) {
       return new Promise((res, rej) => {

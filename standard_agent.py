@@ -31,6 +31,8 @@ MODEL_LABEL = "gpt-oss-120b"
 MAX_TOOL_ROUNDS = 3
 WIKI_RESULTS = 3
 WIKI_CHARS = 1200
+EVIDENCE_CHARS = 900   # per source: snippet kept for the fact-check (truth.py)
+EVIDENCE_ITEMS = 6
 BROWSER_TOOL = {"type": "browser_search"}
 WIKI_TOOL = {
     "type": "function",
@@ -105,11 +107,13 @@ async def _wikipedia(client: httpx.AsyncClient, query: str) -> tuple[str, list[d
     rows = [{"title": h.get("title", "").removeprefix("Wikipedia: "), "url": h.get("url", ""), "extract": h.get("text", "")}
             for h in hits[:WIKI_RESULTS]]
     return json.dumps({"query": query, "results": rows}, ensure_ascii=False), [
-        {"title": "Wikipedia: " + r["title"], "url": r["url"]} for r in rows if r["url"]]
+        {"title": "Wikipedia: " + r["title"], "url": r["url"], "text": str(r["extract"] or "")[:EVIDENCE_CHARS]}
+        for r in rows if r["url"]]
 
 
 def _browser_sources(msg: dict) -> tuple[int, list[dict]]:
-    """How many built-in searches ran, and the pages they returned (Groq puts them in message.executed_tools)."""
+    """How many built-in searches ran, and the pages they returned (Groq puts them in message.executed_tools).
+    Each page keeps a short snippet of what the model read ("text"): the fact-check compares the answer with it."""
     n, out = 0, []
     for t in msg.get("executed_tools") or []:
         if not isinstance(t, dict):
@@ -118,13 +122,28 @@ def _browser_sources(msg: dict) -> tuple[int, list[dict]]:
         res = (t.get("search_results") or {}).get("results") if isinstance(t.get("search_results"), dict) else None
         for r in res or []:
             if isinstance(r, dict) and str(r.get("url", "")).startswith("https://"):
-                out.append({"title": str(r.get("title") or r["url"])[:120], "url": str(r["url"])[:500]})
+                snippet = " ".join(str(r.get("content") or r.get("snippet") or "").split())[:EVIDENCE_CHARS]
+                out.append({"title": str(r.get("title") or r["url"])[:120], "url": str(r["url"])[:500], "text": snippet})
     return n, out
+
+
+def _split_evidence(sources: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Unique sources (title + url, for the Sources block) and the evidence snippets (for truth.check)."""
+    seen, uniq, evidence = set(), [], []
+    for s in sources:
+        if s["url"] in seen:
+            continue
+        seen.add(s["url"])
+        uniq.append({"title": s["title"], "url": s["url"]})
+        if s.get("text"):
+            evidence.append({"title": s["title"], "url": s["url"], "text": s["text"]})
+    return uniq[:6], evidence[:EVIDENCE_ITEMS]
 
 
 async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
                  effort: str = "low", temperature: float = 0.6, budget: float = 75.0) -> dict:
-    """Run the Groq-only agent. Returns {"text", "used", "searches", "wiki", "sources", "secs"};
+    """Run the Groq-only agent. Returns {"text", "used", "searches", "wiki", "sources", "evidence", "secs"};
+    evidence = short snippets of what the tools returned (for truth.check);
     raises StandardError when no Groq key could answer. `web=False` keeps Wikipedia but never sends browser_search."""
     base = _base_spec()
     prov = config.PROVIDERS["groq"]
@@ -226,13 +245,9 @@ async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, 
                     health.success(spec, int(usage.get("total_tokens") or (_est_tokens(msgs) + len(text) // 3)))
                     secs = time.monotonic() - t0
                     health.trace_add(base, spec, True, messages=messages, output=text, secs=secs)
-                    seen, uniq = set(), []
-                    for s in sources:
-                        if s["url"] not in seen:
-                            seen.add(s["url"])
-                            uniq.append(s)
+                    uniq, evidence = _split_evidence(sources)
                     return {"text": text, "used": spec.label, "searches": searches, "wiki": wiki_queries,
-                            "sources": uniq[:6], "secs": round(secs, 1)}
+                            "sources": uniq, "evidence": evidence, "secs": round(secs, 1)}
                 if code == 429:
                     wait, daily = _rate_info(r, data)
                     health.rate_limited(spec, wait, daily)

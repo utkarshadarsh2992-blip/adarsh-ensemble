@@ -150,6 +150,7 @@ const Chat = (() => {
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* check questions, new words, Gehrai mein jao */
     if (r.type === 'text' && r.briefing) Briefing.extras(m, ctx).forEach(el => wrap.append(el));   /* KAL KA PLAN card */
+    if (r.type === 'text' && r.truth) Usage.extras(m, ctx).forEach(el => wrap.append(el));   /* FACT-CHECK card */
     if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
   }
@@ -428,7 +429,7 @@ const Chat = (() => {
     try {
       const perms = Productivity.access();
       const personal = Productivity.modelContext(text, c.id);
-      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, learn: Learn.request(), briefing: Briefing.request(c, meta), reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', std: S.settings.stdStyle === '9.2' ? '9.2' : '2.9' } },
+      const res = await Backend.send({ chatId: c.id, mode: modeId, text, attachments, history: perms.currentChat ? histText(c).slice(0, -1) : [], access: perms, app_context: personal, meta, source, answers, learn: Learn.request(), briefing: Briefing.request(c, meta), truth: Usage.request(), reply: { lang: S.settings.replyLang || 'auto', depth: S.settings.depth || 'normal', think: S.settings.think || 'fast', web: S.settings.webSearch === false ? 'off' : 'on', std: S.settings.stdStyle === '9.2' ? '9.2' : '2.9' } },
         { signal: ctl.signal, onProgress: (s) => {
           if (typeof s === 'string' && s.startsWith('\u0001part ')) {  // finished Part k/N (see config.emit_part)
             try {
@@ -480,6 +481,7 @@ const Chat = (() => {
     if (r.council) { r.councilId = uid('cn'); Council.put(r.councilId, r.council); delete r.council; }  // big: stored apart from the chat state
     if (r.learn) Learn.absorb(r);   // a word counts as learned as soon as it was explained
     if (r.briefing) Briefing.absorb(c, r);   // night briefing history (S.briefings)
+    if (r.quota) Usage.absorb(c, r);   // Groq quota running low: one toast a day
     const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r, personalContext: !!r.personalContext };
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });

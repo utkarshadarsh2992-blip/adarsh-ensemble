@@ -22,6 +22,7 @@ import pipeline
 import app_context
 import app_knowledge
 import bigtask
+import truth
 from llm import LLMError, chat, make_client
 import verified
 import standard_agent
@@ -146,6 +147,7 @@ def _is_casual(text: str) -> bool:
 
 async def _casual_reply(text: str, reply_lang: str = "auto", depth: str = "normal") -> dict | None:
     """Standard small talk: one Groq gpt-oss-120b call, no tools. None means: use the normal Standard path."""
+    health.set_stage("casual")
     try:
         out = await standard_agent.answer(
             [{"role": "system", "content": CASUAL_SYSTEM + " " + pipeline._language_hint(text, reply_lang)},
@@ -175,12 +177,15 @@ QUICK_VOICE = (
 )
 async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool, *,
                        research: bool = True, deep: bool = False, web: bool = True,
-                       std: str = "2.9", learn: dict | None = None, deeper: bool = False) -> dict:
+                       std: str = "2.9", learn: dict | None = None, deeper: bool = False,
+                       truth_opts: dict | None = None) -> dict:
     """Standard mode: Groq gpt-oss-120b only. It searches the web (Groq browser_search) and Wikipedia by itself
     when that helps. Never falls back to another provider; a failure comes back as a clear text reply.
     std "2.9" = short core answer + 'Gehrai mein jao' button; "9.2" = one concept in full depth (learning.py).
-    Not voice: the answer carries a hidden check block (questions + new words), split off here."""
+    Not voice: the answer carries a hidden check block (questions + new words), split off here.
+    truth_opts (truth.py): level -> rules + temperature; check -> one small Groq fact-check call after the answer."""
     learn = learn or {"checks": True, "block": True, "known": []}
+    truth_opts = truth_opts or {"level": "balanced", "check": "off"}
     if voice:
         system = QUICK_SYSTEM + " " + QUICK_DEPTH.get(depth, QUICK_DEPTH["normal"])
     else:
@@ -189,6 +194,7 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
             system += " " + SIMPLE_WORDS
         if deeper:
             system += " " + learning.DEEPER_NOTE
+    system += " " + truth.rules(truth_opts["level"], web and research)
     system += " " + pipeline._language_hint(text, reply_lang)
     if learn.get("known"):
         system += " " + learning.known_note(learn["known"])
@@ -207,12 +213,19 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             tools=research, web=web,
             max_tokens=3600 if long_answer else (3000 if (depth == "detailed" or deep) else 1800),
-            effort="medium" if (deep or long_answer) else "low", temperature=0.5,
+            effort="medium" if (deep or long_answer) else "low", temperature=truth.temperature(truth_opts),
             budget=100 if long_answer else (90 if deep else 75),
         )
     except standard_agent.StandardError as e:
         return {"type": "text", "text": str(e), "uiMode": "standard", "steps": ["Standard · Groq only"]}
     text_out, learned = learning.split_checks(out["text"], learn.get("known"))
+    # fact-check: not for voice, and not for answers about sir's own records (research off = private context)
+    checked = None
+    wanted = research and truth.should_check(truth_opts, text_out, voice)
+    if wanted and truth_opts.get("check") == "auto" and 1.0 - health.used_frac(standard_agent._base_spec()) < truth.AUTO_MIN_LEFT:
+        wanted = False  # Groq's daily quota is running out: the optional call is the first thing to go (rate limits)
+    if wanted:
+        checked = await truth.check(text[:1500], text_out, out.get("evidence"), pipeline._language_hint(text, reply_lang))
     if not voice:
         text_out += standard_agent.sources_block(out["sources"])
     steps = [f"Standard {std} · Groq {out['used']} (sirf Groq)"]
@@ -222,8 +235,18 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
         steps.append("Built-in web search off (Settings) · Wikipedia on")
     if out["wiki"]:
         steps.append("Wikipedia: " + ", ".join(q for q in out["wiki"] if q)[:160])
+    if checked:
+        steps.append(truth.step_line(checked))
+    elif wanted:
+        steps.append("Fact-check: chala nahi (Groq busy, ya jawab me check karne layak claim nahi mila)")
     steps.append(f"{out['secs']}s")
     rep = {"type": "text", "text": text_out, "steps": steps, "std": std}
+    if checked:
+        rep["truth"] = {**checked, "level": truth_opts["level"]}
+    left = 1.0 - health.used_frac(standard_agent._base_spec())
+    if left < 0.3:  # rate-limit awareness: the phone warns once a day when Groq's daily quota is running out
+        rep["quota"] = {"provider": "groq", "left": round(max(0.0, left), 2)}
+        steps.insert(-1, f"Groq ka aaj ka quota ~{int(round(max(0.0, left) * 100))}% bacha")
     if learned and not voice:
         if not learn.get("checks", True):
             learned["checks"] = []
@@ -271,6 +294,9 @@ def _format_answer(res: dict) -> str:
 
 def local_response(body: dict) -> dict | list[dict] | None:
     """Safe offline preflight; shared by Android before its API-key check and by the adapter."""
+    if body.get("usage") is True:
+        # Settings > API usage: local counters only, no model call, works with zero keys (health.report)
+        return {"type": "usage", "usage": health.report()}
     perms = app_context.access(body)
     if body.get("architecture") is True:
         if not perms["architecture"]:
@@ -359,13 +385,15 @@ async def handle(body: dict) -> dict | list[dict]:
     extra += app_knowledge.context(text, ui_mode, perms["architecture"])
     extra = extra[:6000]
     learn = learning.options(body)
+    truth_opts = truth.options(body)
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
         has_records = "[Permitted relevant app records;" in extra
         q_text, q_extra, cut_note = _fit(text, extra)
         quick = await _quick_reply(q_text, q_extra, reply_lang, depth, bool(meta.get("voice")),
                                    research=not has_records, deep=bool(meta.get("deep")), web=web_search,
-                                   std=learning.std_style(body), learn=learn, deeper=bool(body.get("deeper")))
+std=learning.std_style(body), learn=learn, deeper=bool(meta.get("deeper")),
+                                   truth_opts=truth_opts)
         if cut_note:
             quick["text"] += "\n\n" + cut_note
         if body.get("attachments"):
@@ -400,8 +428,8 @@ async def handle(body: dict) -> dict | list[dict]:
         record=True,
         mode=str(body.get("mode") or "standard"),
         web_research=not private_context,
-        topics=topics,
-        learner_note=learning.known_note(learn["known"]),
+topics=topics,
+        learner_note=(truth.rules(truth_opts["level"], not private_context) + "\n" + learning.known_note(learn["known"])).strip(),
     )
     replies: list[dict] = [{"type": "text", "text": _format_answer(res)}]
     if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:

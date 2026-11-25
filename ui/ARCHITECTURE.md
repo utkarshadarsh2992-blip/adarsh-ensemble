@@ -152,6 +152,18 @@ The UI checks answers on the phone (0 tokens): MCQ by index, fill-in by normalis
 
 **Privacy.** The night summary goes to Groq only after a one-time consent sheet (`S.settings.briefingConsent`, can be withdrawn in Settings > Mission & briefing). No chat text is sent in it; the Android path needs a Groq key and never falls back to other providers.
 
+## Usage and fact-check seam (change 1.4)
+
+**Usage screen (`js/04-usage.js`, drawer > API usage, also Settings > Privacy).** The request is `{usage: true}`; `chat_adapter.local_response` answers it before the key check, so it works with zero keys and costs no model call. Reply: `{type:'usage', usage: health.report()}`: per provider, per key slot (1-3), per model: `req, tok, limits, frac, out_s, cool_s, rpm, tpm, min_req, min_tok`; plus `totals`, `features` (request counts per stage: chat, standard, briefing, factcheck, ...), `days` (14-day history), `truth` counts and `reset_in_s`. All numbers are local counters kept in the usage JSON; the app day is UTC (00:00 UTC = 5:30 AM IST) and the provider's real reset can differ, which the screen says. The Standard model row is always shown for every Groq key. Keys are never sent to the page, only slot numbers and states (ok / limit khatam / cooldown).
+
+**Hallucination controls.** Request body `truth: {level: strict|balanced|creative, check: off|auto|always}` (`Usage.request()`; defaults balanced + auto in the UI, balanced + off when the field is missing). `truth.rules(level, web)` adds a HALLUCINATION CONTROL block to the system prompt (evidence vs assumption vs guess, "pata nahi" is allowed, no invented numbers or names or links) and `truth.temperature` is 0.2 / 0.5 / 0.8. Council modes receive the same rules through `learner_note`.
+
+**Fact-check.** After the answer (and after check questions are split off), `truth.check()` makes ONE small gpt-oss-20b call on Groq under stage `factcheck`: it gets the question, the answer and the evidence snippets that Standard already fetched (`standard_agent.answer()` returns `evidence[{title,url,text}]`, 6 items, 900 characters each). It returns claims `{c, v: ok|shak|galat, why, fix}` (the card shows PAKKA / SHAK / GALAT); `rep.truth = {checked, ok, shak, galat, claims, basis: sources|model}`. `basis: model` means no source was attached, so the card says it is the model's own second opinion. It is skipped for voice, for answers built from private records (research off), and in `auto` when Groq quota left is below 20%. The UI draws a collapsible FACT-CHECK card (open when something is shak or galat). Standard stays Groq-only; no other provider is called.
+
+**Quota hint.** When Groq has less than 30% left the reply carries `quota: {provider:'groq', left}`; the UI shows at most one toast per day (`S.settings.quotaWarnDay`).
+
+**Privacy.** Counters stay on the phone. The fact-check sends only the answer, the question and public evidence snippets to Groq, never goals, tasks, memory or keys. Settings (including truth level) are part of the export only; import restores lists, not settings.
+
 ## Android update and outside-app voice seam
 
 `05-mobile.js` exposes user controls only, never AI actions. `MobileUpdates` calls native updateStatus/updateCheck/updateDownload/updateInstall; `window.__adarshUpdate(object)` paints state. Boot checks are throttled, available builds show Update now/Later, download and installer requests require button clicks. The native manager validates a fixed public repository's published metadata, private APK cache and installed signing identity. No GitHub credential or app state is sent. CI publishes metadata and APK only as a complete successful release, with version and stale-build gates.
