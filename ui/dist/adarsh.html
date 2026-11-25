@@ -5737,14 +5737,19 @@ const Live = (() => {
   function roleFor(text, current) {
     const t = String(text || '').trim();
     if (!t) return '';
+    /* while dictating, the transcript is our own voice: never re-route on it, only leave when told to */
+    if (current === 'transcribe') return /(stop|band|bas|normal|wapas|ruko|kaafi)/i.test(t) ? 'main' : '';
     if (LIVE_RE.translate.test(t)) return 'translate';
     if (LIVE_RE.transcribe.test(t)) return 'transcribe';
     if (LIVE_RE.think.test(t) || t.length > 140) return 'think';
     return (current && current !== 'main') ? 'main' : '';
   }
-  function switchTo(r) {
+  /* "isko english me karo" -> translate into English; anything else -> Hindi. */
+  const translateTarget = (t) => /(english|angrezi|अंग्रेज़ी)/i.test(String(t || '')) ? 'en' : 'hi';
+  function switchTo(r, said) {
     if (!native() || !N().liveSwitch) return false;
-    try { const out = JSON.parse(N().liveSwitch(r) || '{}'); if (out && out.ok) role = r; return !!(out && out.ok); } catch (e) { return false; }
+    const ask = r === 'translate' ? 'translate:' + translateTarget(said) : r;
+    try { const out = JSON.parse(N().liveSwitch(ask) || '{}'); if (out && out.ok) role = r; return !!(out && out.ok); } catch (e) { return false; }
   }
   const voice = () => { const v = String(S.settings.voiceName || 'Orus'); return LIVE_VOICES.includes(v) ? v : 'Orus'; };
   /* Jarvis rules + the user's Philosophy page; the key stays on the phone (Kotlin reads SecureKeys). */
@@ -5762,7 +5767,7 @@ const Live = (() => {
     if (!native()) return false;
     handlers = h; on = true;
     let out = {};
-    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt() })) || '{}'); }
+    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt(), target: translateTarget('') })) || '{}'); }
     catch (e) { out = { ok: false, message: e.message }; }
     if (out && out.ok === false) { on = false; if (h && h.onError) h.onError(out.message || 'Live start nahi hua.'); return false; }
     model = out.model || liveModel();
@@ -5852,7 +5857,7 @@ const Voice = (() => {
         liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel);
         /* auto role routing: the sentence itself decides which Live model should answer it */
         const want = Live.roleFor(t, Live.role);
-        if (want && want !== Live.role && Live.switch(want)) setState('thinking');
+        if (want && want !== Live.role && Live.switch(want, t)) setState('thinking');
       },
       onRole: (r, label) => {
         if (!active(token)) return;

@@ -118,6 +118,8 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private val recent = StringBuilder()   // both sides of the talk, kept so a switch without a handle still has context
     private var voice = "Orus"
     private var prompt = ""
+    /** Translation target (BCP-47 short code: "hi", "en"). Only used by the interpreter model. */
+    private var target = "hi"
     /** endpoint + model + payload shape; the official example's shape first, the nested form second. */
     private var plans: List<Triple<Variant, String, Int>> = emptyList()
     private var step = 0
@@ -171,6 +173,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         key = k
         voice = cfg.optString("voice", "Orus").take(40)
         prompt = cfg.optString("prompt").take(MAX_PROMPT)
+        target = cfg.optString("target", "hi").take(12).ifBlank { "hi" }
         // chosen model on every endpoint, then the fallback models on the documented endpoint only: six attempts,
         // and a network failure ends the sweep at once, so the screen never sits on "Connecting…" for a minute.
         plans = listOf(Triple(VARIANTS[0], model, 0), Triple(VARIANTS[0], model, 1)) +
@@ -196,11 +199,35 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     }
 
     private fun setupJson(model: String, shape: Int): String {
+        val role = roleOf(model)
+        val setup = JSONObject().put("model", "models/$model")
+        /* The two special Live models have their own documented payloads. Sending the dialogue payload to them is
+           exactly why only the voice models used to connect (live-transcribe / live-translate docs, Nov 2026). */
+        when (role) {
+            "transcribe" -> {
+                // speech-to-text pipeline: TEXT out, no speech config, no system instruction, no resumption
+                setup.put("generationConfig", JSONObject()
+                    .put("responseModalities", JSONArray().put("TEXT"))
+                    .put("inputAudioTranscription", JSONObject()
+                        .put("languageCodes", JSONArray())
+                        .put("mode", "SMART")))
+                return JSONObject().put("setup", setup).toString()
+            }
+            "translate" -> {
+                // interpreter: audio in, translated audio out, translationConfig instead of instructions
+                setup.put("generationConfig", JSONObject()
+                    .put("responseModalities", JSONArray().put("AUDIO"))
+                    .put("inputAudioTranscription", JSONObject())
+                    .put("outputAudioTranscription", JSONObject())
+                    .put("translationConfig", JSONObject()
+                        .put("targetLanguageCode", target)
+                        .put("echoTargetLanguage", false)))
+                return JSONObject().put("setup", setup).toString()
+            }
+        }
         val speech = JSONObject().put("voiceConfig",
             JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice)))
-        val setup = JSONObject()
-            .put("model", "models/$model")
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", instruction()))))
+        setup.put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", instruction()))))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
         if (shape == 0) {
@@ -213,13 +240,8 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
                 .put("speechConfig", speech))
         }
         // Resumption handles are asked for on the dialogue models; translate/transcribe sessions are short-lived.
-        val role = roleOf(model)
-        val res = when {
-            resumeHandle != null -> JSONObject().put("handle", resumeHandle)
-            role == "translate" || role == "transcribe" -> null
-            else -> JSONObject()
-        }
-        if (res != null) setup.put("sessionResumption", res)
+        val handle = resumeHandle
+        setup.put("sessionResumption", if (handle != null) JSONObject().put("handle", handle) else JSONObject())
         return JSONObject().put("setup", setup).toString()
     }
 
@@ -263,11 +285,28 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
      * gave one, otherwise carries the recent transcript so the new model is not blind.
      */
     fun switchTo(asked: String): JSONObject {
-        val target = ROLE_MODEL[asked] ?: asked.removePrefix("models/")
-        if (target !in MODELS) return JSONObject().put("ok", false).put("message", "unknown live model: " + asked)
+        /* "translate:en" = interpreter role plus the language it should speak; every other role is a bare name. */
+        val roleName = asked.substringBefore(':').trim()
+        if (asked.contains(':')) {
+            val want = asked.substringAfter(':').trim()
+            if (roleName == "translate" && want.isNotBlank()) target = want.take(12)
+        }
+        val chosen = ROLE_MODEL[roleName] ?: roleName.removePrefix("models/")
+        if (chosen !in MODELS) return JSONObject().put("ok", false).put("message", "unknown live model: " + asked)
         if (closed.get()) return JSONObject().put("ok", false).put("message", "live band hai")
-        if (target == model && gotSetup) return JSONObject().put("ok", true).put("model", target).put("same", true)
-        model = target
+        if (chosen == model && gotSetup) {
+            // same model, but a new translation target still needs a fresh setup turn
+            if (roleOf(chosen) != "translate") return JSONObject().put("ok", true).put("model", chosen).put("same", true)
+            reconnect(chosen)
+            return JSONObject().put("ok", true).put("model", chosen)
+        }
+        model = chosen
+        reconnect(chosen)
+        return JSONObject().put("ok", true).put("model", chosen)
+    }
+
+    /** Drops the current socket and opens a new one on [target], reusing the endpoint that last worked. */
+    private fun reconnect(target: String) {
         gotSetup = false
         main.removeCallbacks(setupTimeout)
         val old = ws
@@ -282,7 +321,6 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         say(JSONObject().put("type", "state").put("state", "connecting").put("model", target)
             .put("attempt", 1).put("total", plans.size))
         connect()
-        return JSONObject().put("ok", true).put("model", target)
     }
 
     private fun connect() {
