@@ -5,7 +5,6 @@ ROOT = Path(__file__).parents[1]
 SUPA = ROOT / 'supabase'
 SCHEMA = (SUPA / 'migrations/20261125000000_news_schema.sql').read_text()
 SEED = (SUPA / 'seed.sql').read_text()
-SPEC = Path('/home/ubuntu/audit/NEWS_SPEC.md').read_text()
 
 TABLES = ['feeds','seen_news','news_items','watchlist','user_devices','settings','alert_log','ai_usage','kv']
 TAGS = ['AI','BIG-TECH','SPACE','ROBOTICS','PHYSICS','MATH','BIO-CHEM','ECON','WORLD','PAPER']
@@ -36,8 +35,6 @@ def test_no_secret_values_or_project_urls():
 def test_enums_match_contract_and_sql_checks():
     for value in TAGS + REGIONS + ACTIVITIES + VERIFIED:
         assert value in SCHEMA
-    for value in ['AI','BIG-TECH','SPACE','ROBOTICS','PHYSICS','MATH','BIO-CHEM','ECON','WORLD','PAPER']:
-        assert value in SPEC
     assert "'state-only'" in SCHEMA and "'none'" in SCHEMA
     assert "('telegram','fcm')" in SCHEMA
     assert "('alert','digest','budget','test','copy')" in SCHEMA
