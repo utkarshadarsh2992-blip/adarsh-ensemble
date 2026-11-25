@@ -58,6 +58,8 @@ class MainActivity : AppCompatActivity() {
     private val dictation by lazy { Dictation(this) }
     private var speaker: Speaker? = null
     private var neural: VoiceManager? = null
+    private var live: AdarshLive? = null
+    private var pendingLive: JSONObject? = null
     private var updater: UpdateManager? = null
     private var actions: ActionRunner? = null
     @Volatile private var resumed = false
@@ -347,6 +349,16 @@ class MainActivity : AppCompatActivity() {
         web.saveState(outState)
     }
 
+    /** Runs on the UI thread: starts the Live session and pushes its first status to the page. */
+    private fun startLiveNow(cfg: JSONObject): JSONObject {
+        dictation.destroy()
+        speaker?.stopAll(silent = true); neural?.stop()
+        val session = live ?: AdarshLive(this) { ev -> js("window.__adarshLive&&window.__adarshLive($ev)") }.also { live = it }
+        val out = session.start(cfg)
+        js("window.__adarshLive&&window.__adarshLive(${JSONObject().put("type", "state").put("state", out.optString("state", "connecting"))})")
+        return out
+    }
+
     override fun onDestroy() {
         destroyed = true
         backgroundGeneration++
@@ -355,6 +367,9 @@ class MainActivity : AppCompatActivity() {
         handoffConfig = null
         BackgroundVoiceService.unprepare()
         dictation.destroy()
+        live?.stop()
+        live = null
+        pendingLive = null
         speaker?.destroy()
         neural?.destroy()
         updater?.destroy()
@@ -434,6 +449,42 @@ class MainActivity : AppCompatActivity() {
             catch (_: Exception) { JSONObject().put("ok", false).toString() }
         }
         fun backgroundVoiceEvent(value: JSONObject) = ui { a -> a.js("window.__adarshBackgroundVoice&&window.__adarshBackgroundVoice($value)") }
+
+        // ---- Adarsh Live (AdarshLive.kt): one Gemini Live socket, spoken both ways, only while the voice screen is open
+        fun liveStatus(): String = onMain {
+            JSONObject().put("ok", true).put("active", current?.live?.active() ?: false).toString()
+        }
+        /** cfg: {model, voice, prompt}. The Gemini key never leaves the phone: it is read here from SecureKeys. */
+        fun liveStart(json: String): String = onMain {
+            val a = current!!
+            val cfg = try { JSONObject(json) } catch (_: Exception) { JSONObject() }
+            val key = (a.applicationContext as AdarshApp).keys.first("GEMINI_API_KEY")
+            if (key.isNullOrBlank()) return@onMain JSONObject().put("ok", false).put("state", "error")
+                .put("message", "Gemini API key nahi mili. Settings > API keys me daalo.").toString()
+            cfg.put("key", key)
+            val session = a.live ?: AdarshLive(a) { ev -> a.js("window.__adarshLive&&window.__adarshLive($ev)") }.also { a.live = it }
+            if (session.active()) session.stop()
+            if (a.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                a.pendingLive = cfg
+                a.askMic { ok ->
+                    val pending = a.pendingLive ?: return@askMic
+                    a.pendingLive = null
+                    if (!ok) { a.js("window.__adarshLive&&window.__adarshLive(${JSONObject().put("type", "error").put("message", "Microphone permission nahi mili.")})"); return@askMic }
+                    a.startLiveNow(pending)
+                }
+                return@onMain JSONObject().put("ok", true).put("state", "permission_required").toString()
+            }
+            a.startLiveNow(cfg).toString()
+        }
+        fun liveSendText(text: String): String = onMain {
+            JSONObject().put("ok", current?.live?.sendText(text) ?: false).toString()
+        }
+        fun liveStop(): String = onMain {
+            val a = current!!
+            a.pendingLive = null
+            a.live?.stop()
+            JSONObject().put("ok", true).toString()
+        }
 
         // ---- speech out (Speaker.kt). Results come back as window.__adarshTts(type, id)
         fun ttsAvailable(): Boolean = current?.speaker?.let { !it.failed } ?: false

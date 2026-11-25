@@ -280,7 +280,18 @@ const App = (() => {
           + 'Na chale to phone ki apni voice turant bolti hai.' + (TTS.info.last ? ' Last time: ' + (TTS.info.last === 'natural' ? 'natural voice' + (TTS.info.model ? ' (' + TTS.info.model + ')' : '') : 'phone voice' + (TTS.info.why ? ' · natural voice error: ' + TTS.info.why : '')) : '');
       };
       note();
+      /* Adarsh Live: Gemini Live socket on the voice screen only (never background, never Standard text chat). */
+      const liveNative = !!(window.AdarshNative && window.AdarshNative.liveStart);
+      const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
+        on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
+        (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'gemini-3.8-live') === v) o.selected = true; return o; }));
+      const liveBlock = liveNative ? h('div', {}, h('div', { class: 'grp' },
+        swItem('voice', 'Adarsh Live', 'Live voice · jarvis jaisi', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && Live) Live.stop(); })),
+        S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,
+          h('p', { class: 'muted' }, 'Sirf live voice screen par. Awaaz aur mic seedhe Google Gemini ko jaate hain; koi recording save nahi hoti. Fail ho to purani voice chalti hai.')) : null)
+        : h('p', { class: 'muted' }, 'Adarsh Live sirf Android app mein chalta hai.');
       b.append(swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
+        liveBlock,
         h('label', { class: 'l' }, 'Voice engine'),
         segOf([['auto', 'Auto'], ['natural', 'Natural'], ['device', 'Phone']], () => S.settings.voiceEngine || 'auto', v => { S.settings.voiceEngine = v; }),
         h('p', { class: 'muted' }, 'Auto: natural (Gemini) awaaz, aur fail ho to phone ki voice. Phone: sirf device TTS, offline bhi chalta hai.'),

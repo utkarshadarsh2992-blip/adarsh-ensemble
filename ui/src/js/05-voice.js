@@ -207,12 +207,77 @@ const STT = {
   stop() { if (this._stop) this._stop(); }
 };
 
+/* Adarsh Live (Step 5): the Gemini Live API over one WebSocket, spoken both ways. The socket, microphone and
+   playback live in Kotlin (AdarshLive.kt) because a WebView has no raw-PCM capture; this file only drives the
+   screen, shows both transcripts and falls back to the old listen/answer/speak loop on any error.
+   Changing the live model or voice is one line here (LIVE_MODELS / default model). */
+const LIVE_MODELS = [
+  ['gemini-3.8-live', 'Gemini 3.8 Live'],
+  ['gemini-3.8-live-extended-thinking', 'Gemini 3.8 Live Extended Thinking'],
+  ['gemini-2.5-flash-native-audio-preview-12-2025', 'Gemini 2.5 Flash Native Audio Dialog'],
+  ['gemini-3.1-flash-live-preview', 'Gemini 3.1 Flash Live'],
+  ['gemini-3.5-live-translate-preview', 'Gemini 3.5 Live Translate'],
+  ['gemini-3.5-transcribe-live', 'Gemini 3.5 Transcribe Live']
+];
+const LIVE_DEFAULT_MODEL = 'gemini-3.8-live';
+/* Gemini Live prebuilt voices. Orus/Charon/Fenrir are the deeper male ones, so Jarvis-like by default. */
+const LIVE_VOICES = ['Orus', 'Charon', 'Fenrir', 'Puck', 'Kore', 'Aoede', 'Leda', 'Zephyr', 'Enceladus', 'Iapetus', 'Umbriel', 'Algieba', 'Sadaltager'];
+const Live = (() => {
+  const N = () => window.AdarshNative;
+  let on = false, handlers = null, model = '';
+  const native = () => { const n = N(); return !!(n && n.liveStart); };
+  const available = () => native() && S.settings.adarshLive === true;
+  const liveModel = () => { const m = S.settings.liveModel; return LIVE_MODELS.some(x => x[0] === m) ? m : LIVE_DEFAULT_MODEL; };
+  const voice = () => { const v = String(S.settings.voiceName || 'Orus'); return LIVE_VOICES.includes(v) ? v : 'Orus'; };
+  /* Jarvis rules + the user's Philosophy page; the key stays on the phone (Kotlin reads SecureKeys). */
+  function prompt() {
+    const name = S.settings.name || 'Adarsh';
+    const lang = S.settings.lang === 'en-US' ? 'English (US)' : S.settings.lang === 'en-IN' ? 'Indian English' : 'Hindi/Hinglish';
+    const base = 'You are ' + name + ', a calm, confident on-device assistant. Address the user as "Sir". '
+      + 'Speak in ' + lang + ' — match the language the user speaks. Keep spoken replies short (1-3 sentences) unless asked for detail. '
+      + 'No markdown, no lists, no emoji, no URLs. Never invent facts; if unsure, say so briefly. '
+      + 'You cannot run code, install anything or send messages without the user confirming.';
+    const philo = String(S.philosophy || '').trim();
+    return (base + (philo ? '\n\nFollow the user\'s own principles:\n' + philo.slice(0, 3000) : '')).slice(0, 6000);
+  }
+  function start(h) {
+    if (!native()) return false;
+    handlers = h; on = true;
+    let out = {};
+    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt() })) || '{}'); }
+    catch (e) { out = { ok: false, message: e.message }; }
+    if (out && out.ok === false) { on = false; if (h && h.onError) h.onError(out.message || 'Live start nahi hua.'); return false; }
+    model = out.model || liveModel();
+    return true;
+  }
+  function stop() {
+    if (!on && !native()) return;
+    on = false; handlers = null;
+    try { N().liveStop(); } catch (e) {}
+  }
+  function send(text) { if (!on || !native()) return false; try { return !!(JSON.parse(N().liveSendText(text)).ok); } catch (e) { return false; } }
+  /* Kotlin pushes every event here: state / user / model / error / closed */
+  window.__adarshLive = (ev) => {
+    if (!ev || typeof ev !== 'object') return;
+    const h = handlers; if (!h) return;
+    try {
+      if (ev.type === 'state' && h.onState) h.onState(ev.state);
+      else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
+      else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
+      else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
+      else if (ev.type === 'closed' && h.onClosed) h.onClosed();
+    } catch (e) {}
+  };
+  return { available, native, start, stop, send, model: () => model, get isOn() { return on; } };
+})();
+
 const Voice = (() => {
   let el, orb, stateEl, cap, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
   let session = 0, releasePrompt = null, releaseAsk = null;
   const active = token => openFlag && token === session;
-  const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…' };
-  const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s]; if (micBtn) micBtn.textContent = s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
+  const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
+  let liveOn = false, liveUser = '', liveModel = '';
+  const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
   const caption = (u, a) => { cap.textContent = ''; if (u) cap.append(h('div', { class: 'u' }, u)); if (a) cap.append(h('div', {}, a)); cap.scrollTop = cap.scrollHeight; };
 
   function build() {
@@ -224,7 +289,7 @@ const Voice = (() => {
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
     speakOn = S.settings.voiceReplies !== false;
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
-    el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, 'VOICE · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
+    el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, (S.settings.adarshLive && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
       h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
@@ -235,17 +300,53 @@ const Voice = (() => {
     caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
+    if (S.settings.adarshLive && Live.native()) { if (startLive()) return; }   // falls through to the old loop on failure
     if (opts.listen && STT.supported()) listen();
+  }
+  /* One Live session per screen: audio is only captured while this screen is visible. Any failure returns false so
+     the caller can use the proven listen -> answer -> speak loop instead. */
+  function startLive() {
+    const token = session;
+    liveUser = ''; liveModel = '';
+    setState('connecting');
+    caption('', 'Adarsh Live jud raha hai…');
+    const ok = Live.start({
+      onState: (s) => {
+        if (!active(token)) return;
+        if (s === 'speaking') setState('speaking');
+        else if (s === 'listening') setState('listening');
+        else if (s === 'connecting') setState('connecting');
+        if (s === 'listening' && liveOn) stateEl.textContent = 'Live · just speak';
+      },
+      onUser: (t) => { if (!active(token)) return; liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel); },
+      onModel: (t) => { if (!active(token)) return; liveModel = (liveModel + ' ' + t).trim().slice(-1200); caption(liveUser, liveModel); },
+      onError: (m) => {
+        if (!active(token)) return;
+        liveOn = false;
+        caption('', 'Adarsh Live nahi chala: ' + m + ' — normal voice par ja raha hoon.');
+        toast('Adarsh Live off: ' + m);
+        setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
+      },
+      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); } }
+    });
+    if (!ok) { liveOn = false; setState('idle'); return false; }
+    liveOn = true; setState('connecting');
+    return true;
   }
   /* opts.keepBackground: the phone already moved this conversation to the background session */
   function close(opts = {}) {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
+    liveOn = false; Live.stop();
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
   function toggle() {
+    if (liveOn) {
+      if (el.dataset.state === 'speaking') { Live.stop(); liveOn = false; setState('idle'); return; }   // interrupt, stay open
+      Live.stop(); liveOn = false; close(); return;   // end the live session
+    }
     const s = el.dataset.state;
     if (s === 'listening') return STT.stop();
     if (s === 'speaking') { session++; if (releasePrompt) releasePrompt(); TTS.stop(); setState('idle'); return; }
@@ -263,7 +364,10 @@ const Voice = (() => {
     if (!ok) { caption('', 'Speech input isn’t available here. Type below.'); return; }
     setState('listening'); vibe();
   }
-  function typed() { const t = inp.value.trim(); if (!t || Chat.isBusy()) return; inp.value = ''; session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt(); STT.stop(); TTS.stop(); say(t); }
+  function typed() {
+    const t = inp.value.trim(); if (!t) return;
+    if (liveOn) { if (Live.send(t)) { inp.value = ''; liveUser = t; caption(liveUser, liveModel); } return; }   // same socket, no new turn machinery
+    if (Chat.isBusy()) return; inp.value = ''; session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt(); STT.stop(); TTS.stop(); say(t); }
 
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   /* Standard-mode actions run on the phone after the card mounts: wait for them so we speak the result, not the plan */

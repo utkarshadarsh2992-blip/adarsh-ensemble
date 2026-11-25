@@ -130,6 +130,7 @@ if (sha256File(sherpaAar) != sherpaSha256) {
 dependencies {
     implementation(files(sherpaAar))
     implementation("io.grpc:grpc-okhttp:1.67.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")   // Adarsh Live WebSocket
     implementation("io.grpc:grpc-protobuf-lite:1.67.1")
     implementation("io.grpc:grpc-stub:1.67.1")
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")

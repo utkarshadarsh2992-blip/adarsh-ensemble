@@ -50,6 +50,16 @@ class AdarshBridge(
     fun updateInstall(): String = if (ok()) MainActivity.updateInstall() else denied
     @JavascriptInterface
     fun backgroundVoiceStatus(): String = if (ok()) MainActivity.backgroundVoiceStatus() else denied
+
+    // Adarsh Live: the same Gemini key stays on the phone; only the page's UI talks to these.
+    @JavascriptInterface
+    fun liveStatus(): String = if (ok()) MainActivity.liveStatus() else denied
+    @JavascriptInterface
+    fun liveStart(config: String): String = if (ok()) MainActivity.liveStart(config) else denied
+    @JavascriptInterface
+    fun liveSendText(text: String): String = if (ok()) MainActivity.liveSendText(text) else denied
+    @JavascriptInterface
+    fun liveStop(): String = if (ok()) MainActivity.liveStop() else denied
     @JavascriptInterface
     fun backgroundVoiceStart(config: String): String = if (ok()) MainActivity.backgroundVoiceStart(config) else denied
     @JavascriptInterface
