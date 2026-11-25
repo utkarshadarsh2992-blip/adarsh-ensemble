@@ -68,9 +68,9 @@ def test_query_forms_shrink_until_an_api_can_match():
     assert sources.forms("") == []
 
 
-def test_sources_are_skipped_for_private_records_and_tiny_messages():
+def test_sources_are_skipped_for_app_records_and_tiny_messages_not_for_history():
     src = inspect.getsource(chat_adapter.handle)
-    assert 'not private_context and len(str(text or "").split()) >= 3' in src
+    assert 'not has_records and len(str(text or "").split()) >= 3' in src
 
 
 def test_a_failed_source_says_nothing():
@@ -123,3 +123,14 @@ def test_pdf_is_only_built_when_asked():
     assert chat_adapter._wants_pdf("generate a report please")
     assert not chat_adapter._wants_pdf("entropy kya hai")
     assert not chat_adapter._wants_pdf("")
+
+
+def test_pdf_is_a_structured_report_with_tables_and_a_real_title():
+    title, body = chat_adapter._pdf_title("### Entropy kya hai\nText here\n\n| A | B |\n|---|---|\n| 1 | 2 |", "pdf bana do")
+    assert title == "Entropy kya hai" and "### Entropy" not in body
+    data = pdf_make.report(title, "# Part\n" + body + "\n> note\n", sources=[{"label": "arXiv", "title": "T", "url": "https://a"}], mode="Physics")
+    text = pdf_read.extract(data)
+    for word in ("DOCUMENT DETAILS", "Physics", "Entropy kya hai", "Sources", "Page 2 of 3"):
+        assert word.replace(" ", "") in text.replace(" ", ""), word
+    # the page must not truncate the base64 of a report
+    assert "const pdfKeep" in CHAT_JS and "out.pdf = pdfKeep" in CHAT_JS

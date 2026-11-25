@@ -1,7 +1,7 @@
 <resources>
     <style name="Theme.Adarsh" parent="Theme.AppCompat.DayNight.NoActionBar">
         <!-- dark ground from the first frame: the system splash, the loading view and the web startup animation share it -->
-        <item name="android:windowBackground">@color/adarsh_boot</item>
+        <item name="android:windowBackground">@drawable/boot_window</item>
         <item name="android:statusBarColor">@color/adarsh_bg</item>
         <item name="android:navigationBarColor">@color/adarsh_bg</item>
     </style>
@@ -10,4 +10,6 @@
     <color name="adarsh_icon_bg">#111111</color>
     <!-- startup animation ground (ui/src/css/boot.css .boot) -->
     <color name="adarsh_boot">#05070B</color>
+    <!-- accent of the startup animation (ui/src/css/boot.css --bc), shared by the native loading frame -->
+    <color name="boot_accent">#49D9FF</color>
 </resources>

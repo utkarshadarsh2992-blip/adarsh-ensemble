@@ -9,6 +9,9 @@ const Chat = (() => {
   const MAX_REPLY_BYTES = 256 * 1024;
   const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
   function capReply(reply) {
+    // A generated PDF is bytes, not text: it is kept out of the size caps below (a truncated base64 is a broken file).
+    const pdfKeep = reply && typeof reply === 'object' && reply.pdf ? reply.pdf : null;
+    if (pdfKeep) { reply = Object.assign({}, reply); delete reply.pdf; }
     let omitted = false;
     const copy = (v) => {
       if (typeof v === 'string') return v.length > 12000 ? (omitted = true, v.slice(0, 12000) + '…') : v;
@@ -28,6 +31,7 @@ const Chat = (() => {
     for (let i = 0; replyBytes(out) > MAX_REPLY_BYTES && i < 8; i++) out = shrink(out);
     if (replyBytes(out) > MAX_REPLY_BYTES) { out = { type: 'text', text: 'Jawab bahut bada tha, details hata di.' }; omitted = true; }
     if (omitted && out && typeof out === 'object') out._detailsOmitted = true;
+    if (pdfKeep && out && typeof out === 'object') out.pdf = pdfKeep;
     return out;
   }
 

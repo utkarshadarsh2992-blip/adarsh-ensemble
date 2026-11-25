@@ -3,7 +3,7 @@
    The #boot layer is static markup in index.html (styles in css/boot.css), so it is the first paint and the chat
    never flashes before it. This module runs the timed part: the name decodes letter by letter, a short boot log
    that reflects the real settings (mode, Wikipedia / web search, key storage), a progress bar and a clock, then the
-   HUD zooms into the app. About 2.5 s in total; a tap skips it.
+   HUD zooms into the app. About 3.5 s in total; a tap skips it.
    S.settings.bootAnim=false (AI command) turns it off (the layer is then removed before it is seen).
    prefers-reduced-motion gets a short fade only. If anything here fails, the layer is removed at once, and CSS
    hides it after a few seconds even if this script never runs. On Android the system bars go dark with it
@@ -12,7 +12,7 @@ const Splash = (() => {
   const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#$%&*+<>/=';
   const NAME = 'ADARSH';
   // ms after the HUD starts: name letters lock, log lines appear, progress fills, ready, hand-over
-  const T = { nameLock: 330, letterGap: 85, firstLine: 420, lineGap: 210, status: 150, ready: 1700, out: 2000, fade: 460, skipFade: 240 };
+  const T = { nameLock: 330, letterGap: 85, firstLine: 420, lineGap: 210, status: 150, ready: 2700, out: 3000, fade: 460, skipFade: 240 };
   const A_HEIGHT = 138.7;   // px height of the "A" in the 288 px logo box (52 of 108 viewport units)
   let el = null, tpl = null, t0 = 0, done = true, readyShown = false, timers = [], lastScramble = 0;
   let nameSpans = [], lineEls = [], lines = [], fill = null, pct = null, state = null, clock = null;
@@ -35,6 +35,7 @@ const Splash = (() => {
       ['LOAD', 'chats · memory · notes', 'OK', ''],
       ['MODE', mode, 'SET', ''],
       ['NET', web ? 'wikipedia + web search' : 'wikipedia research', 'ON', ''],
+      ['SRC', S.settings.research === false ? 'research sources off' : 'arxiv · nasa · world bank', S.settings.research === false ? 'OFF' : 'LINK', ''],
       ['SEC', native ? 'keystore · encrypted keys' : 'local storage', native ? 'SECURE' : 'LOCAL', 'boot-hot'],
     ];
   }

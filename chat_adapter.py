@@ -186,14 +186,36 @@ def _wants_pdf(text: str) -> bool:
     return bool(PDF_REPORT.search(asked) and PDF_VERB.search(asked))
 
 
-def _attach_pdf(reply: dict, asked: str, rows: list[dict]) -> None:
+def _pdf_title(body: str, asked: str = "") -> tuple[str, str]:
+    """(title, body without that heading). The answer's own first heading is the best title; a note line is not."""
+    lines = body.splitlines()
+    for n, line in enumerate(lines[:6]):
+        m = re.match(r"^\s*#{1,3}\s+(.+?)\s*$", line)
+        if m:
+            rest = lines[:n] + lines[n + 1:]
+            return _plain_heading(m.group(1))[:90], "\n".join(rest).strip()
+    for line in lines[:3]:
+        clean = line.strip().lstrip("# ").strip()
+        if clean and not clean.startswith("*") and len(clean) > 8:
+            return _plain_heading(clean)[:90], body
+    asked_clean = re.sub(r"\b(pdf|bana|banao|banado|generate|report|file|karo|do|de|ek|par|ka|ki|ke)\b", " ",
+                         str(asked or ""), flags=re.I)
+    asked_clean = " ".join(asked_clean.split())[:70]
+    return (asked_clean or "Adarsh report"), body
+
+
+def _plain_heading(text: str) -> str:
+    return re.sub(r"[*_`]+", "", str(text or "")).strip()
+
+
+def _attach_pdf(reply: dict, asked: str, rows: list[dict], mode: str = "") -> None:
     """Build the report from the finished answer and hand it to the page as base64 (Kotlin saves it)."""
     body = str(reply.get("text") or "").strip()
     if not body:
         return
-    title = (body.splitlines()[0] if body.splitlines() else "Report").lstrip("# ").strip()[:90] or "Report"
+    title, content = _pdf_title(body, asked)
     try:
-        data = pdf_make.report(title, body, subtitle="Adarsh Ensemble report", sources=rows)
+        data = pdf_make.report(title, content or body, subtitle="", sources=rows, mode=mode)
     except Exception as e:                       # a broken report must never break the answer
         reply["text"] += "\n\n*PDF nahi ban paaya: " + str(e)[:80] + "*"
         return
@@ -362,14 +384,15 @@ async def handle(body: dict) -> dict | list[dict]:
     pdf_block, pdf_names = pdf_read.attachments_text(body.get("attachments"))
     # Real sources in every mode, Standard included (sources.py): papers, books, standards, statistics, launches,
     # robotics. Keyless and fail-soft, so a dead endpoint costs nothing but a second.
+    # Only the question text goes to these APIs (never history or app records), so history is not a reason to skip.
+    has_records = "[Permitted relevant app records;" in extra
     src_block, src_rows = ("", [])
-    if rp.get("research") != "off" and not private_context and len(str(text or "").split()) >= 3:
+    if rp.get("research") != "off" and not has_records and len(str(text or "").split()) >= 3:
         src_block, src_rows = await sources.gather(text)
     # Philosophy first, then the user's own document, then the sources: the 6000-char cap never cuts them.
     extra = (app_context.philosophy(body) + pdf_block + src_block + extra)[:6000]
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":
         # Permitted personal app records stay out of web/Wikipedia searches: research is off for those questions.
-        has_records = "[Permitted relevant app records;" in extra
         q_text, q_extra, cut_note = _fit(text, extra)
         quick = await _quick_reply(q_text, q_extra, reply_lang, depth, bool(meta.get("voice")),
                                    research=not has_records, deep=bool(meta.get("deep")), web=web_search)
@@ -383,7 +406,7 @@ async def handle(body: dict) -> dict | list[dict]:
         elif body.get("attachments"):
             quick["text"] += "\n\n*Attachment nahi padha; sirf text gaya.*"
         if _wants_pdf(text):
-            _attach_pdf(quick, text, src_rows)
+            _attach_pdf(quick, text, src_rows, str(body.get("mode") or ui_mode))
         return [quick]
     q_text, q_extra, cut_note = _fit(text, extra)
     question = q_text + q_extra
@@ -428,7 +451,7 @@ async def handle(body: dict) -> dict | list[dict]:
     if pdf_names:
         replies[0]["text"] += "\n\n*PDF padha: " + ", ".join(pdf_names) + "*"
     if _wants_pdf(text):
-        _attach_pdf(replies[0], text, src_rows)
+        _attach_pdf(replies[0], text, src_rows, str(body.get("mode") or ui_mode))
     if not config.CODE_EXEC_SUPPORTED and res.get("style") == "solve" and res.get("task_type") in config.VERIFY_TASKS:
         replies[0]["text"] += "\n\n*Android par code proof off hai: steps [REASONED] hain.*"
     if body.get("attachments") and not pdf_names:

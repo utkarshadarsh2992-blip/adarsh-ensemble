@@ -10,16 +10,41 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Shown until the page has painted: only the dark ground of the web startup animation (no static "A"). -->
-    <LinearLayout
+    <!-- Shown until the page has painted: the same dark ground, logo and accent as the web startup animation, so a
+         cold start animates from the very first frame instead of showing an empty black window. -->
+    <FrameLayout
         android:id="@+id/loading"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@color/adarsh_boot"
-        android:gravity="center"
-        android:contentDescription="@string/loading"
-        android:orientation="vertical" />
-
+        android:contentDescription="@string/loading">
+        <ImageView
+            android:id="@+id/bootLogo"
+            android:layout_width="288dp"
+            android:layout_height="288dp"
+            android:layout_gravity="center"
+            android:importantForAccessibility="no"
+            android:src="@drawable/boot_logo" />
+        <ProgressBar
+            android:id="@+id/bootBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="132dp"
+            android:layout_height="2dp"
+            android:layout_gravity="center"
+            android:translationY="104dp"
+            android:indeterminate="true"
+            android:indeterminateTint="@color/boot_accent" />
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:translationY="124dp"
+            android:fontFamily="monospace"
+            android:letterSpacing="0.18"
+            android:text="@string/boot_label"
+            android:textColor="@color/boot_accent"
+            android:textSize="9sp" />
+    </FrameLayout>
     <LinearLayout
         android:id="@+id/error"
         android:layout_width="match_parent"

@@ -61,18 +61,19 @@ test('the animation plays the full timeline and then removes itself', async (t) 
   assert.ok(boot && app.Splash.active());
   await settle(120);
   assert.ok(boot.classList.contains('go'), 'HUD started');
-  await settle(1900);   // ready at 1.7 s
+  await settle(2900);   // ready at 2.7 s
   assert.ok(boot.classList.contains('ready'));
   assert.equal(text(app.document.getElementById('boot-name')), 'ADARSH');
   assert.equal(text(app.document.getElementById('boot-state')), 'SYSTEM READY');
   assert.equal(text(app.document.getElementById('boot-pct')), '100%');
   const log = [...app.document.querySelectorAll('#boot-log .boot-ln')].map(text);
-  assert.equal(log.length, 5);
+  assert.equal(log.length, 6);
+  assert.match(log[4], /^SRC\s*arxiv/);
   assert.match(log[0], /^INIT\s*adarsh core\s*OK$/);
   assert.match(log[2], /STANDARD/);
   assert.match(log[3], /wikipedia \+ web search/);
   assert.deepEqual(app.buzz, [14], 'one short buzz at ready (Haptics on)');
-  await settle(800);    // out at 2.0 s, fade 0.46 s
+  await settle(800);    // out at 3.0 s, fade 0.46 s
   assert.equal(app.document.getElementById('boot'), null, 'layer removed');
   assert.equal(app.Splash.active(), false);
   assert.ok(app.document.getElementById('phone'), 'app shell untouched');
@@ -152,11 +153,11 @@ test('Android: the system bars go dark with the layer and come back mid-fade', a
   const app = mount({ native: { bootBars: dark => calls.push(dark) } });
   t.after(() => app.close());
   assert.deepEqual(calls, [true]);
-  await until(() => calls.at(-1) === false);   // out at 2.0 s, bars back 0.18 s later
+  await until(() => calls.at(-1) === false, 6000);   // out at 3.0 s, bars back 0.18 s later
   assert.ok(app.Splash.active() === false);
   assert.ok(app.document.getElementById('boot'), 'layer still fading when the bars turn back');
   const log = [...app.document.querySelectorAll('#boot-log .boot-ln')].map(text);
-  assert.match(log[4], /keystore/);
+  assert.match(log[5], /keystore/);
   await settle(500);
   assert.equal(app.document.getElementById('boot'), null);
   assert.equal(calls.filter(Boolean).length, 1);

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Window ground before Android 12 (no system splash icon there): dark ground with the "A" at splash size, so the
+     first frame is never an empty black window. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/adarsh_boot" />
+    <item android:drawable="@drawable/boot_logo" android:gravity="center" android:width="288dp" android:height="288dp" />
+</layer-list>

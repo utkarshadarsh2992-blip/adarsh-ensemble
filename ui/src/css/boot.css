@@ -11,7 +11,7 @@
   --bc:#49D9FF;--bc2:rgba(73,217,255,.32);--bc3:rgba(73,217,255,.13);--ba:#FF8A5B;--bm:#6B8092;--ok:#59F2B4;
   --hud:min(66vw,270px,36vh);
   /* fail-safe: even if the script never runs, the layer can not stay over the app */
-  animation:boot-failsafe .35s linear 6s forwards}
+  animation:boot-failsafe .35s linear 7s forwards}
 @keyframes boot-failsafe{to{opacity:0;visibility:hidden;pointer-events:none}}
 @keyframes boot-fade{to{opacity:1}}
 

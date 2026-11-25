@@ -14,33 +14,45 @@ def read(p):
 def test_window_ground_matches_the_web_boot_layer():
     themes = read(RES / "values/themes.xml")
     assert '<color name="adarsh_boot">#05070B</color>' in themes
-    assert '<item name="android:windowBackground">@color/adarsh_boot</item>' in themes
+    assert '<item name="android:windowBackground">@drawable/boot_window</item>' in themes
+    window = read(RES / "drawable/boot_window.xml")   # dark ground + the "A" at splash size: never an empty window
+    assert "@color/adarsh_boot" in window and "@drawable/boot_logo" in window and '"288dp"' in window
     css = read(ROOT / "ui/src/css/boot.css")
     assert re.search(r"\.boot\{[^}]*background:#05070B", css)
 
 
-def test_android_12_splash_is_only_the_dark_ground():
+def test_android_12_splash_animates_the_logo_from_the_first_frame():
     v31 = read(RES / "values-v31/themes.xml")
     assert 'name="Theme.Adarsh" parent="Theme.AppCompat.DayNight.NoActionBar"' in v31
     for item in ("android:windowBackground\">@color/adarsh_boot",
                  "android:statusBarColor\">@color/adarsh_bg",
                  "android:navigationBarColor\">@color/adarsh_bg",
                  "android:windowSplashScreenBackground\">@color/adarsh_boot",
-                 "android:windowSplashScreenAnimatedIcon\">@drawable/splash_blank"):
+                 "android:windowSplashScreenAnimatedIcon\">@drawable/splash_anim",
+                 "android:windowSplashScreenAnimationDuration\">1000"):
         assert item in v31, item
+    anim = read(RES / "drawable/splash_anim.xml")
+    assert "<animated-vector" in anim and "trimPathEnd" in anim and "fillAlpha" in anim
+    fg = read(RES / "drawable/ic_launcher_foreground.xml")
+    path = re.search(r'android:pathData="([^"]+)"', fg).group(1)
+    assert anim.count(path) == 2 and path in read(RES / "drawable/boot_logo.xml")
 
 
-def test_loading_view_is_the_dark_ground_without_static_logo():
+def test_loading_view_animates_instead_of_an_empty_black_window():
     layout = read(RES / "layout/activity_main.xml")
-    block = layout.split('android:id="@+id/loading"', 1)[1].split("/>", 1)[0]
+    block = layout.split('android:id="@+id/loading"', 1)[1].split('android:id="@+id/error"', 1)[0]
     assert 'android:background="@color/adarsh_boot"' in block
-    assert "ImageView" not in block and "ic_launcher_foreground" not in block
-    assert 'android:color/transparent' in read(RES / "drawable/splash_blank.xml")
+    # the logo sits centred at the system splash size, so splash -> native frame -> web layer never jumps
+    assert '@drawable/boot_logo' in block and 'android:layout_width="288dp"' in block
+    assert 'android:indeterminate="true"' in block
+    act = read(KT / "MainActivity.kt")
+    assert "private fun bootPulse(on: Boolean)" in act and act.count("bootPulse(false)") >= 2
     css = read(ROOT / "ui/src/css/boot.css")
     assert "margin:-144px 0 0 -144px;overflow:visible;transform-origin:50% 50%;opacity:0}" in css
     assert ".boot.go .boot-logo,.boot.calm .boot-logo{opacity:1}" in css
-    assert "ProgressBar" not in block
     assert 'android:id="@+id/error"' in layout and 'android:id="@+id/web"' in layout
+    # one second longer than before
+    assert "ready: 2700, out: 3000" in read(ROOT / "ui/src/js/07-splash.js")
 
 
 def test_web_logo_uses_the_launcher_glyph_at_splash_size():

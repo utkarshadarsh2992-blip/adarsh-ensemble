@@ -8,6 +8,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
 import android.content.ContentValues
 import android.content.ClipboardManager
 import android.content.Context
@@ -31,6 +33,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
@@ -107,6 +110,28 @@ class MainActivity : AppCompatActivity() {
     }
     private fun js(code: String) { if (!destroyed) web.evaluateJavascript(code, null) }
     private var bootBarsOn = false
+    private var bootAnimator: ObjectAnimator? = null
+
+    /** The native loading frame breathes while the page loads: the same "A" and accent the web boot layer uses, so a
+     *  cold start animates from the first frame instead of showing an empty black window. */
+    private fun bootPulse(on: Boolean) {
+        val logo = findViewById<View?>(R.id.bootLogo) ?: return
+        if (!on) { bootAnimator?.cancel(); bootAnimator = null; logo.alpha = 1f; logo.scaleX = 1f; logo.scaleY = 1f; return }
+        if (bootAnimator == null) {
+            bootAnimator = ObjectAnimator.ofPropertyValuesHolder(
+                logo,
+                PropertyValuesHolder.ofFloat(View.ALPHA, 1f, 0.55f),
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 0.96f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 0.96f)
+            ).apply {
+                duration = 900
+                repeatCount = ObjectAnimator.INFINITE
+                repeatMode = ObjectAnimator.REVERSE
+                interpolator = AccelerateDecelerateInterpolator()
+            }
+        }
+        bootAnimator?.start()
+    }
     /** Startup animation: the status and navigation bars take its dark ground (#05070B) while it plays, then the
      *  theme colours again. The page asks for both (AdarshNative.bootBars); a cold start begins dark. */
     private fun setBootBars(dark: Boolean) {
@@ -203,6 +228,7 @@ class MainActivity : AppCompatActivity() {
         web = findViewById(R.id.web)
         loading = findViewById(R.id.loading)
         error = findViewById(R.id.error)
+        bootPulse(true)
         findViewById<Button>(R.id.retry).setOnClickListener { load() }
 
         val loader = WebViewAssetLoader.Builder()
@@ -249,13 +275,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                if (error.visibility != View.VISIBLE) loading.visibility = View.GONE
+                if (error.visibility != View.VISIBLE) { bootPulse(false); loading.visibility = View.GONE }
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, e: WebResourceError) {
                 if (request.isForMainFrame) {
                     findViewById<TextView>(R.id.errorText).text = getString(R.string.load_failed)
                     setBootBars(false)
+                    bootPulse(false)
                     loading.visibility = View.GONE
                     error.visibility = View.VISIBLE
                 }
@@ -305,6 +332,7 @@ class MainActivity : AppCompatActivity() {
     private fun load() {
         error.visibility = View.GONE
         loading.visibility = View.VISIBLE
+        bootPulse(true)
         web.loadUrl("https://$HOST/assets/index.html")
     }
 
@@ -495,34 +523,43 @@ class MainActivity : AppCompatActivity() {
         fun liveSendText(text: String): String = onMain {
             JSONObject().put("ok", current?.live?.sendText(text) ?: false).toString()
         }
-        /** A generated report: written into Downloads (Q+) or the app's own reports folder, never anywhere else. */
+        /** A generated report: Downloads/Adarsh on Q+, else the app's own reports folder. Falls back to the app folder
+         *  when the MediaStore insert is refused (some OEMs), so a report is never lost. */
         fun savePdf(name: String, base64: String): String = onMain {
             val a = current!!
             val safe = name.replace(Regex("[^A-Za-z0-9._-]"), "_").take(60).ifBlank { "adarsh-report.pdf" }
             val bytes = try { Base64.decode(base64, Base64.DEFAULT) } catch (e: Exception) {
                 return@onMain JSONObject().put("ok", false).put("message", "PDF data kharab hai").toString()
             }
-            try {
-                val where = if (Build.VERSION.SDK_INT >= 29) {
+            fun appFolder(): String {
+                val dir = File(a.getExternalFilesDir(null) ?: a.filesDir, "reports").apply { mkdirs() }
+                val f = File(dir, safe)
+                f.writeBytes(bytes)
+                return f.absolutePath
+            }
+            val where = try {
+                if (Build.VERSION.SDK_INT >= 29) {
                     val values = ContentValues().apply {
                         put(MediaStore.Downloads.DISPLAY_NAME, safe)
                         put(MediaStore.Downloads.MIME_TYPE, "application/pdf")
+                        put(MediaStore.Downloads.RELATIVE_PATH, "Download/Adarsh")
                         put(MediaStore.Downloads.IS_PENDING, 1)
                     }
                     val uri = a.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                        ?: throw IllegalStateException("Downloads me jagah nahi mili")
+                        ?: return@onMain JSONObject().put("ok", true).put("name", safe).put("path", appFolder()).toString()
                     a.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                     values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0)
                     a.contentResolver.update(uri, values, null, null)
-                    "Downloads/" + safe
+                    "Download/Adarsh/" + safe
                 } else {
-                    val dir = File(a.getExternalFilesDir(null) ?: a.filesDir, "reports").apply { mkdirs() }
-                    val f = File(dir, safe); f.writeBytes(bytes); f.absolutePath
+                    appFolder()
                 }
-                JSONObject().put("ok", true).put("name", safe).put("path", where).toString()
             } catch (e: Exception) {
-                JSONObject().put("ok", false).put("message", e.message ?: "save nahi hua").toString()
+                try { appFolder() } catch (e2: Exception) {
+                    return@onMain JSONObject().put("ok", false).put("message", e2.message ?: "save nahi hua").toString()
+                }
             }
+            JSONObject().put("ok", true).put("name", safe).put("path", where).toString()
         }
         fun liveStop(): String = onMain {
             val a = current!!
