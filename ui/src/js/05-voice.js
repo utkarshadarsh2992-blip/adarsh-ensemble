@@ -255,6 +255,7 @@ const Live = (() => {
     on = false; handlers = null;
     try { N().liveStop(); } catch (e) {}
   }
+  function probe(h) { if (!native() || !N().liveProbe) return false; handlers = h; try { N().liveProbe(); return true; } catch (e) { return false; } }
   function send(text) { if (!on || !native()) return false; try { return !!(JSON.parse(N().liveSendText(text)).ok); } catch (e) { return false; } }
   /* Kotlin pushes every event here: state / user / model / error / closed */
   window.__adarshLive = (ev) => {
@@ -263,13 +264,14 @@ const Live = (() => {
     try {
       if (ev.type === 'state' && h.onState) h.onState(ev.state, ev.model);
       else if (ev.type === 'notice' && h.onNotice) h.onNotice(ev.message);
+      else if (ev.type === 'probe' && h.onProbe) h.onProbe(ev.message);
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
       else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
       else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
       else if (ev.type === 'closed' && h.onClosed) h.onClosed();
     } catch (e) {}
   };
-  return { available, native, start, stop, send, model: () => model, get isOn() { return on; } };
+  return { available, native, start, stop, send, probe, model: () => model, get isOn() { return on; } };
 })();
 
 const Voice = (() => {

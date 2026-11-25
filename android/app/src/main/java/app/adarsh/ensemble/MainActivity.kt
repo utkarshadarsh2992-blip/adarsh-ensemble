@@ -476,6 +476,12 @@ class MainActivity : AppCompatActivity() {
             }
             a.startLiveNow(cfg).toString()
         }
+        /** Settings > Test Adarsh Live: first a plain HTTPS key/network check, then the socket itself. */
+        fun liveProbe(): String = onMain {
+            val a = current!!
+            AdarshLive.probe(a) { ev -> a.js("window.__adarshLive&&window.__adarshLive($ev)") }
+            JSONObject().put("ok", true).toString()
+        }
         fun liveSendText(text: String): String = onMain {
             JSONObject().put("ok", current?.live?.sendText(text) ?: false).toString()
         }

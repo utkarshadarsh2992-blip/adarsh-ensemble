@@ -37,15 +37,27 @@ def test_setup_message_shape():
     assert 'optBoolean("interrupted")' in LIVE
     # the real reason arrives in the close frame, so it must reach the page (this is what looked like "connect nahi hua")
     assert 'override fun onClosing(webSocket: WebSocket, code: Int, reason: String)' in LIVE
-    assert 'put("type", "error").put("message", message)' in LIVE
+    assert 'put("type", "error")' in LIVE and '"Live nahi chala — "' in LIVE
     # a refused model falls back instead of leaving the screen on "Connecting…"
-    assert "FALLBACK" in LIVE and "tryNext(" in LIVE
+    assert "FALLBACK" in LIVE and "next()" in LIVE
+
+
+def test_every_endpoint_and_auth_variant_is_tried():
+    # the Gemini 3.8 Live docs use v1alpha, the WebSocket guide uses v1beta; both auth forms are documented
+    assert 'Variant("v1alpha", true), Variant("v1beta", true)' in LIVE
+    assert 'Variant("v1alpha", false), Variant("v1beta", false)' in LIVE
+    # each attempt is time-boxed and its outcome is kept, so the failure message says which one failed and why
+    assert "SETUP_TIMEOUT_MS = 12_000L" in LIVE
+    assert 'note("timeout")' in LIVE and 'trace.joinToString(" | ")' in LIVE
+    # Settings > Test Adarsh Live checks key + network with plain HTTPS before blaming the socket
+    assert 'fun probe(ctx: Context, emit: (JSONObject) -> Unit)' in LIVE
+    assert "https://generativelanguage.googleapis.com/v1beta/models/" in LIVE
 
 
 def test_key_is_never_placed_in_the_url_first():
     # header first, documented ?key= form only as a fallback, and the key is read on the device
-    assert 'b.header("x-goog-api-key", k)' in LIVE
-    assert '"?key=" + k' in LIVE
+    assert 'b.header("x-goog-api-key", key)' in LIVE
+    assert '"?key=" + key' in LIVE
     assert 'AdarshApp).keys.first("GEMINI_API_KEY")' in ACTIVITY
     assert "keys.first(\"GEMINI_API_KEY\")" in ACTIVITY
 
@@ -58,7 +70,7 @@ def test_models_match_between_kotlin_and_the_ui():
 
 
 def test_bridge_and_activity_expose_the_session():
-    for name in ("liveStart", "liveStop", "liveSendText", "liveStatus"):
+    for name in ("liveStart", "liveStop", "liveSendText", "liveStatus", "liveProbe"):
         assert f"fun {name}(" in BRIDGE and f"fun {name}(" in ACTIVITY, name
     # the session is torn down with the screen: never background listening
     assert "live?.stop()" in ACTIVITY.split("override fun onDestroy")[1][:400]

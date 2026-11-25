@@ -27,9 +27,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Out: 24 kHz 16-bit mono PCM from `serverContent.modelTurn.parts[].inlineData.data`, streamed to an AudioTrack.
  * Barge-in: `serverContent.interrupted` drops whatever is still queued, so the model's voice stops at once.
  *
- * The handshake almost always succeeds; the real answer arrives as a close frame ("API key not valid", "model not
- * found", "not supported for this key"). Those reasons used to be dropped, which looked like "connect nahi ho raha",
- * so every close before `setupComplete` is now reported to the page and the next model in the chain is tried.
+ * The handshake almost always succeeds; the answer arrives afterwards as `setupComplete` or as a close frame
+ * ("API key not valid", "model not found", ...). Because the exact endpoint/auth form differs between the v1alpha
+ * (Gemini 3.8 Live docs) and v1beta (WebSocket get-started docs) services, every variant is tried once and the
+ * per-variant result is kept, so a failure can say *why* instead of sitting on "Connecting…".
  */
 class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Unit) {
 
@@ -45,13 +46,42 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         )
         /** Tried in order when the chosen model is refused for this key. Each is a normal Live dialogue model. */
         private val FALLBACK = listOf("gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview")
-        private const val PATH = "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
-        private const val HOST = "wss://generativelanguage.googleapis.com"
+        private const val HOST = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage"
+        private const val METHOD = ".GenerativeService.BidiGenerateContent"
         private const val IN_RATE = 16000
         private const val OUT_RATE = 24000
         private const val CHUNK_SAMPLES = IN_RATE / 10          // 100 ms
         private const val MAX_PROMPT = 6000
-        private const val SETUP_TIMEOUT_MS = 25_000L
+        private const val SETUP_TIMEOUT_MS = 12_000L
+
+        /** Plain HTTPS check of the same host and key: tells a bad key or blocked network apart from a socket problem. */
+        fun probe(ctx: Context, emit: (JSONObject) -> Unit) {
+            val key = (ctx.applicationContext as AdarshApp).keys.first("GEMINI_API_KEY")
+            val post = Handler(Looper.getMainLooper())
+            if (key.isNullOrBlank()) {
+                post.post { emit(JSONObject().put("type", "probe").put("message", "Gemini API key nahi mili (Settings > API keys).")) }
+                return
+            }
+            Thread {
+                val msg = try {
+                    val c = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+                    val req = Request.Builder()
+                        .url("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-live")
+                        .header("x-goog-api-key", key).build()
+                    c.newCall(req).execute().use { r ->
+                        if (r.isSuccessful) "key ok · HTTP " + r.code
+                        else "HTTP " + r.code + " · " + ((r.body?.string() ?: "").replace("\n", " ").take(120))
+                    }
+                } catch (e: Exception) { "network: " + (e.message ?: e.javaClass.simpleName) }
+                post.post { emit(JSONObject().put("type", "probe").put("message", msg)) }
+            }.also { it.isDaemon = true; it.start() }
+        }
+    }
+
+    /** One endpoint + auth form. v1alpha is what the Gemini 3.8 Live docs use; v1beta is the WebSocket guide. */
+    private data class Variant(val api: String, val header: Boolean) {
+        val label: String get() = api + "/" + (if (header) "header" else "key")
+        fun url(key: String) = HOST + api + METHOD + if (header) "" else "?key=" + key
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -62,11 +92,11 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private var key = ""
     private var voice = "Orus"
     private var prompt = ""
-    private var chain: List<String> = emptyList()
-    private var attempt = 0
+    private var plans: List<Pair<Variant, String>> = emptyList()   // every endpoint/model combination, in order
+    private var step = 0
     private var gotSetup = false
-    private var usedHeader = false
     private var lastWhy = ""
+    private val trace = ArrayList<String>()
 
     private var recorder: AudioRecord? = null
     private var micThread: Thread? = null
@@ -76,14 +106,19 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     @Volatile private var speaking = false
 
     private val setupTimeout = Runnable {
-        if (!closed.get() && !gotSetup) {
-            lastWhy = "server ne setup ka jawab nahi diya"
-            tryNext("setup timeout")
-        }
+        if (closed.get() || gotSetup) return@Runnable
+        note("timeout")
+        next()
     }
 
     private fun say(obj: JSONObject) {
         main.post { try { emit(obj) } catch (_: Exception) { } }
+    }
+
+    private fun note(what: String) {
+        val p = plans.getOrNull(step) ?: return
+        trace.add(p.first.label + " " + p.second.replace("gemini-", "") + ": " + what)
+        while (trace.size > 6) trace.removeAt(0)
     }
 
     fun active(): Boolean = !closed.get()
@@ -98,21 +133,27 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         key = k
         voice = cfg.optString("voice", "Orus").take(40)
         prompt = cfg.optString("prompt").take(MAX_PROMPT)
-        chain = (listOf(model) + FALLBACK).distinct()
-        attempt = 0
+        val variants = listOf(
+            Variant("v1alpha", true), Variant("v1beta", true),
+            Variant("v1alpha", false), Variant("v1beta", false)
+        )
+        // chosen model on every endpoint first, then the fallback models; at most 8 attempts (~12 s each at worst)
+        plans = (listOf(model) + FALLBACK).flatMap { m -> variants.map { v -> v to m } }.take(8)
+        step = 0
         gotSetup = false
         lastWhy = ""
+        trace.clear()
         closed.set(false)
         speaking = false
         queue.clear()
         client = OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .pingInterval(20, TimeUnit.SECONDS)
             .build()
-        say(JSONObject().put("type", "state").put("state", "connecting").put("model", chain[0]))
+        say(JSONObject().put("type", "state").put("state", "connecting").put("model", model))
         connect()
-        return JSONObject().put("ok", true).put("state", "connecting").put("model", chain[0])
+        return JSONObject().put("ok", true).put("state", "connecting").put("model", model)
     }
 
     private fun setupJson(model: String): String {
@@ -129,100 +170,94 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     }
 
     private fun connect() {
-        val model = chain.getOrElse(attempt) { chain.last() }
-        val socket = open(key, header = !usedHeader)
-        if (socket == null) {
-            lastWhy = "socket khul hi nahi paya"
-            say(JSONObject().put("type", "error").put("message", "Live connection nahi khula. Internet check karo."))
-            closed.set(true)
-            return
-        }
+        val plan = plans.getOrNull(step)
+        if (plan == null) { finish(); return }
+        val (variant, model) = plan
+        val request = try {
+            val b = Request.Builder().url(variant.url(key))
+            if (variant.header) b.header("x-goog-api-key", key)
+            b.build()
+        } catch (_: Exception) { note("url"); next(); return }
+        val socket = try { client!!.newWebSocket(request, listener) } catch (_: Exception) { null }
+        if (socket == null) { note("socket"); next(); return }
         ws = socket
         socket.send(setupJson(model))
         main.removeCallbacks(setupTimeout)
         main.postDelayed(setupTimeout, SETUP_TIMEOUT_MS)
     }
 
-    /** The key travels in a header so it never appears in a URL; the documented `?key=` form is the fallback. */
-    private fun open(k: String, header: Boolean): WebSocket? = try {
-        val b = Request.Builder().url(HOST + PATH + if (header) "" else "?key=" + k)
-        if (header) b.header("x-goog-api-key", k)
-        client!!.newWebSocket(b.build(), listener)
-    } catch (_: Exception) { null }
+    /** Next endpoint/model. Called from the socket callbacks (OkHttp threads) or the main-thread timer. */
+    private fun next() {
+        main.post {
+            if (closed.get()) return@post
+            main.removeCallbacks(setupTimeout)
+            if (gotSetup) return@post
+            stopAudio()
+            try { ws?.close(1000, "retry") } catch (_: Exception) { }
+            ws = null
+            step++
+            if (step >= plans.size) { finish(); return@post }
+            connect()
+        }
+    }
+
+    private fun finish() {
+        if (closed.getAndSet(true)) return
+        main.removeCallbacks(setupTimeout)
+        stopAudio()
+        try { ws?.close(1000, "bye") } catch (_: Exception) { }
+        ws = null
+        val detail = if (trace.isEmpty()) (lastWhy.ifBlank { "koi jawab nahi aaya" }) else trace.joinToString(" | ")
+        say(JSONObject().put("type", "error").put("message", "Live nahi chala — " + detail.take(600)))
+    }
 
     private val listener = object : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) { }
+        override fun onOpen(webSocket: WebSocket, response: Response) {
+            if (webSocket !== ws) return
+            note("open")
+        }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
-            if (webSocket !== ws) return   // a socket replaced by the model fallback must not speak any more
+            if (webSocket !== ws) return   // a socket replaced by the fallback must not speak any more
             try { handle(JSONObject(text)) } catch (_: Exception) { }
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (closed.get() || webSocket !== ws) return
-            val code = response?.code ?: 0
-            if ((code == 401 || code == 403) && !usedHeader) {   // handshake rejected: retry once in the query form
-                usedHeader = true
-                connect()
-                return
-            }
             lastWhy = (t.message ?: "network").take(160)
-            tryNext("network/HTTP $code")
+            note("fail " + (response?.code?.takeIf { it > 0 }?.toString() ?: lastWhy))
+            next()
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             if (webSocket !== ws) return
             // The server explains real failures here ("API key not valid", "model not found", ...).
             if (reason.isNotBlank()) lastWhy = reason.take(300)
+            note("close $code " + reason.take(80))
             try { webSocket.close(code, null) } catch (_: Exception) { }
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             if (closed.get() || webSocket !== ws) return
             if (reason.isNotBlank()) lastWhy = reason.take(300)
-            if (!gotSetup) { tryNext("closed $code"); return }
-            finish("Live band ho gaya" + if (reason.isNotBlank()) ": " + reason.take(120) else "")
+            if (!gotSetup) { next(); return }
+            finish()
         }
-    }
-
-    /** Next model in the chain, or a readable error if none is left. */
-    private fun tryNext(why: String) {
-        main.removeCallbacks(setupTimeout)
-        if (closed.get()) return
-        val detail = if (lastWhy.isNotBlank()) lastWhy else why
-        if (attempt + 1 < chain.size) {
-            attempt++
-            say(JSONObject().put("type", "notice").put("message", "Live: " + detail + " — " + chain[attempt] + " try kar raha hoon."))
-            stopAudio()
-            try { ws?.close(1000, "retry") } catch (_: Exception) { }
-            ws = null
-            gotSetup = false
-            connect()
-            return
-        }
-        finish("Live nahi chala: " + detail)
-    }
-
-    private fun finish(message: String) {
-        closed.set(true)
-        main.removeCallbacks(setupTimeout)
-        stopAudio()
-        try { ws?.close(1000, "bye") } catch (_: Exception) { }
-        ws = null
-        say(JSONObject().put("type", "error").put("message", message))
     }
 
     private fun handle(obj: JSONObject) {
         if (obj.has("setupComplete")) {
             main.removeCallbacks(setupTimeout)
             gotSetup = true
-            say(JSONObject().put("type", "state").put("state", "listening").put("model", chain.getOrElse(attempt) { "" }))
+            val model = plans.getOrNull(step)?.second ?: ""
+            say(JSONObject().put("type", "state").put("state", "listening").put("model", model))
             startMic()
             return
         }
         obj.optJSONObject("error")?.let { err ->
             lastWhy = (err.optString("message").ifBlank { err.toString() }).take(300)
-            if (!gotSetup) tryNext("error") else finish("Live error: " + lastWhy)
+            note("error " + lastWhy.take(80))
+            if (!gotSetup) next() else finish()
             return
         }
         val sc = obj.optJSONObject("serverContent") ?: return

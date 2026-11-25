@@ -3663,10 +3663,13 @@ const App = (() => {
         S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,
           (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn', on: { click: () => {
             out.textContent = 'Live test chal raha hai…';
-            Live.start({ onState: (s, m) => { if (s === 'listening') out.textContent = 'Live chalu hai' + (m ? ' (' + m + ')' : '') + '. Ab voice screen kholo.'; },
-              onNotice: (m) => { out.textContent = m; },
-              onError: (m) => { out.textContent = 'Live nahi chala: ' + m; Live.stop(); },
+            const lines = [];
+            Live.start({ onState: (s, m) => { if (s === 'listening') { lines.push('Live chalu hai' + (m ? ' (' + m + ')' : '')); out.textContent = lines.join(' · ') + ' — ab voice screen kholo.'; } },
+              onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); },
+              onNotice: (m) => { lines.push(m); out.textContent = lines.join(' · '); },
+              onError: (m) => { lines.push('Live: ' + m); out.textContent = lines.join(' · '); Live.stop(); },
               onClosed: () => {} });
+            Live.probe({ onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); } });
             setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /chal raha/.test(out.textContent)) out.textContent = 'Live chalu ho gaya (test band kar diya).'; } }, 8000);
           } } }, 'Test Adarsh Live'); return h('div', {}, btn, out); })(),
           h('p', { class: 'muted' }, 'Sirf live voice screen par. Awaaz aur mic seedhe Google Gemini ko jaate hain; koi recording save nahi hoti. Fail ho to purani voice chalti hai.')) : null)
@@ -4127,6 +4130,7 @@ const Live = (() => {
     on = false; handlers = null;
     try { N().liveStop(); } catch (e) {}
   }
+  function probe(h) { if (!native() || !N().liveProbe) return false; handlers = h; try { N().liveProbe(); return true; } catch (e) { return false; } }
   function send(text) { if (!on || !native()) return false; try { return !!(JSON.parse(N().liveSendText(text)).ok); } catch (e) { return false; } }
   /* Kotlin pushes every event here: state / user / model / error / closed */
   window.__adarshLive = (ev) => {
@@ -4135,13 +4139,14 @@ const Live = (() => {
     try {
       if (ev.type === 'state' && h.onState) h.onState(ev.state, ev.model);
       else if (ev.type === 'notice' && h.onNotice) h.onNotice(ev.message);
+      else if (ev.type === 'probe' && h.onProbe) h.onProbe(ev.message);
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
       else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
       else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
       else if (ev.type === 'closed' && h.onClosed) h.onClosed();
     } catch (e) {}
   };
-  return { available, native, start, stop, send, model: () => model, get isOn() { return on; } };
+  return { available, native, start, stop, send, probe, model: () => model, get isOn() { return on; } };
 })();
 
 const Voice = (() => {

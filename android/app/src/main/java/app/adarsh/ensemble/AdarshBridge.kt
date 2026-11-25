@@ -57,6 +57,8 @@ class AdarshBridge(
     @JavascriptInterface
     fun liveStart(config: String): String = if (ok()) MainActivity.liveStart(config) else denied
     @JavascriptInterface
+    fun liveProbe(): String = if (ok()) MainActivity.liveProbe() else denied
+    @JavascriptInterface
     fun liveSendText(text: String): String = if (ok()) MainActivity.liveSendText(text) else denied
     @JavascriptInterface
     fun liveStop(): String = if (ok()) MainActivity.liveStop() else denied

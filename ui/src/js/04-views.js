@@ -290,10 +290,13 @@ const App = (() => {
         S.settings.adarshLive ? h('div', {}, h('label', { class: 'l' }, 'Live model'), livePick,
           (() => { const out = h('p', { class: 'muted' }, ''); const btn = h('button', { class: 'btn', on: { click: () => {
             out.textContent = 'Live test chal raha hai…';
-            Live.start({ onState: (s, m) => { if (s === 'listening') out.textContent = 'Live chalu hai' + (m ? ' (' + m + ')' : '') + '. Ab voice screen kholo.'; },
-              onNotice: (m) => { out.textContent = m; },
-              onError: (m) => { out.textContent = 'Live nahi chala: ' + m; Live.stop(); },
+            const lines = [];
+            Live.start({ onState: (s, m) => { if (s === 'listening') { lines.push('Live chalu hai' + (m ? ' (' + m + ')' : '')); out.textContent = lines.join(' · ') + ' — ab voice screen kholo.'; } },
+              onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); },
+              onNotice: (m) => { lines.push(m); out.textContent = lines.join(' · '); },
+              onError: (m) => { lines.push('Live: ' + m); out.textContent = lines.join(' · '); Live.stop(); },
               onClosed: () => {} });
+            Live.probe({ onProbe: (m) => { lines.push('Key check: ' + m); out.textContent = lines.join(' · '); } });
             setTimeout(() => { if (Live.isOn) { Live.stop(); if (!out.textContent || /chal raha/.test(out.textContent)) out.textContent = 'Live chalu ho gaya (test band kar diya).'; } }, 8000);
           } } }, 'Test Adarsh Live'); return h('div', {}, btn, out); })(),
           h('p', { class: 'muted' }, 'Sirf live voice screen par. Awaaz aur mic seedhe Google Gemini ko jaate hain; koi recording save nahi hoti. Fail ho to purani voice chalti hai.')) : null)
