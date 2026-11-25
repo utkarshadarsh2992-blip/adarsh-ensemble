@@ -133,3 +133,26 @@ def test_philosophy_and_personality_reach_the_live_prompt():
     assert "S.philosophy" in block and "Sir" in block and "slice(0, 3000)" in block
 
 # Build note: this file is also a trigger for the Android APK workflow (tests/**).
+
+
+def test_special_live_models_get_their_own_documented_payload():
+    """Transcribe answers in TEXT and Translate uses translationConfig: the dialogue payload made both fail,
+    which is why only the voice models ever connected."""
+    # transcribe: TEXT out, no speech config, no instructions
+    assert 'put("responseModalities", JSONArray().put("TEXT"))' in LIVE
+    assert '"transcribe" -> {' in LIVE and '"translate" -> {' in LIVE
+    assert 'put("mode", "SMART")' in LIVE
+    # translate: translationConfig instead of systemInstruction
+    assert 'put("translationConfig", JSONObject()' in LIVE
+    assert 'put("targetLanguageCode", target)' in LIVE and 'put("echoTargetLanguage", false)' in LIVE
+    # a translation target travels with the role ("translate:en")
+    assert 'val roleName = asked.substringBefore(\':\')' in LIVE
+    assert "if (roleName == \"translate\" && want.isNotBlank()) target = want.take(12)" in LIVE
+    assert "const ask = r === 'translate' ? 'translate:' + translateTarget(said) : r;" in VOICE
+    assert "const translateTarget = (t) =>" in VOICE
+
+
+def test_dictation_transcript_does_not_reroute_the_session():
+    # the transcript of our own voice must not bounce the session between roles
+    assert "if (current === 'transcribe') return" in VOICE
+    assert "(stop|band|bas|normal|wapas|ruko|kaafi)" in VOICE
