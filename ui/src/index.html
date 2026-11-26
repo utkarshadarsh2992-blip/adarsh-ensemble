@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8">
 <!-- Audit M1/L7: no frames, plugins or <base> rewrites can ever load inside the app (the native bridge is visible to every frame). -->
-<meta http-equiv="Content-Security-Policy" content="frame-src 'none'; object-src 'none'; base-uri 'none'">
+<!-- Native pages load bundled scripts/styles; browser mode uses only user-configured HTTPS endpoints. Inline style is retained for dynamic layout values. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="edge">
 <meta name="theme-color" content="#FAF9F6">
 <title>ADARSH</title>
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="css/app.css">

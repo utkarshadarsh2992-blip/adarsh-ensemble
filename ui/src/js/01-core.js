@@ -127,15 +127,25 @@ function load() {
     /* The Standard-mode assistant switch was saved as `jarvis` by older builds; keep the user's choice under its new name. */
     if (ds.adarshActions === undefined && typeof ds.jarvis === 'boolean') ds.adarshActions = ds.jarvis;
     delete ds.jarvis;
+    const legacyToken = d.conn && typeof d.conn.token === 'string' ? d.conn.token : '';
+    const nativeConnection = !!window.AdarshConnection;
+    let secureToken = '';
+    if (nativeConnection) {
+      secureToken = window.AdarshConnection.getToken() || '';
+      if (!secureToken && legacyToken) {
+        if (window.AdarshConnection.saveToken(legacyToken)) secureToken = legacyToken;
+      }
+      if (d.conn) delete d.conn.token;
+    }
     /* v4 redesign: replies are serif by default. Data saved by an older build has no `ui4`, so its old default 'sans' is moved to 'serif' once. */
-    Object.assign(S, base, d, { settings: { ...base.settings, ...ds, ...(ds.ui4 ? {} : { font: 'serif' }), ui4: 1 }, conn: { ...base.conn, ...(d.conn || {}) } });
+    Object.assign(S, base, d, { settings: { ...base.settings, ...ds, ...(ds.ui4 ? {} : { font: 'serif' }), ui4: 1 }, conn: { ...base.conn, ...(d.conn || {}), ...(nativeConnection ? { token: secureToken } : {}) } });
   } catch (e) { console.warn('load failed', e); }
 }
 let _st = 0;
 function save() { clearTimeout(_st); _st = setTimeout(saveNow, 250); }
 function saveNow() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' || k === '_ctx' ? undefined : v)));
+    localStorage.setItem(KEY, JSON.stringify(S, (k, v) => (k === 'thumb' || k === 'dataUrl' || k === '_ctx' || (k === 'token' && window.AdarshConnection) ? undefined : v)));
     return true;
   } catch (e) { console.warn('save failed', e); return false; }
 }

@@ -58,7 +58,7 @@ const Chat = (() => {
     statusEl = h('span', { class: 'status', role: 'button', title: 'Engine dobara check karne ko tap karo', on: { click: () => Backend.refresh() } }, h('i'), h('span', {}, ''));
     callsBtn = ibtn('search2', 'Model calls dikhao', toggleCalls, 'calls');
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
-      h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
+      h('div', { class: 'hdr-r' }, callsBtn, ibtn('globe', 'Open news', () => App.show('news'), 'news-open'), ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
     thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
     /* the moment the user takes the scroll, stop following: no fight between the finger and the ease */
     ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(t => thread.addEventListener(t, stopFollowing, { passive: true }));

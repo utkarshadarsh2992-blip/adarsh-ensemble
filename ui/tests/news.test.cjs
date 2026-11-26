@@ -116,6 +116,22 @@ test('Android touch events open News from the right half and claim the horizonta
   assert.equal(m.App.view, 'news', 'Touch Events fallback opens News after a short right-half swipe');
   m.close();
 });
+test('reverse swipe closes News and chat header exposes a visible fallback button', () => {
+  const m = mount();
+  const phone = m.document.querySelector('#phone');
+  phone.getBoundingClientRect = () => ({ left: 0, right: 480, top: 0, bottom: 900, width: 480, height: 900 });
+  const pointer = (target, type, x, y) => {
+    const ev = new m.window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(ev, { clientX: { value: x }, clientY: { value: y }, pointerType: { value: 'touch' }, isPrimary: { value: true } });
+    target.dispatchEvent(ev);
+  };
+  m.App.show('news');
+  pointer(phone, 'pointerdown', 120, 220); pointer(phone, 'pointerup', 190, 224);
+  assert.equal(m.App.view, 'chat', 'a dominant rightward swipe closes News');
+  assert.ok(m.document.querySelector('#v-chat [aria-label="Open news"]'), 'chat has a tappable non-gesture fallback');
+  m.close();
+});
+
 test('dashboard lists cards with badges, filter chips and the request body', async () => {
   const a = api({ list: (b) => L(b.filter === 'CN' ? [item({ id: 'c1', title: 'Xinhua daava', region: 'CN', state_media: true, claim_tag: 'sarkari daava', verified: 'state-only', breaking: false })] : [item(), item({ id: 'i2', title: 'Doosri khabar', breaking: false, verified: 'single' })]) });
   const m = mount({ fetchImpl: a.f, ls: CFG });
