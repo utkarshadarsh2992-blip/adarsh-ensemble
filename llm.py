@@ -23,6 +23,7 @@ import json
 import re
 import socket
 import time
+import uuid
 
 import httpx
 
@@ -310,13 +311,17 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
 
     prov = PROVIDERS[spec.provider]
     slot = spec.key_slot or ((prov.slots() or [1])[0])
+    account_snapshot = {name: prov._need(name, slot) for name in prov.needs}
     api_key = prov.key(slot)
-    if not api_key:
+    if not api_key or any(not account_snapshot[name] for name in prov.needs):
         raise _Skip(f"{config.slot_env(prov.api_key_env, slot)} not set", retry=False)
-    base_url = prov.url_for(slot)
+    base_url = prov.base_url
+    for name, value in account_snapshot.items():
+        base_url = base_url.replace("{" + name + "}", value)
     headers = {"Authorization": f"Bearer {api_key}"}
     if spec.provider == "openrouter":
         headers["X-Title"] = "multi-model-ensemble"
+    accounting_context = health.capture_request_context(spec, api_key, account_snapshot)
 
     msgs = messages
     attempts, recovered, think_retried = 0, False, bool(boost)
@@ -331,7 +336,11 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
             payload["max_tokens"] = max_tokens
 
         if rpm or tpm:  # our own per-minute window: wait for a free slot or let the chain move on
-            got, wait = health.reserve_slot(health.quota_key(spec), rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S)
+            reservation_id = uuid.uuid4().hex
+            reservation_key = health.request_window_key(spec, accounting_context)
+            got, wait = health.reserve_slot(reservation_key, rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S,
+                                            reservation_id=reservation_id,
+                                            accounting_context=accounting_context)
             if not got:
                 if think_retried:  # this key's minute is used up: the bigger, lighter request goes to the model's
                     health.fail(spec, 15)  # next key (own tokens/min window); after the last key, the next model
@@ -342,17 +351,22 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                 await asyncio.sleep(wait)
                 ok, why = health.available(spec)  # somebody may have hit a 429 for this model meanwhile
                 if not ok:
+                    health.cancel_reservation(reservation_key, reservation_id)
                     raise _Skip(why)
 
-        health.note_request(spec)
+        health.note_request(spec, accounting_context)
         sent = time.perf_counter()
         try:
             async with _sem(spec.provider):
                 sent = time.perf_counter()  # the error text shows how long the connection lived, not the queue
-                if stream:
-                    r = await _post_stream(client, url, payload, headers, timeout)
-                else:
-                    r = await client.post(url, json=payload, headers=headers, timeout=timeout)
+                try:
+                    if stream:
+                        r = await _post_stream(client, url, payload, headers, timeout)
+                    else:
+                        r = await client.post(url, json=payload, headers=headers, timeout=timeout)
+                finally:
+                    if rpm or tpm:
+                        health.finish_reservation(reservation_id)
         except httpx.HTTPError as e:
             health.provider_error(spec.provider, slot)
             if attempts <= retries and health.available(spec)[0]:

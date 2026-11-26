@@ -402,13 +402,32 @@ export function sanitizeReport(input: unknown): CleanReport {
     if (!isObject(rawProvider) || typeof rawProvider.id !== 'string' || !providerIds.includes(rawProvider.id as ProviderId) || seenProviders.has(rawProvider.id)) fault(400, code);
     const id = rawProvider.id as ProviderId;
     seenProviders.add(id);
-    if (!Array.isArray(rawProvider.keys) || rawProvider.keys.length > 3) fault(400, code);
-    const seenSlots = new Set<number>();
+    if (!Array.isArray(rawProvider.keys) || rawProvider.keys.length > 60) fault(400, code);
+    const keysComplete = rawProvider.keys_complete === undefined ? undefined : bool(rawProvider.keys_complete, code);
+    if (keysComplete && (input.sampled_at === undefined || rawProvider.keys.some((key) => !isObject(key) || typeof key.active !== 'boolean'))) fault(400, code);
+    const seenIdentities = new Set<string>();
+    const activeSlots = new Set<number>();
     const keys = rawProvider.keys.map((rawKey) => {
       if (!isObject(rawKey)) fault(400, code);
       const slot = integer(rawKey.slot, 1, 3, code);
-      if (seenSlots.has(slot) || !['nokey', 'cool', 'out', 'low', 'ok'].includes(String(rawKey.state))) fault(400, code);
-      seenSlots.add(slot);
+      let generation: string | undefined;
+      if (rawKey.generation !== undefined) {
+        if (typeof rawKey.generation !== 'string' || !/^[0-9a-f]{32}$/.test(rawKey.generation)) fault(400, code);
+        generation = rawKey.generation;
+      }
+      const identity = `${slot}:${generation ?? 'legacy'}`;
+      if (seenIdentities.has(identity) || !['nokey', 'cool', 'out', 'low', 'ok'].includes(String(rawKey.state))) fault(400, code);
+      seenIdentities.add(identity);
+      const active = rawKey.active === undefined ? undefined : bool(rawKey.active, code);
+      if (active !== false) {
+        if (activeSlots.has(slot)) fault(400, code);
+        activeSlots.add(slot);
+      }
+      let trackedSince: string | undefined;
+      if (rawKey.tracked_since_day !== undefined) {
+        trackedSince = dateOnly(rawKey.tracked_since_day, code);
+        if (trackedSince > day || !generation) fault(400, code);
+      }
       if (!Array.isArray(rawKey.models) || rawKey.models.length > 100) fault(400, code);
       const seenModels = new Set<string>();
       const models = rawKey.models.map((rawModel) => {
@@ -436,6 +455,9 @@ export function sanitizeReport(input: unknown): CleanReport {
       });
       return {
         slot, set: bool(rawKey.set, code), state: rawKey.state as string,
+        ...(generation ? { generation } : {}),
+        ...(active === undefined ? {} : { active }),
+        ...(trackedSince ? { tracked_since_day: trackedSince } : {}),
         cool_s: integer(rawKey.cool_s, 0, 86_400, code),
         req: integer(rawKey.req, 0, 1_000_000_000_000, code),
         tok: integer(rawKey.tok, 0, 1_000_000_000_000, code), models,
@@ -446,6 +468,7 @@ export function sanitizeReport(input: unknown): CleanReport {
       set: integer(rawProvider.set, 0, 3, code),
       req: integer(rawProvider.req, 0, 1_000_000_000_000, code),
       tok: integer(rawProvider.tok, 0, 1_000_000_000_000, code), keys,
+      ...(keysComplete === undefined ? {} : { keys_complete: keysComplete }),
     };
   });
   const seenDays = new Set<string>();
@@ -469,7 +492,9 @@ export function sanitizeReport(input: unknown): CleanReport {
   const margin = boundedFraction(input.margin, code);
   const reserve = boundedFraction(input.reserve, code);
   const reset_in_s = integer(input.reset_in_s, 0, 86_400, code);
-  return { day_utc: day, totals, providers, features, days, truth, standard, margin, reserve, reset_in_s };
+  const sampled_at = input.sampled_at === undefined ? undefined : integer(input.sampled_at, 0, 8_640_000_000_000_000, code);
+  return { day_utc: day, totals, providers, features, days, truth, standard, margin, reserve, reset_in_s,
+    ...(sampled_at === undefined ? {} : { sampled_at }) };
 }
 
 export function sanitizeReports(input: unknown): CleanReport[] {

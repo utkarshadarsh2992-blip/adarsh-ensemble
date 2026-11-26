@@ -194,8 +194,18 @@ def one(text: str, now: int) -> dict | None:
         if re.search(r"\b(?:memory|memories)\b", padded): return _step("memory.clear")
         return _blocked("Delete/clear commands are blocked for safety.")
 
-    # Device status and voice conversation.
-    if re.search(r"\b(?:battery|charge|charging|phone status|device status|storage|ram)\b", padded) and not re.search(r"\b(?:search|google|open|kholo)\b", padded):
+    # Device status and voice conversation. Bare RAM/storage/charge questions
+    # may refer to remote hardware; route them locally only with a clear device
+    # target. Battery questions remain a familiar shorthand for this device.
+    status_term = re.search(r"\b(?:battery|charge|charging|storage|ram)\b", padded)
+    battery_intent = re.search(r"\bbattery\b", padded)
+    local_device = re.search(r"\b(?:phone|mobile|device)\b", padded)
+    remote_hardware = re.search(r"\b(?:cloud|gpu|laptop|server|provider|providers|workstation|remote)\b", padded)
+    if status_term and (battery_intent or local_device) \
+            and not remote_hardware and not re.search(r"\b(?:search|google|open|kholo)\b", padded):
+        return _step("phone.status")
+    if re.search(r"\b(?:phone|device)\s+status\b", padded) \
+            and not remote_hardware and not re.search(r"\b(?:search|google|open|kholo)\b", padded):
         return _step("phone.status")
     if re.search(r"\b(?:voice mode|voice conversation|voice chat|baat karni hai|baat karte hain|bol ke baat)\b", padded):
         return _step("voice.open")

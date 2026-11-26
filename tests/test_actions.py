@@ -51,8 +51,23 @@ def test_open_search_status_voice():
     assert one("whatsapp kholo")[1]["args"]["app"] == "whatsapp"
     assert one("google par best laptop search karo")[1]["args"]["query"] == "best laptop"
     assert one("battery kitni hai")[1]["action"] == "phone.status"
+    assert one("battery status")[1]["action"] == "phone.status"
+    assert one("phone RAM kitna hai")[1]["action"] == "phone.status"
+    assert one("mere mobile ki storage")[1]["action"] == "phone.status"
     assert one("voice mode kholo")[1]["action"] == "voice.open"
     assert one("torch on karo")[1]["args"]["on"] is True
+
+
+def test_remote_hardware_questions_fall_through_to_model():
+    for question in (
+        "What do cloud GPU providers charge?",
+        "How much RAM does a cloud GPU provider offer?",
+        "How much storage does the cloud GPU have?",
+    ):
+        assert plan(question, "standard", NOW) is None, question
+    # An explicit browser search containing device terms remains a search action.
+    s = one("Google par phone RAM search karo")[1]
+    assert s["action"] == "web.search" and s["args"]["query"] == "phone ram"
 
 
 def test_sensitive_actions_need_confirmation():

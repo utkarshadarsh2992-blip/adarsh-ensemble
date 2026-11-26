@@ -85,6 +85,28 @@ test('Standard request carries the style and the learned words; reply words are 
   } finally { app.close(); }
 });
 
+test('CHECK starts collapsed, opens only on tap and remembers expansion through local answer redraws', async () => {
+  const app = mount({ reply: stdReply });
+  try {
+    await app.Chat.submit('Inertia kya hai?');
+    await until(() => !app.Chat.isBusy() && app.document.querySelector('.lcheck'));
+    const card = () => app.document.querySelector('.lcheck');
+    assert.equal(card().tagName, 'DETAILS');
+    assert.equal(card().open, false, 'a new answer must not expand its quiz');
+    assert.equal(card().firstElementChild.tagName, 'SUMMARY');
+    card().querySelector('summary').click();
+    assert.equal(card().open, true, 'summary tap expands the retained quiz');
+    card().querySelector('.lc-opt').click();
+    assert.equal(card().open, true, 'checking an answer must not collapse the quiz');
+    card().querySelector('summary').click();
+    assert.equal(card().open, false, 'second summary tap collapses the quiz');
+    await app.Chat.submit('Force kya hai?');
+    await until(() => !app.Chat.isBusy() && app.document.querySelectorAll('.lcheck').length === 2);
+    assert.ok([...app.document.querySelectorAll('.lcheck')].every(el => !el.open), 'new replies remain independently collapsed');
+    assert.equal(app.sent.length, 2, 'disclosure and local checking make no extra model calls');
+  } finally { app.close(); }
+});
+
 test('check card: MCQ tap and fill-in are checked without any backend call', async () => {
   const app = mount({ reply: stdReply });
   try {
@@ -92,6 +114,8 @@ test('check card: MCQ tap and fill-in are checked without any backend call', asy
     await until(() => !app.Chat.isBusy() && app.document.querySelector('.lcheck'));
     const card = () => app.document.querySelector('.lcheck');
     assert.match(text(card().querySelector('.lc-h')), /CHECK.*Inertia.*REASONING.*0\/2/);
+    card().querySelector('summary').click();
+    assert.equal(card().open, true);
     const wrong = [...card().querySelectorAll('.lc-opt')][0];
     wrong.click();
     assert.ok(card().querySelector('.lc-opt.wrong') && card().querySelector('.lc-opt.right'));

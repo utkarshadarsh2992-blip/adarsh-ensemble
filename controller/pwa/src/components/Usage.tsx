@@ -3,6 +3,7 @@ import { BarChart3, Info } from "lucide-react";
 import type { State, Config, Provider } from "../domain";
 import { aggregate, number, NAMES, PROVIDERS } from "../domain";
 import { Card, Empty, Badge } from "./ui";
+import KeySlots from "./KeySlots";
 export default function Usage({
   state,
   config,
@@ -159,12 +160,12 @@ export default function Usage({
           </Card>
           <Card>
             <div className="section-head">
-              <h2>Device / model / key slot</h2>
+              <h2>15 API key slots / device</h2>
             </div>
             {state?.usage
               .filter((u) => u.day_utc === day)
               .map((u) => (
-                <details className="usage-device" key={u.device_id}>
+                <details className="usage-device" key={u.device_id} open>
                   <summary>
                     {state.devices.find((d) => d.id === u.device_id)?.name ??
                       "Paired device"}{" "}
@@ -172,37 +173,7 @@ export default function Usage({
                       {number(u.report.totals.tok)} tokens
                     </span>
                   </summary>
-                  {u.report.providers
-                    .filter((p) => provider === "all" || p.id === provider)
-                    .map((p) => (
-                      <div key={p.id}>
-                        <h3>{p.name}</h3>
-                        {p.keys?.map((k) => (
-                          <div key={k.slot}>
-                            <p className="mono muted">
-                              Slot {k.slot} · {k.state} · {number(k.req)}{" "}
-                              requests
-                            </p>
-                            {k.models.map((m, i) => (
-                              <div
-                                className="model-usage-row"
-                                key={`${m.model}-${i}`}
-                              >
-                                <code>{m.model}</code>
-                                <span>
-                                  {number(m.req)} req / {number(m.tok)} tok
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )) ?? (
-                          <p>
-                            Historical provider aggregate; old per-model detail
-                            local history mein nahi thi.
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                  <KeySlots report={u.report} provider={provider} />
                 </details>
               ))}
           </Card>

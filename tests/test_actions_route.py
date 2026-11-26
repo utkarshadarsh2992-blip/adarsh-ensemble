@@ -68,6 +68,18 @@ def test_normal_question_still_goes_to_model(no_models):
     assert r["type"] == "text" and no_models
 
 
+@pytest.mark.parametrize("question", (
+    "What do cloud GPU providers charge?",
+    "How much RAM does a cloud GPU provider offer?",
+    "How much storage does the cloud GPU have?",
+))
+def test_remote_hardware_question_uses_standard_llm(no_models, question):
+    r = ask(question)
+    r = r[0] if isinstance(r, list) else r
+    assert r["type"] == "text"
+    assert no_models and no_models[0][0] == "gpt-oss-120b"
+
+
 def test_actions_only_in_standard_mode(monkeypatch):
     chat_adapter, pipeline = mods()
 

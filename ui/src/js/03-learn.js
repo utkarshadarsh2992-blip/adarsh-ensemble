@@ -12,6 +12,7 @@ const Learn = (() => {
   const MAX_VOCAB = 5000, MAX_LOG = 3000, SEND = 150;
   const clean = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '');
   const vocab = () => (Array.isArray(S.vocab) ? S.vocab : (S.vocab = []));
+  const expanded = new WeakSet(); // UI-only: new replies and a reopened app start with CHECK collapsed.
   const log = () => (Array.isArray(S.learnLog) ? S.learnLog : (S.learnLog = []));
   const has = (w) => { const k = w.toLowerCase(); return vocab().some(x => x.w.toLowerCase() === k); };
   const LETTERS = 'ABCDEF';
@@ -79,10 +80,13 @@ const Learn = (() => {
     const L = r.learn, qs = (L && Array.isArray(L.checks) ? L.checks : []).filter(q => q && q.q);
     if (!qs.length) return null;
     const done = qs.filter(q => q.res).length, right = qs.filter(q => q.res && q.res.ok).length;
-    const el = h('div', { class: 'card lcheck', role: 'group', 'aria-label': 'Check questions' },
-      h('div', { class: 'lc-h' }, h('span', { class: 'lc-k' }, 'CHECK'), h('span', { class: 'lc-c' }, L.concept || 'Concept'),
+    const el = h('details', { class: 'card lcheck', open: expanded.has(r), 'aria-label': 'Check questions',
+      on: { toggle: () => { if (el.open) expanded.add(r); else expanded.delete(r); } } },
+      h('summary', { class: 'lc-h', on: { click: () => { if (el.open) expanded.delete(r); else expanded.add(r); } } },
+        h('span', { class: 'lc-k' }, 'CHECK'), h('span', { class: 'lc-c' }, L.concept || 'Concept'),
         L.heavy ? h('span', { class: 'lc-tag' }, 'REASONING') : null, h('span', { class: 'sp' }),
-        h('span', { class: 'lc-s', 'aria-label': 'Score' }, done ? right + '/' + qs.length : '0/' + qs.length)));
+        h('span', { class: 'lc-s', 'aria-label': 'Score' }, done ? right + '/' + qs.length : '0/' + qs.length),
+        h('span', { class: 'lc-arrow', 'aria-hidden': 'true' }, '⌄')));
     qs.forEach((q, i) => el.append(questionEl(r, q, i, ctx)));
     el.append(h('div', { class: 'lc-f' }, done === qs.length
       ? (right === qs.length ? 'Sab sahi. Concept pakka.' : 'Galat wale dobara padho: neeche "kyun" likha hai.')

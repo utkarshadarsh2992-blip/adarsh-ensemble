@@ -142,6 +142,26 @@ test('report rejects invalid dates, unbounded counters, invalid providers and ex
   assert.throws(() => sanitizeReport(unknownProvider));
 });
 
+test('report preserves separate opaque key generations and snapshot timestamps without accepting credentials', () => {
+  const report = validReport();
+  const old = { ...report.providers[0].keys[0], generation: 'a'.repeat(32), active: false };
+  const current = { ...old, generation: 'b'.repeat(32), active: true, req: 1, tok: 12,
+    tracked_since_day: report.day_utc, api_key: 'never-copy-this' };
+  (report.providers[0] as Record<string, unknown>).keys = [old, current];
+  const clean = sanitizeReport({ ...report, sampled_at: 1234567890000 });
+  const keys = (clean.providers as any[])[0].keys;
+  assert.equal(keys.length, 2);
+  assert.equal(keys[1].generation, current.generation);
+  assert.equal(keys[1].active, true);
+  assert.equal(keys[1].tok, 12);
+  assert.equal('api_key' in keys[1], false);
+  assert.equal(clean.sampled_at, 1234567890000);
+  (report.providers[0] as Record<string, unknown>).keys = [current, { ...current, generation: 'c'.repeat(32) }];
+  assert.throws(() => sanitizeReport(report), 'two current keys cannot occupy the same slot');
+  (report.providers[0] as Record<string, unknown>).keys = [{ ...current, generation: 'gsk_secret' }];
+  assert.throws(() => sanitizeReport(report), 'the generation field only accepts a fixed opaque ID');
+});
+
 test('random pairing code/token sizes are URL-safe and token has 256 bits; SHA-256 is hex', async () => {
   const code = secureRandomBase64Url(24);
   const token = secureRandomBase64Url(32);
@@ -170,4 +190,15 @@ test('historical unavailable Standard quota is honest unknown, not a fake live b
   const report = validReport();
   report.standard = { state: 'unknown', left: 0 };
   assert.deepEqual(sanitizeReport(report).standard, { state: 'unknown', left: 0 });
+});
+
+test('complete key ledgers are explicit, timestamped and generation-aware; legacy reports remain compatible', () => {
+  const report = validReport();
+  const complete = { ...report, sampled_at: Date.now(), providers: report.providers.map((provider) => ({
+    ...provider, keys_complete: true, keys: provider.keys.map((key) => ({ ...key, active: true, generation: 'a'.repeat(32) })),
+  })) };
+  assert.equal((sanitizeReport(complete).providers as any[])[0].keys_complete, true);
+  assert.throws(() => sanitizeReport({ ...complete, sampled_at: undefined }));
+  assert.throws(() => sanitizeReport({ ...complete, providers: [{ ...complete.providers[0], keys: report.providers[0].keys }] }));
+  assert.equal('keys_complete' in (sanitizeReport(report).providers as any[])[0], false);
 });

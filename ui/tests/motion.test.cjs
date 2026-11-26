@@ -76,7 +76,7 @@ test('the voice screen types the caption instead of dropping it in whole', () =>
 
 test('the chat thread glides to the newest line instead of jumping', () => {
   const chat = fs.readFileSync(path.join(UI, 'src/js/03-chat.js'), 'utf8');
-  assert.match(chat, /const scroll = \(\) => Motion\.glide\(thread\)/, 'scroll uses the eased chase');
+  assert.match(chat, /const scroll = \(\) => Motion\.glide\(thread, \{ to: answerDestination \}\)/, 'scroll follows the answer with an eased chase');
   assert.ok(!/thread\.scrollTop = thread\.scrollHeight/.test(chat), 'no instant jump left');
   assert.ok(!/\.thread\{scroll-behavior:smooth/.test(APP_CSS), 'native smooth scrolling would fight the chase');
   assert.match(APP_CSS, /\.v-cap \.a\{[^}]*line-height/);
@@ -138,4 +138,32 @@ test('a new reply preserves the reader position when the thread was scrolled up'
   thread.scrollTop = 450;
   app.Chat.push({ type: 'text', text: 'A second answer should not pull the reader away.' });
   assert.equal(thread.scrollTop, 450, 'DOM rebuilding does not reset or jump the reading position');
+});
+
+test('automatic reveal follows the answer boundary, not the supplemental CHECK or FACT-CHECK cards', (t) => {
+  const app = mount(); t.after(() => app.close());
+  const thread = app.document.querySelector('#v-chat .thread');
+  Object.defineProperty(thread, 'scrollHeight', { configurable: true, value: 1600 });
+  Object.defineProperty(thread, 'clientHeight', { configurable: true, value: 400 });
+  thread.getBoundingClientRect = () => ({ top: 0, bottom: 400, height: 400 });
+  let captured;
+  app.Motion.glide = (_el, options) => { captured = options; };
+  app.Chat.push({ type: 'text', text: 'Sir, read this answer before the optional check questions below.',
+    learn: { concept: 'GPU', words: [], checks: [{ kind: 'fill', q: 'What is VRAM?', answer: 'video memory' }] },
+    truth: { rows: [], ok: 1, shak: 0, galat: 0 } });
+  const body = app.document.querySelector('#v-chat .msg[data-id] > .prose');
+  body.getBoundingClientRect = () => ({ top: 200, bottom: 500, height: 300 });
+  assert.ok(app.document.querySelector('.lcheck'), 'learning extras remain available');
+  assert.equal(typeof captured?.to, 'function');
+  assert.equal(captured.to(), 120, 'target stops at the answer boundary, not thread bottom (1200)');
+});
+
+test('glide can follow a bounded answer target even when supplemental cards extend the thread', async (t) => {
+  const app = mount(); t.after(() => app.close());
+  const box = app.document.createElement('div'); app.document.body.append(box);
+  Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 1600 });
+  Object.defineProperty(box, 'clientHeight', { configurable: true, value: 200 });
+  app.Motion.glide(box, { to: () => 250 });
+  await settle(500);
+  assert.ok(box.scrollTop > 240 && box.scrollTop <= 250, 'auto-follow does not chase cards below the answer');
 });

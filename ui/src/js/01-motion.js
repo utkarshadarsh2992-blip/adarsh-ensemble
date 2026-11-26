@@ -19,7 +19,13 @@ const Motion = (() => {
     const st = chases.get(el) || { token: 0, running: false };
     chases.set(el, st);
     st.until = Date.now() + (opts.hold || 1400);     // keep following while text is still arriving
-    if (reduced()) { el.scrollTop = el.scrollHeight; return; }
+    st.to = typeof opts.to === 'function' ? opts.to : null;
+    const destination = () => {
+      const end = Math.max(0, el.scrollHeight - el.clientHeight);
+      const target = st.to ? Number(st.to()) : end;
+      return Number.isFinite(target) ? Math.max(0, Math.min(end, target)) : end;
+    };
+    if (reduced()) { el.scrollTop = destination(); return; }
     if (st.running) return;                          // the running chase re-reads the height every frame
     st.running = true;
     const token = ++st.token;
@@ -27,7 +33,7 @@ const Motion = (() => {
     const step = () => {
       if (token !== st.token) { st.running = false; return; }
       if (Date.now() > st.until || ++guard > 400) { st.running = false; return; }
-      const dest = Math.max(0, el.scrollHeight - el.clientHeight);
+      const dest = destination();
       const dist = dest - el.scrollTop;
       if (Math.abs(dist) < 1.5) { st.running = false; return; }
       /* ease out: big steps far away, a few pixels at the end, capped so a long jump never snaps */

@@ -8,11 +8,17 @@ Instead of burning retries on a model that is rate-limited or gone, we
 and the caller moves on to the next model in the chain.
 Usage counters are saved to a small JSON file so a restart does not forget them.
 """
+import base64
 import contextvars
+import copy
 import datetime as dt
+import hashlib
+import hmac
 import json
 import os
 import random
+import re
+import secrets
 import threading
 import time
 
@@ -34,6 +40,7 @@ _perr: dict[str, dict[int, list[float]]] = {}  # provider -> key slot -> recent 
 _trace: contextvars.ContextVar = contextvars.ContextVar("trace", default=None)
 _rec: contextvars.ContextVar = contextvars.ContextVar("trace_record", default=False)
 _stage: contextvars.ContextVar = contextvars.ContextVar("stage", default="")
+_request_generation: contextvars.ContextVar = contextvars.ContextVar("request_generation", default=None)
 MAX_PROMPT_CHARS = 12000  # per message kept in a recorded trace
 
 
@@ -42,6 +49,186 @@ def _today() -> str:
 
 
 HIST_DAYS = 14  # usage screen: daily totals per provider survive the day roll this long
+MAX_DAILY_GENERATIONS = 45  # up to 15 active slots + 30 retired generations
+_GEN_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def _new_salt() -> str:
+    return base64.b64encode(secrets.token_bytes(32)).decode("ascii")
+
+
+def _valid_salt(value) -> str:
+    try:
+        raw = base64.b64decode(value, validate=True)
+        if len(raw) == 32:
+            return value
+    except (ValueError, TypeError):
+        pass
+    return _new_salt()
+
+
+def _parse_qkey(qkey: str) -> tuple[str, str, int]:
+    base, slot = str(qkey), 1
+    head, sep, tail = base.rpartition("#")
+    if sep and tail.isdigit():
+        base, slot = head, int(tail)
+    prov, _, model = base.partition(":")
+    return prov, model, slot
+
+
+def _slot_key(provider: str, slot: int) -> str:
+    return f"{provider}#{slot}"
+
+
+def _bucket() -> dict:
+    return {"req": {}, "tok": {}}
+
+
+def _slot_ledger(box: dict, name: str) -> dict:
+    slots = box.setdefault("slots", {})
+    item = slots.get(name)
+    if not isinstance(item, dict):
+        item = {"generations": {}, "unknown": _bucket()}
+        slots[name] = item
+    if not isinstance(item.get("generations"), dict):
+        item["generations"] = {}
+    if not isinstance(item.get("unknown"), dict):
+        item["unknown"] = _bucket()
+    for metric in ("req", "tok"):
+        if not isinstance(item["unknown"].get(metric), dict):
+            item["unknown"][metric] = {}
+    return item
+
+
+def _increment(bucket: dict, metric: str, model: str, count: int) -> None:
+    if metric not in ("req", "tok") or count <= 0:
+        return
+    counts = bucket.setdefault(metric, {})
+    counts[model] = max(0, int(counts.get(model, 0) or 0)) + count
+
+
+def _all_ledger_counts(item: dict, metric: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for gen in (item.get("generations") or {}).values():
+        for model, value in (gen.get(metric) or {}).items():
+            counts[model] = counts.get(model, 0) + max(0, int(value or 0))
+    for model, value in ((item.get("unknown") or {}).get(metric) or {}).items():
+        counts[model] = counts.get(model, 0) + max(0, int(value or 0))
+    return counts
+
+
+def _provider_totals(data: dict) -> tuple[dict[str, int], dict[str, int]]:
+    req: dict[str, int] = {}
+    tok: dict[str, int] = {}
+    for slot_name, item in ((data.get("key_usage") or {}).get("slots") or {}).items():
+        provider = str(slot_name).rsplit("#", 1)[0]
+        if provider not in PROVIDERS:
+            continue
+        for metric, out in (("req", req), ("tok", tok)):
+            total = sum(_all_ledger_counts(item, metric).values())
+            out[provider] = out.get(provider, 0) + total
+    return req, tok
+
+
+def _reconcile_ledger(data: dict) -> bool:
+    """Preserve any pre-ledger/manual counters as unknown, never as invented generation detail."""
+    changed = False
+    ledger = data.setdefault("key_usage", {"slots": {}})
+    for metric in ("req", "tok"):
+        for qkey, value in (data.get(metric) or {}).items():
+            provider, model, slot = _parse_qkey(qkey)
+            if provider not in PROVIDERS:
+                continue
+            amount = max(0, int(value or 0))
+            item = _slot_ledger(ledger, _slot_key(provider, slot))
+            counts = _all_ledger_counts(item, metric)
+            # OpenRouter's quota counter covers every :free model; its ledger keeps model detail.
+            tracked = sum(counts.values()) if provider == "openrouter" and not model else counts.get(model, 0)
+            if amount > tracked:
+                _increment(item["unknown"], metric, model, amount - tracked)
+                changed = True
+    return changed
+
+
+def _prune_generations(data: dict) -> None:
+    """Keep the daily ledger bounded; pruned counts remain explicitly unattributed."""
+    box = data.get("key_usage")
+    if not isinstance(box, dict):
+        return
+    state = data.get("key_generation_state") or {}
+    entries = []
+    for slot_name, item in (box.get("slots") or {}).items():
+        provider, _, slot = str(slot_name).rpartition("#")
+        active_id = (state.get(slot_name) or {}).get("id")
+        for gen_id, record in (item.get("generations") or {}).items():
+            is_active = gen_id == active_id if slot_name in state else bool(record.get("active"))
+            entries.append((slot_name, gen_id, record, is_active,
+                            str(record.get("since_day") or ""), float(record.get("created_at") or 0)))
+    if len(entries) <= MAX_DAILY_GENERATIONS:
+        return
+    retired = sorted((e for e in entries if not e[3]), key=lambda e: (e[4], e[5], e[0], e[1]))
+    drop = len(entries) - MAX_DAILY_GENERATIONS
+    for slot_name, gen_id, record, _active, _since, _created in retired[:drop]:
+        if not record:
+            continue
+        item = _slot_ledger(box, slot_name)
+        for metric in ("req", "tok"):
+            for model, value in (record.get(metric) or {}).items():
+                _increment(item["unknown"], metric, str(model), max(0, int(value or 0)))
+        item["generations"].pop(gen_id, None)
+
+
+def _prepare_usage(data: dict) -> dict:
+    """Migrate old slot counters to an explicitly unknown ledger without inventing key identities."""
+    if not isinstance(data.get("req"), dict):
+        data["req"] = {}
+    if not isinstance(data.get("tok"), dict):
+        data["tok"] = {}
+    if not isinstance(data.get("key_usage"), dict) or data.get("key_ledger_version") != 1:
+        data["key_usage"] = {"slots": {}}
+        for metric in ("req", "tok"):
+            for qkey, value in (data.get(metric) or {}).items():
+                provider, model, slot = _parse_qkey(qkey)
+                if provider not in PROVIDERS:
+                    continue
+                amount = max(0, int(value or 0))
+                if amount:
+                    item = _slot_ledger(data["key_usage"], _slot_key(provider, slot))
+                    _increment(item["unknown"], metric, model, amount)
+        data["key_ledger_version"] = 1
+    else:
+        if not isinstance(data["key_usage"].get("slots"), dict):
+            data["key_usage"] = {"slots": {}}
+        for slot_name in list(data["key_usage"]["slots"]):
+            item = _slot_ledger(data["key_usage"], str(slot_name))
+            generations = {}
+            for gen_id, record in item["generations"].items():
+                if not _GEN_RE.fullmatch(str(gen_id)) or not isinstance(record, dict):
+                    continue
+                clean = {"since_day": str(record.get("since_day") or "")[:10],
+                         "active": bool(record.get("active")),
+                         "created_at": float(record.get("created_at") or 0)}
+                for metric in ("req", "tok"):
+                    clean[metric] = {str(m)[:200]: max(0, int(n or 0))
+                                     for m, n in (record.get(metric) or {}).items()}
+                generations[str(gen_id)] = clean
+            item["generations"] = generations
+    data["key_generation_salt"] = _valid_salt(data.get("key_generation_salt"))
+    if not isinstance(data.get("key_generation_state"), dict):
+        data["key_generation_state"] = {}
+    try:
+        data["_sampled_at_ms"] = max(0, int(data.get("_sampled_at_ms") or 0))
+    except (TypeError, ValueError, OverflowError):
+        data["_sampled_at_ms"] = 0
+    if not isinstance(data.get("hist"), list):
+        data["hist"] = []
+    for name in ("out", "gone", "feat", "truth", "learned"):
+        if not isinstance(data.get(name), dict):
+            data[name] = {}
+    _prune_generations(data)
+    return data
+
+
 def _fresh(learned: dict | None = None, old: dict | None = None, hist: list | None = None) -> dict:
     # out:  quota key -> unix time a DAILY 429 said it is empty until (that model on that key).
     # gone: "provider:model" -> {"until", "why"}: the model does not exist / was retired (404), on every key.
@@ -54,28 +241,28 @@ def _fresh(learned: dict | None = None, old: dict | None = None, hist: list | No
     gone = {k: v for k, v in (old.get("gone") or {}).items()
             if isinstance(v, dict) and isinstance(v.get("until"), (int, float)) and v["until"] > now}
     return {"day": _today(), "req": {}, "tok": {}, "out": out, "gone": gone, "learned": dict(learned or {}),
-            "feat": {}, "truth": {}, "hist": list(hist or [])[-HIST_DAYS:]}
+            "feat": {}, "truth": {}, "hist": list(hist or [])[-HIST_DAYS:],
+            "key_ledger_version": 1, "key_usage": {"slots": {}},
+            "key_generation_salt": _valid_salt(old.get("key_generation_salt")),
+            "key_generation_state": copy.deepcopy(old.get("key_generation_state") or {}),
+            "_sampled_at_ms": max(0, int(old.get("_sampled_at_ms") or 0))}
 def _provider_of(qkey: str) -> str:
     return qkey.split(":", 1)[0].split("#", 1)[0]
 
 
 def _day_summary(data: dict) -> dict:
     """One finished day for the history: totals per provider + per feature + fact-check counts."""
-    req: dict[str, int] = {}
-    tok: dict[str, int] = {}
-    for k, v in (data.get("req") or {}).items():
-        p = _provider_of(k)
-        req[p] = req.get(p, 0) + int(v or 0)
-    for k, v in (data.get("tok") or {}).items():
-        p = _provider_of(k)
-        tok[p] = tok.get(p, 0) + int(v or 0)
+    _reconcile_ledger(data)
+    req, tok = _provider_totals(data)
     return {"day": str(data.get("day") or ""), "req": req, "tok": tok,
-            "feat": dict(data.get("feat") or {}), "truth": dict(data.get("truth") or {})}
+            "feat": dict(data.get("feat") or {}), "truth": dict(data.get("truth") or {}),
+            "key_usage": copy.deepcopy(data.get("key_usage") or {"slots": {}})}
 
 
 def _rolled_hist(data: dict) -> list:
     hist = [h for h in (data.get("hist") or []) if isinstance(h, dict)]
-    if data.get("day") and (data.get("req") or data.get("tok")):
+    has_key_history = bool(((data.get("key_usage") or {}).get("slots") or {}))
+    if data.get("day") and (data.get("req") or data.get("tok") or has_key_history):
         hist.append(_day_summary(data))
     return hist[-HIST_DAYS:]
 
@@ -85,14 +272,13 @@ def _load() -> dict:
         with open(STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
+            _prepare_usage(data)
             learned = data.get("learned") if isinstance(data.get("learned"), dict) else {}
             if data.get("day") != _today():
                 return _fresh(learned, data, _rolled_hist(data))
             for k in ("req", "tok", "out", "gone", "feat", "truth"):
                 if not isinstance(data.get(k), dict):
                     data[k] = {}
-            if not isinstance(data.get("hist"), list):
-                data["hist"] = []
             data["learned"] = learned
             return data
     except (OSError, ValueError):
@@ -114,6 +300,7 @@ def _roll() -> None:
             hist = _rolled_hist(_usage)
             _usage.clear()
             _usage.update(_fresh(learned, old, hist))
+            _save()
 
 
 def _save() -> None:
@@ -133,6 +320,190 @@ def _save() -> None:
                 os.remove(tmp)
             except OSError:
                 pass
+
+
+def _sampled_at_locked() -> int:
+    """Persist a strictly increasing report timestamp while the corresponding snapshot is locked."""
+    sampled_at = max(int(time.time() * 1000), int(_usage.get("_sampled_at_ms") or 0) + 1)
+    _usage["_sampled_at_ms"] = sampled_at
+    _save()
+    return sampled_at
+
+
+def _generation_identity_values(provider: str, slot: int, key: str, account: dict) -> str | None:
+    """Salt the exact credential/account snapshot used for a request; never retain its input values."""
+    if not key:
+        return None
+    prov = PROVIDERS[provider]
+    snapshot = {name: str((account or {}).get(name, "") or "") for name in prov.needs}
+    if any(not value for value in snapshot.values()):
+        return None
+    material = json.dumps([provider, int(slot), key, snapshot], ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    salt = base64.b64decode(_usage["key_generation_salt"], validate=True)
+    return hmac.new(salt, material, hashlib.sha256).digest()[:16].hex()
+
+
+def _generation_identity(provider: str, slot: int) -> str | None:
+    """Return a salted opaque identity; raw provider credentials are used only in this calculation."""
+    prov = PROVIDERS[provider]
+    key = prov.key(slot)
+    if not key:
+        return None
+    account = {name: prov._need(name, slot) for name in prov.needs}
+    return _generation_identity_values(provider, slot, key, account)
+
+
+def capture_request_context(spec: ModelSpec, credential: str, account: dict | None = None) -> tuple:
+    """Capture only provider/slot/opaque-generation/day for the exact HTTP credential snapshot."""
+    slot = _slot(spec) or ((PROVIDERS[spec.provider].slots() or [1])[0])
+    account = account or {}
+    with _usage_lock:
+        _roll()
+        _sync_generations()
+        generation = _generation_identity_values(spec.provider, slot, credential, account)
+        if generation:
+            name = _slot_key(spec.provider, slot)
+            item = _slot_ledger(_usage.setdefault("key_usage", {"slots": {}}), name)
+            record = item["generations"].get(generation)
+            active_id = ((_usage.get("key_generation_state") or {}).get(name) or {}).get("id")
+            if not isinstance(record, dict):
+                record = {"since_day": _today(), "active": generation == active_id,
+                          "created_at": time.time(), "req": {}, "tok": {}}
+                item["generations"][generation] = record
+            elif generation != active_id:
+                record["active"] = False
+            _prune_generations(_usage)
+        return (spec.provider, slot, generation, _usage["day"])
+
+
+def _clear_slot_quota(provider: str, slot: int) -> None:
+    """Clear only the rotated slot's active quota counters and quota marks."""
+    for name in ("req", "tok", "out", "learned"):
+        box = _usage.setdefault(name, {})
+        for qkey in list(box):
+            qprov, _model, qslot = _parse_qkey(qkey)
+            if qprov == provider and qslot == slot:
+                box.pop(qkey, None)
+    kid = provider if slot == 1 else f"{provider}#{slot}"
+    _key_cool.pop(kid, None)
+    with _slots_lock:
+        for qkey in list(_slots):
+            # Generation-scoped windows belong to already-selected credentials, not this replacement slot.
+            owner = _generation_windows.get(qkey)
+            if owner:
+                continue
+            qprov, _model, qslot = _parse_qkey(qkey)
+            if qprov == provider and qslot == slot:
+                events = _slots.get(qkey, [])
+                generations = {ctx[2] for _when, _tokens, rid in events
+                               if rid and (ctx := _reservation_context.get(rid))
+                               and ctx[0] == provider and ctx[1] == slot and ctx[2]}
+                if generations:
+                    # Keep the full prior window for each generation with an outstanding request; this preserves
+                    # rate-limit spacing for its in-flight calls without charging the replacement key's window.
+                    for generation in generations:
+                        retired_key = _generation_window_key(qkey, generation)
+                        _generation_windows[retired_key] = (provider, slot, generation)
+                        _slots.setdefault(retired_key, []).extend(events)
+                _slots.pop(qkey, None)
+
+
+def _generation_record(provider: str, slot: int, gen_id: str, since_day: str | None = None) -> dict:
+    ledger = _usage.setdefault("key_usage", {"slots": {}})
+    item = _slot_ledger(ledger, _slot_key(provider, slot))
+    record = item["generations"].get(gen_id)
+    if not isinstance(record, dict):
+        record = {"since_day": since_day or _today(), "active": True, "created_at": time.time(),
+                  "req": {}, "tok": {}}
+        item["generations"][gen_id] = record
+    record.setdefault("since_day", since_day or _today())
+    record.setdefault("created_at", time.time())
+    record["active"] = True
+    record.setdefault("req", {})
+    record.setdefault("tok", {})
+    return record
+
+
+def _sync_generations(changed_slots: set[int] | None = None, provider_filter: str | None = None) -> bool:
+    """Compare configured slots to persisted identities; reset quota counters only on actual slot changes."""
+    changed = False
+    states = _usage.setdefault("key_generation_state", {})
+    for provider, prov in PROVIDERS.items():
+        if provider_filter and provider != provider_filter:
+            continue
+        for slot in range(1, config.KEY_SLOTS + 1):
+            slot_name = _slot_key(provider, slot)
+            current_id = _generation_identity(provider, slot)
+            had_state = slot_name in states and isinstance(states.get(slot_name), dict)
+            previous = states.get(slot_name) if had_state else {}
+            previous_id = previous.get("id") if isinstance(previous, dict) else None
+            if not had_state:
+                changed = True  # persist the initial identity map even before the first request
+            if had_state and previous_id != current_id:
+                if changed_slots is not None:
+                    changed_slots.add(slot)
+                _clear_slot_quota(provider, slot)
+                changed = True
+                if previous_id:
+                    old_item = _slot_ledger(_usage["key_usage"], slot_name)
+                    old_record = old_item["generations"].get(previous_id)
+                    if isinstance(old_record, dict):
+                        old_record["active"] = False
+            if current_id:
+                item = _slot_ledger(_usage["key_usage"], slot_name)
+                existing = item["generations"].get(current_id)
+                if not isinstance(existing, dict):
+                    changed = True
+                since = (existing or {}).get("since_day") or (
+                    previous.get("since_day") if previous_id == current_id else None) or _today()
+                _generation_record(provider, slot, current_id, since)
+                if previous_id != current_id:
+                    # A credential re-added later in the same UTC day resumes its own quota, not another key's.
+                    record = item["generations"][current_id]
+                    for metric in ("req", "tok"):
+                        restored = {}
+                        for model, count in (record.get(metric) or {}).items():
+                            qkey = _quota_name(provider, model, slot)
+                            restored[qkey] = restored.get(qkey, 0) + max(0, int(count or 0))
+                        _usage[metric].update(restored)
+            elif previous_id:
+                item = _slot_ledger(_usage["key_usage"], slot_name)
+                old_record = item["generations"].get(previous_id)
+                if isinstance(old_record, dict):
+                    old_record["active"] = False
+            states[slot_name] = {"id": current_id,
+                                 "since_day": ((previous or {}).get("since_day") if previous_id == current_id else None)
+                                 or (( _slot_ledger(_usage["key_usage"], slot_name)["generations"].get(current_id) or {}).get("since_day") if current_id else None)}
+    _prune_generations(_usage)
+    return changed
+
+
+def _record_generation_count(provider: str, slot: int, gen_id: str | None, day: str,
+                             metric: str, model: str, count: int) -> None:
+    """Attach request/token usage to its captured generation, including a just-retired one."""
+    if not gen_id or metric not in ("req", "tok") or count <= 0:
+        return
+    target = _usage if _usage.get("day") == day else None
+    if target is None:
+        target = next((row for row in _usage.get("hist", [])
+                       if isinstance(row, dict) and row.get("day") == day), None)
+        if target is None:
+            return
+        ledger = target.setdefault("key_usage", {"slots": {}})
+        item = _slot_ledger(ledger, _slot_key(provider, slot))
+    else:
+        item = _slot_ledger(target.setdefault("key_usage", {"slots": {}}), _slot_key(provider, slot))
+    record = item["generations"].get(gen_id)
+    if not isinstance(record, dict):
+        # The bounded daily archive may already have pruned this retired identity.
+        _increment(item["unknown"], metric, model, count)
+    else:
+        _increment(record, metric, model, count)
+    _prune_generations(target if target is _usage else {"key_usage": target.get("key_usage"),
+                                                          "key_generation_state": {}})
+    if target is not _usage:
+        _, provider_tokens = _provider_totals({"key_usage": target.get("key_usage")})
+        target["tok"] = provider_tokens
 
 
 def _slot(spec: ModelSpec) -> int:
@@ -304,12 +675,25 @@ def wait_hint(specs) -> float | None:
     return best
 
 
-def note_request(spec: ModelSpec) -> None:
+def note_request(spec: ModelSpec, accounting_context: tuple | None = None) -> None:
     """Count every HTTP attempt (providers may count failed ones too)."""
     with _usage_lock:
         _roll()
-        key = quota_key(spec)
-        _usage["req"][key] = _usage["req"].get(key, 0) + 1
+        _sync_generations()
+        slot = _slot(spec) or ((PROVIDERS[spec.provider].slots() or [1])[0])
+        slot_state = (_usage.get("key_generation_state") or {}).get(_slot_key(spec.provider, slot)) or {}
+        generation, day = slot_state.get("id"), _usage["day"]
+        if (isinstance(accounting_context, tuple) and len(accounting_context) == 4
+                and accounting_context[0] == spec.provider and accounting_context[1] == slot):
+            _provider, _slot_num, generation, day = accounting_context
+        if generation:
+            _record_generation_count(spec.provider, slot, generation, day, "req", spec.model, 1)
+        # Retired in-flight calls are visible in their old ledger but never consume the replacement key's daily cap.
+        active_id = ((_usage.get("key_generation_state") or {}).get(_slot_key(spec.provider, slot)) or {}).get("id")
+        if generation == active_id and day == _usage["day"]:
+            key = quota_key(spec)
+            _usage["req"][key] = _usage["req"].get(key, 0) + 1
+        _request_generation.set((spec.provider, slot, generation, day))
         feat = _usage.setdefault("feat", {})
         f = feature(_stage.get())
         feat[f] = feat.get(f, 0) + 1
@@ -343,12 +727,28 @@ def success(spec: ModelSpec, tokens: int) -> None:
     _streak[spec.label] = 0
     with _usage_lock:
         _perr.pop(spec.provider, None)
-    if tokens:
-        with _usage_lock:
-            _roll()
-            key = quota_key(spec)
-            _usage["tok"][key] = _usage["tok"].get(key, 0) + tokens
-            _save()
+        _roll()
+        _sync_generations()
+        slot = _slot(spec) or ((PROVIDERS[spec.provider].slots() or [1])[0])
+        captured = _request_generation.get()
+        if (isinstance(captured, tuple) and len(captured) == 4
+                and captured[0] == spec.provider and captured[1] == slot):
+            _provider, _slot_num, generation, day = captured
+        else:
+            slot_state = (_usage.get("key_generation_state") or {}).get(_slot_key(spec.provider, slot)) or {}
+            generation, day = slot_state.get("id"), _usage["day"]
+        try:
+            amount = max(0, int(tokens or 0))
+        except (TypeError, ValueError, OverflowError):
+            amount = 0
+        if amount:
+            _record_generation_count(spec.provider, slot, generation, day, "tok", spec.model, amount)
+            active_id = ((_usage.get("key_generation_state") or {}).get(_slot_key(spec.provider, slot)) or {}).get("id")
+            if day == _usage["day"] and generation == active_id:
+                key = quota_key(spec)
+                _usage["tok"][key] = _usage["tok"].get(key, 0) + amount
+        _request_generation.set(None)
+        _save()
 
 
 def cooldown(spec: ModelSpec, seconds: float) -> None:
@@ -431,18 +831,24 @@ def model_gone(spec: ModelSpec, why: str = "model not found") -> None:
 def forget_provider(provider: str) -> None:
     """A key of this provider was added / changed / removed: its old "quota used up" and "model gone" marks may not
     hold for the new key, so they are dropped (the worst case is one call that hears the same error again)."""
+    changed_slots: set[int] = set()
     with _usage_lock:
+        _roll()
+        _sync_generations(changed_slots, provider)
         for name in ("out", "gone"):
             box = _usage.get(name) or {}
-            for k in [k for k in box if k == provider or k.startswith((provider + ":", provider + "#"))]:
-                box.pop(k, None)
+            for k in list(box):
+                qprovider, _model, qslot = _parse_qkey(k)
+                if qprovider == provider and (name == "gone" or not changed_slots):
+                    box.pop(k, None)
         _save()
     for box in (_cool,):
         for label in [lb for lb in box if config.REGISTRY.get(config.base_label(lb)) is not None
                       and config.REGISTRY[config.base_label(lb)].provider == provider]:
             box.pop(label, None)
-    for kid in [k for k in _key_cool if k == provider or k.startswith(provider + "#")]:
-        _key_cool.pop(kid, None)
+    if not changed_slots:
+        for kid in [k for k in _key_cool if k == provider or k.startswith(provider + "#")]:
+            _key_cool.pop(kid, None)
     _prov_cool.pop(provider, None)
 
 
@@ -485,10 +891,43 @@ def rate_limited(spec: ModelSpec, wait: float | None, daily: bool = False) -> No
 _WINDOW = 60.0
 _slots: dict[str, list[tuple[float, int, str | None]]] = {}  # key -> [(slot time, tokens, reservation id)]
 _slots_lock = threading.Lock()
+_reservation_context: dict[str, tuple[str, int, str]] = {}
+_generation_windows: dict[str, tuple[str, int, str]] = {}
+
+
+def _generation_window_key(key: str, generation: str) -> str:
+    return f"{key}\x1f{generation}"
+
+
+def request_window_key(spec: ModelSpec, accounting_context: tuple | None) -> str:
+    """Use the shared active window unless the captured request already belongs to a retired generation."""
+    key = quota_key(spec)
+    if not (isinstance(accounting_context, tuple) and len(accounting_context) == 4
+            and accounting_context[0] == spec.provider and accounting_context[2]):
+        return key
+    provider, slot, generation, _day = accounting_context
+    with _usage_lock:
+        _roll()
+        _sync_generations()
+        active = ((_usage.get("key_generation_state") or {}).get(_slot_key(provider, slot)) or {}).get("id")
+    if generation == active:
+        return key
+    retired_key = _generation_window_key(key, generation)
+    with _slots_lock:
+        _generation_windows[retired_key] = (provider, slot, generation)
+        # Retired windows are short-lived; prune old reservations to keep rotations bounded.
+        cutoff = time.time() - _WINDOW
+        for window, events in list(_slots.items()):
+            if window in _generation_windows:
+                events[:] = [event for event in events if event[0] > cutoff]
+                if not events:
+                    _slots.pop(window, None)
+                    _generation_windows.pop(window, None)
+    return retired_key
 
 
 def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now: float | None = None,
-                 reservation_id: str | None = None) -> tuple[bool, float | None]:
+                 reservation_id: str | None = None, accounting_context: tuple | None = None) -> tuple[bool, float | None]:
     """(True, seconds to wait before sending; 0.0 = now) or (False, seconds until a slot is free / None = never).
     rpm / tpm = 0 means no cap of that kind."""
     if not rpm and not tpm:
@@ -509,8 +948,29 @@ def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now
             if t - now > max_wait:
                 return False, t - now
             ev.append((t, tokens, reservation_id))
+            if (reservation_id and isinstance(accounting_context, tuple) and len(accounting_context) == 4
+                    and accounting_context[2]):
+                _reservation_context[reservation_id] = (accounting_context[0], accounting_context[1],
+                                                        accounting_context[2])
             return True, t - now
     return False, None
+
+
+def cancel_reservation(key: str, reservation_id: str | None) -> None:
+    """Remove a reservation when a request is abandoned before its HTTP attempt."""
+    if not reservation_id:
+        return
+    with _slots_lock:
+        events = _slots.get(key, [])
+        events[:] = [event for event in events if len(event) < 3 or event[2] != reservation_id]
+        _reservation_context.pop(reservation_id, None)
+
+
+def finish_reservation(reservation_id: str | None) -> None:
+    """Stop treating a completed HTTP attempt as an outstanding request during future key rotations."""
+    if reservation_id:
+        with _slots_lock:
+            _reservation_context.pop(reservation_id, None)
 
 
 def settle_slot(key: str, reservation_id: str | None, actual_tokens: int) -> bool:
@@ -695,39 +1155,150 @@ def _key_state(have: bool, cool_s: int, models: list[dict]) -> str:
     return "ok"
 
 
+def _quota_name(provider: str, model: str, slot: int) -> str:
+    base = "openrouter" if provider == "openrouter" else f"{provider}:{model}"
+    return base if slot <= 1 else f"{base}#{slot}"
+
+
+def _generation_model_rows(provider: str, slot: int, req_counts: dict, tok_counts: dict,
+                           req: dict, tok: dict, out: dict, now: float) -> list[dict]:
+    rows = []
+    for model in sorted(set(req_counts or {}) | set(tok_counts or {})):
+        qkey = _quota_name(provider, model, slot)
+        model_req = {qkey: max(0, int((req_counts or {}).get(model, 0) or 0))}
+        model_tok = {qkey: max(0, int((tok_counts or {}).get(model, 0) or 0))}
+        rows.append(_model_row(provider, model, slot, qkey, model_req, model_tok, out, now))
+    return sorted(rows, key=lambda x: (-x["req"], x["model"]))
+
+
+def _key_row(provider: str, slot: int, *, have: bool, generation: str | None = None,
+             record: dict | None = None, unknown: dict | None = None, active: bool = False,
+             state: str | None = None, cool_s: int = 0, now: float, req: dict, tok: dict,
+             out: dict, report_day: str) -> dict:
+    record = record or {}
+    req_counts = dict(record.get("req") or {})
+    tok_counts = dict(record.get("tok") or {})
+    unknown = unknown or {}
+    for model, value in (unknown.get("req") or {}).items():
+        req_counts[model] = req_counts.get(model, 0) + max(0, int(value or 0))
+    for model, value in (unknown.get("tok") or {}).items():
+        tok_counts[model] = tok_counts.get(model, 0) + max(0, int(value or 0))
+    model_rows = _generation_model_rows(provider, slot, req_counts, tok_counts, req, tok,
+                                        out if active else {}, now)
+    since = str(record.get("since_day") or "")[:10]
+    try:
+        if not since or dt.date.fromisoformat(since) > dt.date.fromisoformat(report_day):
+            since = report_day
+    except ValueError:
+        since = report_day
+    row = {"slot": slot, "set": bool(have), "state": state or ("ok" if have else "nokey"),
+           "cool_s": int(cool_s if active else 0),
+           "req": sum(int(m["req"]) for m in model_rows), "tok": sum(int(m["tok"]) for m in model_rows),
+           "models": model_rows, "active": bool(active)}
+    if generation and _GEN_RE.fullmatch(str(generation)):
+        row["generation"] = str(generation)
+        if since:
+            row["tracked_since_day"] = since
+    elif unknown and (row["req"] or row["tok"]):
+        row["generation_unknown"] = True
+    return row
+
+
+def _current_key_rows(provider: str, *, now: float, report_day: str, req: dict, tok: dict,
+                      out: dict, key_usage: dict, generation_state: dict) -> list[dict]:
+    set_slots = set(PROVIDERS[provider].slots())
+    standard_spec = _selected_standard_spec() if provider == "groq" else None
+    rows: list[dict] = []
+    for slot in range(1, config.KEY_SLOTS + 1):
+        have = slot in set_slots
+        name = _slot_key(provider, slot)
+        item = (key_usage.get("slots") or {}).get(name) or {"generations": {}, "unknown": _bucket()}
+        state = generation_state.get(name) or {}
+        active_id = state.get("id")
+        current_record = (item.get("generations") or {}).get(active_id) if active_id else None
+        if provider == "groq" and have and current_record is not None and standard_spec:
+            if standard_spec.model not in (current_record.get("req") or {}) and standard_spec.model not in (current_record.get("tok") or {}):
+                # The Standard row remains visible even before it has usage.
+                current_record = copy.deepcopy(current_record)
+                current_record.setdefault("req", {}).setdefault(standard_spec.model, 0)
+                current_record.setdefault("tok", {}).setdefault(standard_spec.model, 0)
+        kid = provider if slot == 1 else f"{provider}#{slot}"
+        cool_s = max(0, int(max(_key_cool.get(kid, 0), _prov_cool.get(provider, 0)) - now)) if have else 0
+        quota_models = {model for qkey in (set(req) | set(tok))
+                        for p, model, n in [_parse_qkey(qkey)] if p == provider and n == slot}
+        if provider == "groq" and have and standard_spec:
+            quota_models.add(standard_spec.model)
+        quota_rows = [_model_row(provider, model, slot, _quota_name(provider, model, slot), req, tok, out, now)
+                      for model in sorted(quota_models)]
+        active_state = _key_state(have, cool_s, quota_rows)
+        if current_record is not None:
+            rows.append(_key_row(provider, slot, have=have, generation=active_id, record=current_record,
+                                 active=True, state=active_state, cool_s=cool_s, now=now, req=req, tok=tok,
+                                 out=out, report_day=report_day))
+        else:
+            # Exactly one no-identity slot row is kept when no key is configured; legacy counts live here.
+            legacy = (item.get("unknown") or {})
+            merge_unknown = not have and bool(sum((legacy.get("req") or {}).values()) or sum((legacy.get("tok") or {}).values()))
+            rows.append(_key_row(provider, slot, have=have, record={}, unknown=legacy if merge_unknown else None,
+                                 active=False, state=active_state, now=now, req=req, tok=tok, out=out,
+                                 report_day=report_day))
+        for gen_id, record in sorted((item.get("generations") or {}).items(),
+                                     key=lambda pair: (str(pair[1].get("since_day") or ""), pair[0])):
+            if gen_id == active_id or not _GEN_RE.fullmatch(str(gen_id)):
+                continue
+            rows.append(_key_row(provider, slot, have=False, generation=gen_id, record=record,
+                                 active=False, state="ok", now=now, req=req, tok=tok, out={},
+                                 report_day=report_day))
+        legacy = item.get("unknown") or {}
+        if have and (sum((legacy.get("req") or {}).values()) or sum((legacy.get("tok") or {}).values())):
+            rows.append(_key_row(provider, slot, have=False, unknown=legacy, active=False, state="ok",
+                                 now=now, req=req, tok=tok, out={}, report_day=report_day))
+    return rows
+
+
+def _historical_key_rows(provider: str, key_usage: dict, report_day: str, now: float) -> list[dict]:
+    rows = []
+    for slot in range(1, config.KEY_SLOTS + 1):
+        item = ((key_usage.get("slots") or {}).get(_slot_key(provider, slot)) or {})
+        for gen_id, record in sorted((item.get("generations") or {}).items(),
+                                     key=lambda pair: (str(pair[1].get("since_day") or ""), pair[0])):
+            if not _GEN_RE.fullmatch(str(gen_id)):
+                continue
+            active = bool(record.get("active"))
+            rows.append(_key_row(provider, slot, have=active, generation=gen_id, record=record,
+                                 active=active, state="ok", now=now, req={}, tok={}, out={}, report_day=report_day))
+        unknown = item.get("unknown") or {}
+        if sum((unknown.get("req") or {}).values()) or sum((unknown.get("tok") or {}).values()):
+            rows.append(_key_row(provider, slot, have=False, unknown=unknown, active=False, state="ok",
+                                 now=now, req={}, tok={}, out={}, report_day=report_day))
+    return rows
+
+
 def report() -> dict:
     """Everything the API usage screen shows, from local counters only (no network, works with zero keys)."""
     _roll()
     now = time.time()
     with _usage_lock:
+        changed = _sync_generations()
+        changed = _reconcile_ledger(_usage) or changed
+        if changed:
+            _save()
         req, tok = dict(_usage["req"]), dict(_usage["tok"])
         out = dict(_usage.get("out") or {})
         feat, truth = dict(_usage.get("feat") or {}), dict(_usage.get("truth") or {})
         hist, day = list(_usage.get("hist") or []), _usage["day"]
         today = _day_summary(_usage)
-    by_key: dict[tuple[str, int], dict[str, str]] = {}
-    for qk in set(req) | set(tok):
-        prov, model, slot = _split_qkey(qk)
-        if prov in PROVIDERS:
-            by_key.setdefault((prov, slot), {})[model] = qk
+        key_usage = copy.deepcopy(_usage.get("key_usage") or {"slots": {}})
+        generation_state = copy.deepcopy(_usage.get("key_generation_state") or {})
+        sampled_at = _sampled_at_locked()
     providers = []
     order = [p for p in PROVIDER_NAMES if p in PROVIDERS] + [p for p in PROVIDERS if p not in PROVIDER_NAMES]
     standard_spec = _selected_standard_spec()
     for prov in order:
         set_slots = PROVIDERS[prov].slots()
-        keys = []
-        for slot in range(1, config.KEY_SLOTS + 1):
-            have = slot in set_slots
-            models = dict(by_key.get((prov, slot), {}))
-            if prov == "groq" and have and standard_spec and standard_spec.model not in models:
-                models[standard_spec.model] = f"groq:{standard_spec.model}" + (f"#{slot}" if slot > 1 else "")
-            rows = sorted((_model_row(prov, m, slot, qk, req, tok, out, now) for m, qk in models.items()),
-                          key=lambda x: (-x["req"], x["model"]))
-            kid = prov if slot <= 1 else f"{prov}#{slot}"
-            cool_s = max(0, int(max(_key_cool.get(kid, 0), _prov_cool.get(prov, 0)) - now))
-            keys.append({"slot": slot, "set": have, "state": _key_state(have, cool_s, rows), "cool_s": cool_s,
-                         "req": sum(m["req"] for m in rows), "tok": sum(m["tok"] for m in rows), "models": rows})
-        providers.append({"id": prov, "name": PROVIDER_NAMES.get(prov, prov), "keys": keys,
+        keys = _current_key_rows(prov, now=now, report_day=day, req=req, tok=tok, out=out,
+                                 key_usage=key_usage, generation_state=generation_state)
+        providers.append({"id": prov, "name": PROVIDER_NAMES.get(prov, prov), "keys": keys, "keys_complete": True,
                           "set": len(set_slots), "limits": limits_text(prov),
                           "req": sum(k["req"] for k in keys), "tok": sum(k["tok"] for k in keys)})
     std = {"state": "nokey", "left": 0.0}
@@ -739,10 +1310,12 @@ def report() -> dict:
     days = [{"day": h.get("day", ""), "req": sum((h.get("req") or {}).values()), "tok": sum((h.get("tok") or {}).values()),
              "by": dict(h.get("req") or {})} for h in hist[-6:] if isinstance(h, dict)]
     days.append({"day": day, "req": sum(today["req"].values()), "tok": sum(today["tok"].values()), "by": today["req"]})
+    provider_req, provider_tok = _provider_totals({"key_usage": key_usage})
     return {
         "day_utc": day,
+        "sampled_at": sampled_at,
         "reset_in_s": max(0, int(tomorrow.timestamp() - now)),
-        "totals": {"req": sum(int(v) for v in req.values()), "tok": sum(int(v) for v in tok.values())},
+        "totals": {"req": sum(provider_req.values()), "tok": sum(provider_tok.values())},
         "providers": providers,
         "features": feat,
         "days": days,
@@ -758,6 +1331,7 @@ def controller_reports() -> list[dict]:
     current = report()
     with _usage_lock:
         history = [dict(row) for row in _usage.get("hist", []) if isinstance(row, dict)]
+        sampled_at = _sampled_at_locked()
     try:
         current_day = dt.date.fromisoformat(str(current.get("day_utc") or ""))
     except ValueError:
@@ -785,9 +1359,13 @@ def controller_reports() -> list[dict]:
             if provider not in PROVIDERS:
                 continue
             providers.append({"id": provider, "name": PROVIDER_NAMES[provider], "set": 0,
-                              "req": req.get(provider, 0), "tok": tok.get(provider, 0), "keys": []})
+                              "req": req.get(provider, 0), "tok": tok.get(provider, 0),
+                              "keys_complete": isinstance(row.get("key_usage"), dict),
+                              "keys": _historical_key_rows(provider, row.get("key_usage") or {"slots": {}},
+                                                           day, sampled_at / 1000.0)})
         reports.append({
             "day_utc": day,
+            "sampled_at": sampled_at,
             "totals": {"req": sum(req.values()), "tok": sum(tok.values())},
             "providers": providers,
             "features": {str(k)[:60]: max(0, int(v or 0)) for k, v in (row.get("feat") or {}).items()},

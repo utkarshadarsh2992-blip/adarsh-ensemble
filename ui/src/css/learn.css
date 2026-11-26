@@ -1,7 +1,13 @@
 /* learn.css : check questions, new words and "Gehrai mein jao" under an answer (change 1.2).
    Techy look: mono labels, thin rules, letter keys, clear right/wrong states. */
 .lcheck{margin-top:10px;padding:0;border:1px solid var(--line2);background:var(--paper)}
-.lcheck .lc-h{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;letter-spacing:.06em}
+.lcheck .lc-h{display:flex;align-items:center;gap:8px;min-height:44px;box-sizing:border-box;padding:10px 14px;border-bottom:1px solid transparent;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;cursor:pointer;list-style:none}
+.lcheck .lc-h::-webkit-details-marker{display:none}
+.lcheck .lc-h:focus-visible{outline:2px solid var(--sel);outline-offset:-2px;border-radius:inherit}
+.lcheck[open] .lc-h{border-bottom-color:var(--line)}
+.lcheck:not([open]) > :not(summary){display:none}
+.lcheck .lc-arrow{flex:none;color:var(--accent);font-size:16px;transition:transform .15s ease}
+.lcheck[open] .lc-arrow{transform:rotate(180deg)}
 .lcheck .lc-k{color:var(--accent);font-weight:500}
 .lcheck .lc-c{color:var(--fg);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .lcheck .lc-tag{border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:1px 6px;font-size:10px}

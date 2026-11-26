@@ -64,6 +64,9 @@ export type UsageProvider = {
   keys?: {
     slot: number;
     set: boolean;
+    generation?: string;
+    active?: boolean;
+    tracked_since_day?: string;
     req: number;
     tok: number;
     state: string;
@@ -72,6 +75,7 @@ export type UsageProvider = {
 };
 export type Report = {
   day_utc: string;
+  sampled_at?: number;
   totals: { req: number; tok: number };
   providers: UsageProvider[];
   features?: Record<string, number>;

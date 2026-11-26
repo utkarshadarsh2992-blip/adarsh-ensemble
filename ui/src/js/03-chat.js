@@ -123,7 +123,9 @@ const Chat = (() => {
     const priorTop = thread.scrollTop;
     const switching = App.view === 'chat' && displayedChatId !== nextChatId;
     /* Measure before clearing: an empty column makes every scroll position look like the bottom. */
-    const near = switching || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260;
+    const last = c && c.msgs[c.msgs.length - 1], typing = last && typedReplies.get(last);
+    const near = switching || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260 ||
+      !!(typing && typing.follow && answerDestination() - priorTop < 260);
     col.textContent = '';
     const has = !!(c && c.msgs.length);
     titleEl.className = has ? '' : 'wm'; titleEl.textContent = has ? (c.title || 'New chat') : 'ADARSH';
@@ -151,8 +153,18 @@ const Chat = (() => {
     if (near && App.view === 'chat') scroll();
     else thread.scrollTop = Math.min(priorTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
   }
-  /* eased, not a jump: the thread glides to the newest line and keeps following while it grows */
-  const scroll = () => Motion.glide(thread);
+  /* Follow the answer itself, never the quiz/fact-check cards that happen to be mounted below it. */
+  function answerDestination() {
+    const bodies = [...col.querySelectorAll('.msg[data-id] > .prose')];
+    const body = bodies[bodies.length - 1];
+    const end = Math.max(0, thread.scrollHeight - thread.clientHeight);
+    const c = cur(), last = c && c.msgs[c.msgs.length - 1];
+    if (!body || !last || last.role === 'user' || !last.reply || last.reply.type !== 'text') return end;
+    const bounds = body.getBoundingClientRect(), viewport = thread.getBoundingClientRect();
+    if (!bounds.height) return end;
+    return Math.max(0, Math.min(end, thread.scrollTop + bounds.bottom - viewport.top - thread.clientHeight + 20));
+  }
+  const scroll = () => Motion.glide(thread, { to: answerDestination });
 
   function paintTypedReply(m, state) {
     if (App.view !== 'chat') return;
