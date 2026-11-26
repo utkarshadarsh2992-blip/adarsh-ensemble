@@ -104,3 +104,14 @@ test('browser backend rejects non-local HTTP and never sends bearer tokens over 
   assert.equal((await app.Backend.ping()).ok, false);
   assert.equal(calls.length, 1);
 });
+
+test('CSP and native token migration keep secrets out of WebView storage', () => {
+  const csp = (INDEX.match(/Content-Security-Policy" content="([^"]+)/) || [])[1] || '';
+  for (const directive of ["default-src 'none'", "script-src 'self'", 'style-src', 'img-src', 'media-src', 'connect-src', 'font-src', "base-uri 'none'", "form-action 'none'", "frame-src 'none'"]) assert.ok(csp.includes(directive), directive);
+  const bridge = fs.readFileSync(path.join(UI, 'src/js/00-android-bridge.js'), 'utf8');
+  const core = fs.readFileSync(path.join(UI, 'src/js/01-core.js'), 'utf8');
+  assert.match(bridge, /saveBackendToken/);
+  assert.match(core, /legacyToken/);
+  assert.match(core, /AdarshConnection\.saveToken/);
+  assert.match(core, /k === 'token' && window\.AdarshConnection/);
+});

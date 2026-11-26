@@ -1,7 +1,6 @@
 
 import java.net.URI
 import java.security.MessageDigest
-import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -13,14 +12,6 @@ plugins {
 val repoRoot = rootDir.parentFile
 val engineDir = layout.buildDirectory.dir("generated/engine")
 val uiDir = layout.buildDirectory.dir("generated/ui")
-
-// Fixed signing key. Either adarsh-debug.keystore is uploaded as a file, or its base64 text is pasted into
-// adarsh-debug.keystore.b64 (easy from a phone) and decoded here before signing.
-val ksFile = file("adarsh-debug.keystore")
-val ksB64 = file("adarsh-debug.keystore.b64")
-if (!ksFile.exists() && ksB64.exists()) {
-    ksFile.writeBytes(Base64.getMimeDecoder().decode(ksB64.readText().trim()))
-}
 
 android {
     namespace = "app.adarsh.ensemble"
@@ -38,15 +29,6 @@ android {
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
-        }
-    }
-
-    signingConfigs {
-        getByName("debug") {
-            storeFile = file("adarsh-debug.keystore")
-            storePassword = "adarsh123456"
-            keyAlias = "adarsh"
-            keyPassword = "adarsh123456"
         }
     }
 

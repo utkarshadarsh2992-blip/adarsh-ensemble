@@ -486,13 +486,25 @@ const App = (() => {
       const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
       b.append(h('button', { class: 'btn ghost', on: { click: async () => {
         res.textContent = 'Testing…';
-        try { const r = await window.ADARSH_BACKEND.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); }
+        try { const r = await window.ADARSH_BACKEND.send({ diagnose: true }, {}); res.textContent = diagnosticText(r); }
         catch (e) { res.textContent = 'Test failed: ' + e.message; }
       } } }, 'Test connection'), res);
       scrollers.forEach(([el, y]) => { el.scrollTop = y; });
     } } });
   }
   /* Android: there is no server to point at. Show what the on-device engine is really doing. */
+  const diagnosticText = (r) => {
+    const raw = String((r && r.text) || '').replace(/\*\*/g, '');
+    const configured = Number.isFinite(Number(r && r.models_configured)) ? Number(r.models_configured) : null;
+    const available = Number.isFinite(Number(r && r.models_available)) ? Number(r.models_available) : null;
+    const keys = Number.isFinite(Number(r && r.keys_configured)) ? Number(r.keys_configured) : null;
+    if (configured != null || available != null) {
+      const modelLine = (available == null ? '?' : available) + ' of ' + (configured == null ? '?' : configured) + ' models available';
+      const keyLine = keys == null ? '' : ' · ' + keys + ' key slots set';
+      return modelLine + keyLine + (raw ? '\n' + raw : '');
+    }
+    return raw.replace(/(\d+)\s*\/\s*(\d+)\s*(?:configured\s+)?models?\s*(?:mile|found|available)/i, '$1 of $2 models available');
+  };
   function engineSheet() {
     sheet({ title: 'On-device engine', tall: true, build(b) {
       const B = window.ADARSH_BACKEND, st = B.status ? B.status() : {};
@@ -505,7 +517,7 @@ const App = (() => {
           row('Natural voice', v.gemini ? 'Ready' : v.groq_english ? 'English only' : 'Phone voice'),
           row('Plan', (st.plan_problems || []).length ? st.plan_problems.slice(0, 3).join('; ') : 'Valid')));
       const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
-      b.append(h('button', { class: 'btn pri', on: { click: async () => { res.textContent = 'Testing…'; try { const r = await B.send({ diagnose: true }, {}); res.textContent = String((r && r.text) || '').replace(/\*\*/g, ''); } catch (e) { res.textContent = 'Test failed: ' + e.message; } } } }, 'Test connection'), res,
+      b.append(h('button', { class: 'btn pri', on: { click: async () => { res.textContent = 'Testing…'; try { const r = await B.send({ diagnose: true }, {}); res.textContent = diagnosticText(r); } catch (e) { res.textContent = 'Test failed: ' + e.message; } } } }, 'Test connection'), res,
         h('button', { class: 'btn ghost', on: { click: () => { Backend.refresh(); toast('Checking…'); } } }, 'Recheck status'));
     } });
   }
@@ -592,22 +604,25 @@ const App = (() => {
     let pointerStart = null, touchStart = null;
     function begin(target, x, y) {
       const lock = $('#lock'), voice = $('#voice');
-      if (view === 'news' || root().classList.contains('open') || document.querySelector('.shade,.pop-scrim') ||
+      const closingNews = view === 'news';
+      if (root().classList.contains('open') || document.querySelector('.shade,.pop-scrim') ||
           (lock && !lock.hidden) || (voice && !voice.hidden) || swipeBlocked(target)) return null;
       const phone = root(), rect = phone.getBoundingClientRect();
       const left = rect.width > 0 ? rect.left : 0;
       const width = rect.width > 0 ? rect.width : (window.innerWidth || 480);
       const right = rect.width > 0 ? rect.right : (window.innerWidth || 480);
       const top = rect.height > 0 ? rect.top : 0, bottom = rect.height > 0 ? rect.bottom : Infinity;
-      if (x < left + width / 2 || x > right || y < top || y > bottom || inHorizontalScroller(target, phone)) return null;
-      return { x, y };
+      if (x < left || x > right || y < top || y > bottom || inHorizontalScroller(target, phone)) return null;
+      if (!closingNews && x < left + width / 2) return null;
+      return { x, y, closingNews };
     }
     function finish(target, x, y, from, e) {
-      if (!from || view === 'news') return;
+      if (!from) return;
       const dx = x - from.x, dy = y - from.y;
-      if (dx > -56 || Math.abs(dy) > 80 || Math.abs(dx) < Math.abs(dy) * 1.2 || swipeBlocked(target)) return;
+      const valid = from.closingNews ? dx >= 56 : dx <= -56;
+      if (!valid || Math.abs(dy) > 80 || Math.abs(dx) < Math.abs(dy) * 1.2 || swipeBlocked(target)) return;
       if (e.cancelable) e.preventDefault();
-      show('news');
+      show(from.closingNews ? 'chat' : 'news');
     }
     document.addEventListener('pointerdown', e => {
       pointerStart = null;

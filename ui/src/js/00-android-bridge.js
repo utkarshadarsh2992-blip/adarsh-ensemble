@@ -6,6 +6,13 @@
   const N = window.AdarshNative;
   if (!N) return;
 
+  /* Remote bearer tokens are Android-keystore values, not WebView localStorage values. */
+  window.AdarshConnection = {
+    getToken() { try { return String(N.backendToken ? N.backendToken() : ''); } catch (e) { return ''; } },
+    saveToken(value) { try { return JSON.parse(N.saveBackendToken(String(value || ''))).ok === true; } catch (e) { return false; } },
+    removeToken() { try { return JSON.parse(N.deleteBackendToken ? N.deleteBackendToken() : '{"ok":false}').ok === true; } catch (e) { return false; } }
+  };
+
   const pending = {};
   let seq = 0;
 

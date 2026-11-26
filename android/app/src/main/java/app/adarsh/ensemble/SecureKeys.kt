@@ -77,6 +77,14 @@ class SecureKeys(private val ctx: Context) {
 
     fun remove(name: String): Boolean = name in NAMES && prefs.edit().remove(name).commit()
 
+    /** Optional remote-backend bearer token; kept in the same Keystore-backed store as provider keys. */
+    fun getBackendToken(): String? = prefs.getString(BACKEND_TOKEN, null)?.takeIf { it.isNotBlank() }
+
+    fun putBackendToken(value: String): Boolean = value.isNotBlank() &&
+        prefs.edit().putString(BACKEND_TOKEN, value.trim()).commit()
+
+    fun removeBackendToken(): Boolean = prefs.edit().remove(BACKEND_TOKEN).commit()
+
     /** "…wxyz" for the settings screen, nothing for short keys. */
     fun hint(name: String): String {
         val v = get(name) ?: return ""
@@ -88,6 +96,7 @@ class SecureKeys(private val ctx: Context) {
         private const val TAG = "SecureKeys"
         private const val OPEN_ATTEMPTS = 3
         const val KEY_SLOTS = 3
+        private const val BACKEND_TOKEN = "BACKEND_BEARER_TOKEN"
 
         /** Provider env names that have 3 slots: X, X_2, X_3 (Cloudflare: token + account id per slot). */
         private val SLOTTED = listOf(

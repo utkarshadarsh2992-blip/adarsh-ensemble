@@ -297,6 +297,8 @@ object NewsFcm {
         var connection: HttpURLConnection? = null
         return try {
             connection = (URL(url).openConnection() as? HttpURLConnection) ?: return false
+            if (!exactHttpsHost(connection.url, url)) return false
+            connection.instanceFollowRedirects = false
             connection.requestMethod = "POST"
             connection.connectTimeout = 10_000
             connection.readTimeout = 10_000
@@ -337,6 +339,9 @@ object NewsFcm {
         return try {
             connection = (URL(url).openConnection() as? HttpURLConnection) ?: return JSONObject()
                 .put("ok", false).put("error", "URL galat hai").toString()
+            if (!exactHttpsHost(connection.url, url)) return JSONObject()
+                .put("ok", false).put("error", "URL galat hai").toString()
+            connection.instanceFollowRedirects = false
             connection.requestMethod = "POST"
             connection.connectTimeout = 10_000
             connection.readTimeout = 10_000
@@ -363,6 +368,15 @@ object NewsFcm {
         val id = UUID.randomUUID().toString()
         return if (p.edit().putString("device_id", id).commit()) id else null
     }
+
+    /** Authenticated news traffic never follows a redirect to another host (or to HTTP). */
+    private fun exactHttpsHost(actual: URL, expected: String): Boolean = try {
+        val original = URL(expected)
+        actual.protocol.equals("https", ignoreCase = true) &&
+            original.protocol.equals("https", ignoreCase = true) &&
+            actual.host.equals(original.host, ignoreCase = true) &&
+            actual.port == original.port
+    } catch (_: Exception) { false }
 
     private fun prefs(ctx: Context): SharedPreferences? {
         store?.let { return it }
