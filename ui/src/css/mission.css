@@ -1,8 +1,7 @@
-/* mission.css : Mission & goals board, Today card and the night briefing plan card (change 1.3).
+/* mission.css : Goals/projects board, Today card and the night briefing plan card (change 1.3).
    Same techy look as learn.css: mono keys, thin rules, clear states. */
 .mi-k{font:500 10.5px/1 var(--mono);letter-spacing:.08em;color:var(--accent)}
-.mi-mission .mi-mtext{margin:6px 0 0;font-family:var(--serif);font-size:16.5px;line-height:1.45;color:var(--fg)}
-.mi-mission .card-h,.mi-today .card-h{flex-wrap:nowrap}
+.mi-today .card-h{flex-wrap:nowrap}
 .mi-brief{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .mi-goal,.mi-proj{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line)}
 .mi-goal.is-done,.mi-proj.is-done{opacity:.7}
@@ -26,7 +25,7 @@
 .mi-today .mi-trow svg{color:var(--accent);flex:none}
 .mi-today .mi-trow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
 .mi-today .muted{margin:6px 0 0}
-.mi-today .card-btns .btn,.mi-mission .card-btns .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.mi-today .card-btns .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px}
 /* night briefing: KAL KA PLAN */
 .bplan{margin-top:10px;border:1px solid var(--line2);background:var(--paper)}
 .bplan .bp-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11.5px;letter-spacing:.06em}

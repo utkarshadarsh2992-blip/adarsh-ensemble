@@ -1,7 +1,7 @@
 'use strict';
 /* 04-briefing.js : night briefing + tomorrow's plan (change 1.3).
    Battery: the phone only shows a notification at the set time (AlarmManager, see Briefing.kt). The one Groq call
-   happens when sir opens it. Privacy: a bounded summary (mission, goals, projects, today's concepts / words / check
+   happens when sir opens it. Privacy: a bounded summary (goals, projects, today's concepts / words / check
    score, tasks, tomorrow's fixed times) goes to Groq only for this, after a one-time consent. No chat text is sent.
    Seam: request body `briefing` = context() for the night call, {followup, goals, projects} for later messages in the
    briefing chat; the reply carries `briefing: {date, for, focus, plan:[{title, time, minutes, goal, project}]}`. */
@@ -47,7 +47,7 @@ const Briefing = (() => {
       .sort((a, b) => at(a) - at(b)).slice(0, 10).map(r => ({ title: clean(r.title || r.text, 120) || 'Alarm', time: hm(at(r)) }));
     const sum = Mission.summary();
     return { date: today, tomorrow: ymd(d1), weekday: DAYS[d0.getDay()], tomorrowDay: DAYS[d1.getDay()], now: hm(now),
-      mission: sum.mission, goals: sum.goals, projects: sum.projects,
+      goals: sum.goals, projects: sum.projects,
       today: { questions, concepts: concepts.slice(0, 12), words, right: log.filter(x => x.ok).length, total: log.length, weak, done, open, work },
       fixed, news: News.briefingLines() };
   }
@@ -62,7 +62,7 @@ const Briefing = (() => {
     sheet({ title: 'Raat ki briefing · privacy', build(b, close) {
       b.append(h('div', { class: 'bp-consent' },
         h('p', {}, 'Briefing ke liye ek chhota summary Groq (Standard mode ka AI) ko jayega:'),
-        h('ul', {}, ['Mission, goals (deadline, progress) aur projects (built / learned / next)', 'Aaj ke concepts, naye shabd, check score aur galat sawaal', 'Aaj ke done / open tasks, work minutes, kal ke fixed time'].map(t => h('li', {}, t))),
+        h('ul', {}, ['Goals (deadline, progress) aur projects (built / learned / next)', 'Aaj ke concepts, naye shabd, check score aur galat sawaal', 'Aaj ke done / open tasks, work minutes, kal ke fixed time'].map(t => h('li', {}, t))),
         h('p', { class: 'muted' }, 'Chats ka text nahi jata. Briefing 0–3 memory suggestions de sakti hai; sir “Yaad rakho” dabayenge tabhi phone ki Memory mein save hogi. Din mein “yaad rakho…” bolne par seedha save hoga.')),
         h('div', { class: 'frow' },
           h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => { if (S.settings.briefingConsent) { S.settings.briefingConsent = false; save(); toast('Consent hata diya. Agli briefing par phir poochega.'); } close(); if (then) then(false); } } }, S.settings.briefingConsent ? 'Consent hatao' : 'Abhi nahi'),

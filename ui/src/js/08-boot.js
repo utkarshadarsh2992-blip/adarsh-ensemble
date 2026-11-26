@@ -2,6 +2,7 @@
 /* 08-boot.js : start-up + public UI hooks */
 (function boot() {
   load();
+  Mission.ensureDefaultGoal();
   Splash.start();   // startup animation over the boot (S.settings.bootAnim, AI command se)
   Productivity.init();
   App.applyTheme();

@@ -179,6 +179,27 @@ test('check questions off is sent to the backend; Seekhe shabd sheet adds, finds
   } finally { app.close(); }
 });
 
+test('learned-word sheet keeps long definitions in non-shrinking, wrapped rows', () => {
+  const meaning = 'checking payment info before service use · cloud GPU providers require payment and availability varies by region';
+  const app = mount({ store: { vocab: [
+    { id: 'long-1', w: 'Cloud GPU', m: meaning, src: 'Inertia', ts: 2 },
+    { id: 'long-2', w: 'GPU memory', m: 'VRAM size of a graphics card · high-memory GPU availability on inference platforms', src: 'Inertia', ts: 1 }
+  ] } });
+  try {
+    app.Learn.vocabSheet();
+    const rows = [...app.document.querySelectorAll('.lvocab>.item')];
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].querySelector('.t>b').textContent, 'Cloud GPU');
+    assert.match(rows[0].querySelector('.t>small').textContent, /checking payment info.*region/);
+    assert.equal(rows[1].querySelector('.t>b').textContent, 'GPU memory');
+    assert.match(rows[1].querySelector('.t>small').textContent, /VRAM size.*platforms/);
+    const css = fs.readFileSync(path.join(UI, 'src/css/learn.css'), 'utf8');
+    assert.match(css, /\.lvocab\s*\{\s*flex:\s*0\s+0\s+auto/);
+    assert.match(css, /\.lvocab\s+\.item\s*\{[^}]*flex:\s*0\s+0\s+auto/);
+    assert.match(css, /\.lvocab\s+\.item>\.t>small\s*\{[^}]*white-space:\s*normal[^}]*overflow-wrap:\s*anywhere/);
+  } finally { app.close(); }
+});
+
 test('backup import keeps learned words typed and capped', () => {
   const app = mount();
   try {

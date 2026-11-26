@@ -1,6 +1,5 @@
 'use strict';
-/* 04-mission.js : Mission & goals (change 1.3).
-   - S.mission: one line, why everything is done (AI/AGI, rockets, robots; business only funds it).
+/* 04-mission.js : goals + project tracker (change 1.3).
    - S.goals: [{id, title, why, deadline 'YYYY-MM-DD' | '', status active|paused|done, milestones:[{id, t, done}], created, updated}]
      Days left are counted from today's date on the phone; progress = milestones done / total.
    - S.projects: sir's builder cycle (build -> learn -> upgrade). [{id, name, goalId, why, status, concepts:[],
@@ -11,10 +10,9 @@ const Mission = (() => {
   const MAX_GOALS = 30, MAX_PROJECTS = 40, MAX_MS = 30, MAX_VERSIONS = 60, IDLE_DAYS = 3;
   const STATUS = ['active', 'paused', 'done'];
   const STATUS_NAME = { active: 'Active', paused: 'Paused', done: 'Done' };
-  const STARTER_MISSION = 'AI/AGI, rockets aur robots banana. Business aur entrepreneurship sirf iske liye paisa laayenge.';
   const STARTER_GOAL = {
-    title: 'Math, science, CS, business aur economics samjho; MIT jao',
-    why: 'Mission ki neev: har cheez first principles se samajhna',
+    title: 'Mujhe MIT jana hai',
+    why: 'Math, science, computer science, business aur economics ki foundation bana kar MIT ki taiyari',
     milestones: ['Math basics: algebra se calculus tak', 'Physics basics: mechanics aur energy', 'Programming basics: Python', 'Economics aur business basics']
   };
   const clean = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '');
@@ -59,6 +57,17 @@ const Mission = (() => {
       milestones: milestones.map(t => clean(t, 100)).filter(Boolean).slice(0, MAX_MS).map(t => ({ id: uid('ms'), t, done: false })), created: Date.now(), updated: Date.now() };
     goals().push(g); changed(); return g;
   }
+  function ensureDefaultGoal() {
+    const existing = goals().find(g => /\bMIT\b/i.test(clean(g.title, 120)));
+    if (existing) {
+      if (S.settings.defaultMitGoalSeeded !== true) { S.settings.defaultMitGoalSeeded = true; save(); }
+      return existing;
+    }
+    if (S.settings.defaultMitGoalSeeded === true) return null;
+    const added = addGoal(STARTER_GOAL);
+    if (added) { S.settings.defaultMitGoalSeeded = true; save(); }
+    return added;
+  }
   function addProject({ name, why = '', goalId = '', aim = '' }) {
     name = clean(name, 80); if (!name) return null;
     if (projects().length >= MAX_PROJECTS) { toast('Max ' + MAX_PROJECTS + ' projects.'); return null; }
@@ -73,11 +82,6 @@ const Mission = (() => {
     p.versions.push({ id: uid('v'), v: v.v + 1, aim: v.next || '', built: '', learned: '', next: '', started: Date.now(), done: 0 });
     p.status = 'active'; p.updated = Date.now(); changed();
     toast(p.name + ' · v' + (v.v + 1) + ' shuru');
-  }
-  function starter() {
-    if (!clean(S.mission, 400)) S.mission = STARTER_MISSION;
-    if (!goals().some(g => g.title === STARTER_GOAL.title)) addGoal(STARTER_GOAL);
-    changed();
   }
   function remove(list, x, label) {
     const k = list.indexOf(x); if (k < 0) return;
@@ -106,7 +110,7 @@ const Mission = (() => {
       return { name: p.name, version: v.v || 1, status: p.status, built: v.built || '', learned: v.learned || '', next: v.next || v.aim || '',
         idleDays: idleDays(p), concepts: (p.concepts || []).slice(0, 8), goal: g ? g.title : '' };
     });
-    return { mission: clean(S.mission, 400), goals: gs, projects: ps };
+    return { goals: gs, projects: ps };
   }
 
   /* ---------- import (typed + capped, audit M8) ---------- */
@@ -139,16 +143,9 @@ const Mission = (() => {
     opts.forEach(([v, l]) => seg.append(h('button', { type: 'button', 'aria-pressed': String(get() === v), on: { click: (e) => { set(v); [...seg.children].forEach(x => x.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } } }, l)));
     return seg;
   };
-  function missionSheet() {
-    sheet({ title: 'Mission', build(b, close) {
-      const t = area(S.mission || '', 'Main ye sab kyun kar raha hoon…', 400);
-      b.append(h('div', { class: 'pv-form' }, field('Mission', t, 'Ek line. Raat ki briefing har plan ko isi se jodti hai.'),
-        h('button', { class: 'btn pri', on: { click: () => { S.mission = clean(t.value, 400); changed(); close(); toast('Mission save'); } } }, 'Save')));
-    } });
-  }
   function goalSheet(g) {
     sheet({ title: g ? 'Goal badlo' : 'Naya goal', tall: true, build(b, close) {
-      const title = inp(g && g.title, 'Kya haasil karna hai', 120), why = inp(g && g.why, 'Kyun (mission se kaise juda hai)', 200);
+      const title = inp(g && g.title, 'Kya haasil karna hai', 120), why = inp(g && g.why, 'Ye goal kyun aham hai', 200);
       const dl = h('input', { class: 'pv-input', type: 'date', value: (g && g.deadline) || '', 'aria-label': 'Deadline' });
       const ms = area(g ? (g.milestones || []).map(m => m.t).join('\n') : '', 'Ek line = ek milestone', 3000);
       let status = (g && g.status) || 'active';
@@ -246,17 +243,12 @@ const Mission = (() => {
         h('button', { class: 'btn pri', on: { click: () => confirmSheet({ title: 'v' + ((v.v || 1) + 1) + ' shuru karein?', text: 'v' + (v.v || 1) + ' band hoga aur history mein jayega. Naye version ka target: ' + (v.next || '(next upgrade khaali hai)'), label: 'Upgrade', onYes: () => upgrade(p) }) } }, icon('up', 's'), 'Upgrade')));
   }
 
-  /* ---------- view (drawer: Mission & goals) ---------- */
+  /* ---------- Goals view ---------- */
   function view(st, redraw) {
     const brief = h('button', { class: 'btn pri mi-brief', on: { click: () => Briefing.start() } }, icon('moon', 's'), 'Raat ki briefing abhi');
-    st.append(h('div', { class: 'card mi-mission' },
-      h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, 'MISSION'), h('p', { class: 'mi-mtext' }, clean(S.mission, 400) || 'Mission abhi likha nahi.')),
-        h('button', { class: 'pv-icon-btn', type: 'button', 'aria-label': 'Edit mission', on: { click: missionSheet } }, icon('edit', 's'))),
-      h('div', { class: 'card-btns' }, brief)));
     if (!goals().length && !projects().length) {
       st.append(h('div', { class: 'pv-empty' }, icon('target'), h('b', {}, 'Abhi koi goal ya project nahi'),
-        h('span', {}, 'Starter se aapka mission aur MIT wala goal jud jayega (deadline aap khud set karoge).'),
-        h('button', { class: 'btn pri', on: { click: () => { starter(); toast('Mission aur MIT goal jud gaye. Deadline set karo.'); } } }, 'Mera mission aur MIT goal jodo'),
+        h('span', {}, 'Goal ya project add karke apni progress track karo.'),
         h('button', { class: 'link', on: { click: () => goalSheet() } }, 'Khud goal likho')));
     }
     st.append(h('div', { class: 'sech' }, 'Goals', h('button', { on: { click: () => goalSheet() } }, '+ Goal')));
@@ -273,11 +265,11 @@ const Mission = (() => {
     const lines = [];
     if (g) { const n = daysLeft(g), pct = progress(g); lines.push(h('div', { class: 'mi-trow' }, icon('target', 's'), h('span', { class: 't' }, g.title), h('span', { class: 'pill ' + leftTone(n) }, n == null ? 'no deadline' : n >= 0 ? n + ' din' : 'late'), pct == null ? null : h('span', { class: 'pv-chip' }, pct + '%'))); }
     if (p) { const idle = idleDays(p), v = cur(p) || {}; lines.push(h('div', { class: 'mi-trow' }, icon('bolt', 's'), h('span', { class: 't' }, p.name + ' · v' + (v.v || 1)), idle >= IDLE_DAYS ? h('span', { class: 'pill warn' }, idle + ' din idle') : null)); }
-    if (!lines.length) lines.push(h('p', { class: 'muted' }, 'Mission, goals aur projects abhi khaali hain.'));
-    return h('div', { class: 'card mi-today' }, h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, 'MISSION · RAAT KI BRIEFING'), lines)),
+    if (!lines.length) lines.push(h('p', { class: 'muted' }, 'Goals aur projects abhi khaali hain.'));
+    return h('div', { class: 'card mi-today' }, h('div', { class: 'card-h' }, h('div', { class: 'grow' }, h('span', { class: 'k' }, 'GOALS · RAAT KI BRIEFING'), lines)),
       h('div', { class: 'card-btns' }, h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => Briefing.start() } }, icon('moon', 's'), 'Briefing'),
         h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => App.show('goals') } }, 'Goals')));
   }
 
-  return { view, todayCard, summary, cleanImport, starter, addGoal, addProject, upgrade, daysLeft, progress, idleDays, recentConcepts, goals, projects, missionSheet, goalSheet, projectSheet, versionSheet, validDate };
+  return { view, todayCard, summary, cleanImport, ensureDefaultGoal, addGoal, addProject, upgrade, daysLeft, progress, idleDays, recentConcepts, goals, projects, goalSheet, projectSheet, versionSheet, validDate };
 })();

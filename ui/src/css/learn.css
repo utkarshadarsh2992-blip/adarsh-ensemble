@@ -50,4 +50,10 @@
 .pop-item .pi-v{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.02em}
 .lstat{padding:10px 12px;border-radius:12px;background:var(--card);font-family:var(--mono);font-size:12.5px}
 .lstat b{color:var(--good)}
-.lvocab .item small{overflow-wrap:anywhere}
+/* The sheet body and group are vertical flex containers; shrinking these rows clips long meanings into the next word. */
+.lvocab{flex:0 0 auto}
+.lvocab .item{flex:0 0 auto;height:auto;min-height:56px;box-sizing:border-box;align-items:flex-start;padding-top:9px;padding-bottom:9px}
+.lvocab .item>.t{gap:4px}
+.lvocab .item>.t>b{display:block;line-height:1.3}
+.lvocab .item>.t>small{display:block;white-space:normal;line-height:1.45;overflow-wrap:anywhere}
+.lvocab .item>.ib{flex:none;align-self:flex-start;margin-top:5px}

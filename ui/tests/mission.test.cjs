@@ -57,15 +57,13 @@ const nightReply = (req) => {
       ] } };
 };
 
-test('starter adds the mission and the MIT goal; days left and progress come from the phone', () => {
+test('default MIT goal is added on boot once; days left and progress come from the phone', () => {
   const app = mount();
   try {
     const { Mission, S } = app;
-    Mission.starter();
-    assert.match(S.mission, /AI\/AGI, rockets aur robots/);
     assert.equal(S.goals.length, 1);
     const g = S.goals[0];
-    assert.match(g.title, /MIT/);
+    assert.equal(g.title, 'Mujhe MIT jana hai');
     assert.equal(g.deadline, '');
     assert.equal(Mission.daysLeft(g), null);
     assert.equal(Mission.progress(g), 0);
@@ -73,9 +71,31 @@ test('starter adds the mission and the MIT goal; days left and progress come fro
     assert.equal(Mission.daysLeft(g), 10);
     g.milestones[0].done = true; g.milestones[1].done = true;
     assert.equal(Mission.progress(g), 50);
-    Mission.starter();
-    assert.equal(S.goals.length, 1, 'starter is idempotent');
+    assert.equal(Mission.ensureDefaultGoal().id, g.id);
+    assert.equal(S.goals.length, 1, 'default creation is idempotent');
+    S.goals.splice(0, 1);
+    assert.equal(Mission.ensureDefaultGoal(), null, 'a deliberate deletion is not undone');
+    assert.equal(S.goals.length, 0);
   } finally { app.close(); }
+});
+
+test('default goal preserves user goals, projects, legacy mission data, and existing MIT goals', () => {
+  const custom = { id: 'user-g', title: 'Build a robot', why: 'Learn by building', deadline: '', status: 'active', milestones: [], created: 1, updated: 1 };
+  const project = { id: 'user-p', name: 'Robot', why: '', goalId: 'user-g', status: 'active', concepts: [], versions: [{ id: 'v1', v: 1, aim: 'Move' }], created: 1, updated: 1 };
+  const app = mount({ store: { goals: [custom], projects: [project], mission: 'Legacy text kept locally' } });
+  try {
+    assert.equal(app.S.goals.length, 2);
+    assert.equal(app.S.goals[0].title, 'Build a robot');
+    assert.equal(app.S.goals[1].title, 'Mujhe MIT jana hai');
+    assert.equal(app.S.projects[0].name, 'Robot');
+    assert.equal(app.S.mission, 'Legacy text kept locally', 'old local data is not silently deleted');
+  } finally { app.close(); }
+  const existing = { id: 'mit-g', title: 'Get into MIT', why: 'My existing goal', deadline: '', status: 'active', milestones: [], created: 1, updated: 1 };
+  const app2 = mount({ store: { goals: [existing] } });
+  try {
+    assert.equal(app2.S.goals.length, 1, 'an existing MIT goal is not duplicated or replaced');
+    assert.equal(app2.S.goals[0].title, 'Get into MIT');
+  } finally { app2.close(); }
 });
 
 test('project builder cycle: update, upgrade to v2 with the old next as aim, idle days', () => {
@@ -102,15 +122,17 @@ test('project builder cycle: update, upgrade to v2 with the old next as aim, idl
   } finally { app.close(); }
 });
 
-test('goals view: empty starter, goal card with days-left pill, milestone tap updates progress', () => {
+test('Goals view has no Mission card and shows the default MIT goal; deadline and milestone progress work', () => {
   const app = mount();
   try {
     app.App.show('goals');
     const v = () => app.document.querySelector('#v-goals');
-    assert.match(text(v()), /Abhi koi goal ya project nahi/);
-    [...v().querySelectorAll('button')].find(b => /MIT goal jodo/.test(b.textContent)).click();
+    assert.equal(text(v().querySelector('.hdr h1')), 'Goals');
+    assert.equal(text(app.document.querySelector('#drawer [data-nav="goals"]')), 'Goals');
+    assert.equal(v().querySelector('.mi-mission'), null);
+    assert.doesNotMatch(text(v()), /MISSION|Edit mission/i);
     assert.equal(app.S.goals.length, 1);
-    assert.match(text(v()), /MISSION.*AI\/AGI/);
+    assert.match(text(v().querySelector('.mi-goal')), /Mujhe MIT jana hai/);
     assert.match(text(v().querySelector('.mi-goal')), /Deadline set nahi/);
     app.S.goals[0].deadline = ymd(later(20));
     app.App.show('goals');
@@ -122,7 +144,7 @@ test('goals view: empty starter, goal card with days-left pill, milestone tap up
   } finally { app.close(); }
 });
 
-test('night context: today counts from the phone records, tomorrow fixed times, bounded mission summary', () => {
+test('night context: today counts from phone records and keeps bounded goals/projects only', () => {
   const base = nightBase(), now = Date.now();
   const inDay = Math.max(base.getTime() + 1000, now - 1000);
   const tmr = new Date(base); tmr.setDate(tmr.getDate() + 1); tmr.setHours(9, 15, 0, 0);
@@ -145,7 +167,8 @@ test('night context: today counts from the phone records, tomorrow fixed times, 
     assert.equal(c.today.done.join(','), 'Done today');
     assert.equal(c.today.open.map(x => x.title).join(','), 'Open one');
     assert.equal(c.fixed.length, 1); assert.equal(c.fixed[0].title, 'Coaching'); assert.equal(c.fixed[0].time, '09:15');
-    assert.equal(c.mission, 'AGI'); assert.equal(c.goals[0].title, 'MIT');
+    assert.equal(c.mission, undefined, 'the removed Mission feature is no longer sent in briefing context');
+    assert.equal(c.goals[0].title, 'MIT');
   } finally { app.close(); }
 });
 
@@ -255,7 +278,7 @@ test('follow-ups in the briefing chat stay in Standard and carry only goals/proj
   } finally { app.close(); }
 });
 
-test('settings: Mission & briefing group, time sheet syncs the Android schedule', () => {
+test('settings: Goals & briefing group, time sheet syncs the Android schedule', () => {
   const calls = [];
   const native = { briefingSet: (j) => { calls.push(JSON.parse(j)); return JSON.stringify({ ok: true, on: true, time: JSON.parse(j).time, notify: true, exact: true }); },
     briefingStatus: () => JSON.stringify({ ok: true, notify: true, exact: true }), takeOpen: () => '' };
@@ -265,7 +288,8 @@ test('settings: Mission & briefing group, time sheet syncs the Android schedule'
     assert.equal(calls[0].time, '21:30'); assert.equal(calls[0].on, true); assert.equal(calls[0].ask, false);
     app.App.show('settings');
     const v = app.document.querySelector('#v-settings');
-    assert.match(text(v), /Mission & briefing/);
+    assert.match(text(v), /Goals & briefing/);
+    assert.doesNotMatch(text(v), /\bMission\b/i);
     assert.match(text(v), /Briefing ka time.*Roz 21:30 · notification/);
     [...v.querySelectorAll('.item')].find(b => /Briefing ka time/.test(b.textContent)).click();
     const inp = app.document.querySelector('.sheet input[type=time]');

@@ -15,8 +15,8 @@ const enabledAbilities = () => ABILITIES.filter(a => isOn(a.id)).map(a => a.id);
 
 const App = (() => {
   let view = 'chat'; const root = () => $('#phone');
-  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['goals', 'target', 'Mission & goals'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['library', 'brain', 'Memory'], ['philosophy', 'sparkle', 'Philosophy'], ['news', 'globe', 'News']];
-  const TITLES = { today: 'Today', goals: 'Mission & goals', usage: 'API usage', news: 'News', tasks: 'Tasks', work: 'Work', alarms: 'Alarms & timers', notes: 'Notes', library: 'Memory', philosophy: 'Philosophy', settings: 'Settings' };
+  const NAV = [['chat', 'chat', 'Chat'], ['today', 'sun', 'Today'], ['goals', 'target', 'Goals'], ['tasks', 'tasks', 'Tasks'], ['work', 'book', 'Work'], ['alarms', 'cal', 'Alarms & timers'], ['notes', 'file', 'Notes'], ['library', 'brain', 'Memory'], ['philosophy', 'sparkle', 'Philosophy'], ['news', 'globe', 'News']];
+  const TITLES = { today: 'Today', goals: 'Goals', usage: 'API usage', news: 'News', tasks: 'Tasks', work: 'Work', alarms: 'Alarms & timers', notes: 'Notes', library: 'Memory', philosophy: 'Philosophy', settings: 'Settings' };
   const BUILD = {};
   let q = '';
 
@@ -176,8 +176,8 @@ const App = (() => {
       navItem('sparkle', 'Standard style', Learn.styleName(), () => Learn.styleSheet(redraw)),
       swItem('ask', 'Check questions', '', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
       navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd', () => Learn.vocabSheet())));
-    st.append(label('Mission & briefing'), h('div', { class: 'grp' },
-      navItem('target', 'Mission & goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
+    st.append(label('Goals & briefing'), h('div', { class: 'grp' },
+      navItem('target', 'Goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
       swItem('moon', 'Raat ki briefing', '', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
       navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
       navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Allowed' : 'Not set', () => Briefing.privacySheet(() => redraw()))));
