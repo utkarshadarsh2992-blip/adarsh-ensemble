@@ -203,11 +203,14 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                     payload["tools"] = tool_list  # tool_choice left at Groq's default ("auto")
                 rpm, tpm = config.rpm_limit(spec), config.tpm_limit(spec)
                 reservation_id = uuid.uuid4().hex
+                reservation_key = health.quota_key(spec)
+                reserved = False
+                request_noted = False
                 if rpm or tpm:
                     need = _est_tokens(msgs) + max_tokens
                     if tpm:  # search results make the real size unknowable; never let the estimate block forever
                         need = min(need, int(tpm * 0.9))
-                    got, wait = health.reserve_slot(health.quota_key(spec), rpm, int(tpm * 0.9), need,
+                    got, wait = health.reserve_slot(reservation_key, rpm, int(tpm * 0.9), need,
                                                     min(config.RL_MAX_WAIT_S, max(0.0, left - 5)),
                                                     reservation_id=reservation_id)
                     if not got:
@@ -221,25 +224,40 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                         wait_note = f"; free in {int(wait + 0.999)}s" if wait else ""
                         reasons[spec.label] = f"own rate window full (last 60s: {detail}{wait_note})"
                         break
+                    reserved = True
                     if wait:
-                        await asyncio.sleep(wait)
-                health.note_request(spec)
+                        try:
+                            await asyncio.sleep(wait)
+                        except BaseException:
+                            health.cancel_reservation(reservation_key, reservation_id)
+                            raise
                 try:
                     async with _sem("groq"):
+                        health.note_request(spec)
+                        request_noted = True
                         r = await client.post(f"{prov.url_for(slot)}/chat/completions", json=payload, headers=headers,
                                               timeout=max(5.0, min(45.0, deadline - time.monotonic())))
                 except httpx.HTTPError as e:
+                    if reserved:
+                        health.finish_reservation(reservation_id) if request_noted else health.cancel_reservation(reservation_key, reservation_id)
                     health.provider_error("groq", slot)
                     health.fail(spec, 30)
                     reasons[spec.label] = f"network error: {type(e).__name__}"
                     break  # server down / unreachable: next key
+                except BaseException:
+                    if reserved:
+                        health.finish_reservation(reservation_id) if request_noted else health.cancel_reservation(reservation_key, reservation_id)
+                    raise
                 data = _json(r)
                 code = r.status_code
                 if code == 200 and isinstance(data, dict) and data.get("choices"):
                     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
                     actual_tokens = usage.get("total_tokens")
                     if isinstance(actual_tokens, (int, float)) and not isinstance(actual_tokens, bool) and actual_tokens > 0:
-                        health.settle_slot(health.quota_key(spec), reservation_id, int(actual_tokens))
+                        health.settle_slot(reservation_key, reservation_id, int(actual_tokens))
+                if reserved:
+                    health.finish_reservation(reservation_id) if request_noted else health.cancel_reservation(reservation_key, reservation_id)
+                if code == 200:
                     try:
                         choice = data["choices"][0]
                         msg = choice.get("message") or {}

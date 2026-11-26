@@ -15,21 +15,21 @@ import chat_adapter  # noqa: E402
 import learning  # noqa: E402
 import pipeline  # noqa: E402
 
-PLAN = {"focus": "Robot arm v2 ka gripper", "plan": [
-    {"title": "Inertia revise", "time": "07:00", "minutes": 20, "goal": "MIT", "project": ""},
-    {"title": "Gripper ka code", "time": "18:30", "minutes": 60, "goal": "", "project": "Robot arm"},
-], "memories": [{"text": "Sir ne Inertia ke first law ko revise kiya", "reason": "Kal revision mein kaam aa sakta hai"}]}
+PLAN = {"focus": "Example rover v2 ka gripper", "plan": [
+    {"title": "Inertia revise", "time": "07:00", "minutes": 20, "goal": "Example University", "project": ""},
+    {"title": "Gripper ka code", "time": "18:30", "minutes": 60, "goal": "", "project": "Example rover"},
+], "memories": [{"text": "Test User revised inertia first law", "reason": "Kal revision mein kaam aa sakta hai"}]}
 
 CTX = {
     "date": "2026-11-24", "tomorrow": "2026-11-25", "weekday": "Tuesday", "tomorrowDay": "Wednesday", "now": "21:30",
-    "mission": "AI/AGI, rockets, robots. Business sirf funding.",
-    "goals": [{"title": "Math, science, CS, business, economics samjho; MIT jao", "deadline": "2028-09-01",
-               "daysLeft": 647, "progress": 10, "open": ["Calculus basics"], "why": "MIT"}],
-    "projects": [{"name": "Robot arm", "version": 2, "status": "active", "built": "servo chal gaya",
-                  "learned": "PWM", "next": "gripper", "idleDays": 4, "concepts": ["Torque"], "goal": "MIT"}],
+    "mission": "Science, software, and example projects.",
+    "goals": [{"title": "Math, science, CS, and Example University study goals", "deadline": "2028-09-01",
+               "daysLeft": 647, "progress": 10, "open": ["Calculus basics"], "why": "Example University"}],
+    "projects": [{"name": "Example rover", "version": 2, "status": "active", "built": "servo chal gaya",
+                  "learned": "PWM", "next": "gripper", "idleDays": 4, "concepts": ["Torque"], "goal": "Example University"}],
     "today": {"questions": 6, "concepts": ["Inertia", "Torque"], "words": ["jadatva"], "right": 3, "total": 4,
               "weak": [{"concept": "Torque", "q": "Lever lamba ho to?"}], "done": ["Physics padhi"],
-              "open": [{"title": "Notes", "due": "kal"}], "work": [{"title": "Robot arm", "minutes": 50}]},
+              "open": [{"title": "Notes", "due": "kal"}], "work": [{"title": "Example rover", "minutes": 50}]},
     "fixed": [{"title": "School", "time": "08:00"}],
 }
 
@@ -95,7 +95,7 @@ def test_context_text_has_the_facts_and_days_left():
     text = briefing.context_text(briefing.clean_context(CTX))
     assert text.startswith("[BRIEFING DATA")
     assert "647 din baaki" in text and "progress 10%" in text
-    assert "Robot arm · v2 · active" in text and "4 din se update nahi" in text and "next upgrade: gripper" in text
+    assert "Example rover · v2 · active" in text and "4 din se update nahi" in text and "next upgrade: gripper" in text
     assert "3/4 right" in text and 'Torque ("Lever lamba ho to?")' in text
     assert "TOMORROW ALREADY FIXED: 08:00 School." in text
     empty = briefing.context_text(briefing.clean_context({}))
@@ -113,10 +113,10 @@ def test_past_deadline_and_missing_deadline_are_said_plainly():
 def test_split_plan_removes_block_and_cleans_items():
     text, plan = briefing.split_plan(plan_text())
     assert briefing.PLAN_OPEN not in text and text.endswith("Aaj 6 sawaal.")
-    assert plan["focus"] == "Robot arm v2 ka gripper"
+    assert plan["focus"] == "Example rover v2 ka gripper"
     assert [p["title"] for p in plan["items"]] == ["Inertia revise", "Gripper ka code"]
-    assert plan["items"][1] == {"title": "Gripper ka code", "time": "18:30", "minutes": 60, "goal": "", "project": "Robot arm"}
-    assert plan["memories"] == [{"text": "Sir ne Inertia ke first law ko revise kiya", "reason": "Kal revision mein kaam aa sakta hai"}]
+    assert plan["items"][1] == {"title": "Gripper ka code", "time": "18:30", "minutes": 60, "goal": "", "project": "Example rover"}
+    assert plan["memories"] == [{"text": "Test User revised inertia first law", "reason": "Kal revision mein kaam aa sakta hai"}]
 
 
 def test_memory_suggestions_are_optional_unique_and_capped():
@@ -150,7 +150,7 @@ def test_unclosed_or_broken_plan_block_never_leaks():
 
 def test_followup_note_marks_private_records():
     note = briefing.followup_note({"followup": True, "goals": CTX["goals"], "projects": CTX["projects"]})
-    assert "[Permitted relevant app records;" in note and "Robot arm" in note and len(note) <= 2500
+    assert "[Permitted relevant app records;" in note and "Example rover" in note and len(note) <= 2500
     assert briefing.followup_note({"followup": True}) == ""
     assert briefing.followup_note("x") == ""
 
@@ -170,7 +170,7 @@ def test_reply_is_one_groq_call_without_tools(groq):
     assert rep["type"] == "text" and rep["uiMode"] == "standard" and briefing.PLAN_OPEN not in rep["text"]
     assert rep["briefing"]["date"] == "2026-11-24" and rep["briefing"]["for"] == "2026-11-25"
     assert rep["briefing"]["focus"] and len(rep["briefing"]["plan"]) == 2
-    assert rep["briefing"]["memorySuggestions"][0]["text"].startswith("Sir ne Inertia")
+    assert rep["briefing"]["memorySuggestions"][0]["text"].startswith("Test User revised inertia")
     assert "web/Wikipedia off" in rep["steps"][0]
 
 
@@ -232,7 +232,7 @@ def test_followup_goes_to_standard_with_records_and_research_off(monkeypatch):
             "briefing": {"followup": True, "goals": CTX["goals"], "projects": CTX["projects"]}}
     out = run(chat_adapter.handle(body))
     assert out[0]["text"] == "ok"
-    assert "Robot arm" in seen["extra"] and seen["research"] is False
+    assert "Example rover" in seen["extra"] and seen["research"] is False
 
 
 def test_android_entry_skips_action_parser_and_needs_groq(monkeypatch):

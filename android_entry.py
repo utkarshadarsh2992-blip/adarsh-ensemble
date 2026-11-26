@@ -7,6 +7,7 @@ import asyncio
 import collections
 import json
 import os
+import re
 import sys
 import threading
 
@@ -17,6 +18,11 @@ _SLOTTED = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
 KEY_NAMES = tuple(n if s == 1 else f"{n}_{s}" for s in (1, 2, 3) for n in _SLOTTED) + ("TAVILY_API_KEY",)
 _ready = False
 _controller_state = {"ok": True, "source": "bundled", "active": False}
+_ERROR_SECRET_PATTERNS = (
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)\b(?:sk-|gsk_|nvapi-|AIza)[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)([?&]key=)[^&\s]+"),
+)
 
 
 def init(files_dir: str, controller_cache: str = "", controller_pending: str = "") -> str:
@@ -100,6 +106,8 @@ def _scrub(text: str) -> str:
         v = os.environ.get(n)
         if v and len(v) > 6:
             text = text.replace(v, "***")
+    for pattern in _ERROR_SECRET_PATTERNS:
+        text = pattern.sub(lambda m: (m.group(1) if m.lastindex else "") + "***", text)
     return text
 
 
@@ -133,6 +141,7 @@ def diagnose() -> str:
     import config
 
     lines = []
+    stats = {"keys_configured": 0, "models_configured": 0, "models_available": 0}
     for name, prov in config.PROVIDERS.items():
         slots = prov.slots()
         if not slots:
@@ -144,13 +153,22 @@ def diagnose() -> str:
                 lines.append(f"{name}: key nahi hai")
             continue
         for slot in slots:
-            lines.append(_diagnose_key(httpx, config, name, prov, slot, len(slots) > 1 or slot > 1))
-    return _text("**Connection test**\n\n" + "\n".join("- " + ln for ln in lines))
+            stats["keys_configured"] += 1
+            lines.append(_diagnose_key(httpx, config, name, prov, slot, len(slots) > 1 or slot > 1, stats))
+    total = stats["models_configured"]
+    available = stats["models_available"]
+    message = f"{available} of {total} configured models available" if total else "No configured models were checked"
+    result = {"type": "text", "text": _scrub("**Connection test**\n\n" + "\n".join("- " + ln for ln in lines)),
+              **stats, "message": message}
+    return json.dumps(result)
 
 
-def _diagnose_key(httpx, config, name: str, prov, slot: int, numbered: bool) -> str:
+def _diagnose_key(httpx, config, name: str, prov, slot: int, numbered: bool, stats: dict | None = None) -> str:
     """One GET /models with one key slot. `numbered`: say which key ("groq key 2") when the provider has several."""
     who = f"{name} key {slot}" if numbered else name
+    ours = [m for m in config.REGISTRY.values() if m.provider == name]
+    if stats is not None:
+        stats["models_configured"] += len(ours)
     try:
         r = httpx.get(
             f"{prov.url_for(slot)}/models", headers={"Authorization": f"Bearer {prov.key(slot)}"}, timeout=20
@@ -167,8 +185,9 @@ def _diagnose_key(httpx, config, name: str, prov, slot: int, numbered: bool) -> 
         ids = {str(m.get("id", "")).removeprefix("models/") for m in r.json().get("data", [])}
     except Exception:
         return f"{who}: OK (HTTP 200), par model list padh nahi paya"
-    ours = [m for m in config.REGISTRY.values() if m.provider == name]
     missing = [m.model for m in ours if m.model not in ids]
+    if stats is not None:
+        stats["models_available"] += len(ours) - len(missing)
     line = f"{who}: key OK, {len(ours) - len(missing)}/{len(ours)} configured models mile"
     if missing:
         hints = []
@@ -224,9 +243,12 @@ def cancel(request_id: str) -> bool:
     with _cancel_lock:
         item = _running.get(request_id)
         if item is None:
-            _early_cancel.append(request_id)
+            if request_id not in _early_cancel:
+                _early_cancel.append(request_id)
             return False
     loop, task = item
+    if task.done() or task.cancelling():
+        return True
     try:
         loop.call_soon_threadsafe(task.cancel)
     except RuntimeError:  # the loop closed a moment ago: the request had just finished

@@ -218,8 +218,11 @@ async def run(
         )
         for name, g in guard_report.items():
             if g["flagged"]:
+                cleaned = guard.neutralize(user_drafts.get(name, ""))
+                if cleaned:
+                    user_drafts[name] = cleaned
                 warnings.append(
-                    f"'{name}' mein injection jaisa text mila ({g['max_score']:.2f}); sirf data maana."
+                    f"'{name}' mein injection jaisa text mila ({g['max_score']:.2f}); instruction lines hata kar sirf data maana."
                 )
             elif g["chunks"] and g["unavailable"] == g["chunks"]:
                 warnings.append(

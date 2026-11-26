@@ -24,6 +24,7 @@ import re
 import socket
 import time
 import uuid
+import weakref
 
 import httpx
 
@@ -36,7 +37,7 @@ _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _OPEN_THINK_RE = re.compile(r"<think>.*$", re.DOTALL)
 
 _CONCURRENCY = {"openrouter": 4, "groq": 4, "gemini": 6, "cloudflare": 3, "nvidia": 3}  # parallel requests per provider
-_sems: dict = {}
+_sems: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
 class LLMError(Exception):
@@ -61,10 +62,57 @@ class _Skip(Exception):
 
 
 def _sem(provider: str) -> asyncio.Semaphore:
-    key = (provider, id(asyncio.get_running_loop()))
-    if key not in _sems:
-        _sems[key] = asyncio.Semaphore(_CONCURRENCY.get(provider, 4))
-    return _sems[key]
+    loop = asyncio.get_running_loop()
+    per_loop = _sems.get(loop)
+    if per_loop is None:
+        per_loop = {}
+        _sems[loop] = per_loop
+    if provider not in per_loop:
+        per_loop[provider] = asyncio.Semaphore(_CONCURRENCY.get(provider, 4))
+    return per_loop[provider]
+
+
+_PRIVATE_OPEN = "<ADARSH_PRIVATE_CONTEXT>"
+_PRIVATE_CLOSE = "</ADARSH_PRIVATE_CONTEXT>"
+
+
+def _messages_for_provider(messages: list[dict], provider: str) -> list[dict]:
+    """Remove locally marked personal context before a non-approved provider call.
+
+    The current question and untrusted task material remain intact. This is deliberately
+    recomputed for every fallback candidate rather than once for the whole chain.
+    """
+    if provider in config.PERSONAL_CONTEXT_PROVIDERS:
+        return messages
+    out = []
+    for msg in messages:
+        item = dict(msg)
+        content = item.get("content")
+        if isinstance(content, str):
+            content = re.sub(re.escape(_PRIVATE_OPEN) + r".*?" + re.escape(_PRIVATE_CLOSE), "", content,
+                             flags=re.DOTALL)
+            item["content"] = content.strip()
+        out.append(item)
+    return out
+
+
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)\b(?:sk-|gsk_|nvapi-|AIza)[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)([?&]key=)[^&\s]+"),
+)
+
+
+def _redact_sensitive(value: object, limit: int = 240) -> str:
+    """Return a short provider-boundary error safe for traces, logs, and UI replies."""
+    text = str(value or "")
+    for env_name in getattr(config, "SECRET_ENVS", ()):
+        secret = __import__("os").getenv(env_name, "")
+        if secret:
+            text = text.replace(secret, "***")
+    for pattern in _SECRET_PATTERNS:
+        text = pattern.sub(lambda m: (m.group(1) if m.lastindex else "") + "***", text)
+    return re.sub(r"\s+", " ", text).strip()[:limit]
 
 
 def _keepalive_options() -> list[tuple[int, int, int]]:
@@ -183,21 +231,21 @@ def _error_text(data, r) -> str:
     if isinstance(data, dict):
         err = data.get("error")
         if isinstance(err, dict):
-            return str(err.get("message") or err)[:200]
+            return _redact_sensitive(err.get("message") or err)
         if err:
-            return str(err)[:200]
-    return (getattr(r, "text", "") or "")[:200]
+            return _redact_sensitive(err)
+    return _redact_sensitive(getattr(r, "text", "") or "")
 
 
 def _full_error(data, r) -> str:
-    """The provider's whole error message (not cut to 200 chars: Gemini puts "Please retry in 34s" at the very end)."""
+    """A bounded, redacted provider message; never retain a complete error body."""
     if isinstance(data, dict):
         err = data.get("error")
         if isinstance(err, dict):
-            return str(err.get("message") or "")
+            return _redact_sensitive(err.get("message") or "")
         if err:
-            return str(err)
-    return getattr(r, "text", "") or ""
+            return _redact_sensitive(err)
+    return _redact_sensitive(getattr(r, "text", "") or "")
 
 
 def _parse_wait(text: str) -> float | None:
@@ -294,6 +342,7 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
     """Return the answer text, or raise _Skip(reason).
     boost = (max_tokens, extra) handed over by this model's previous key (see _Skip.boost): start with that bigger,
     lighter request; it already IS the thinking retry, so an empty answer is not retried again here."""
+    messages = _messages_for_provider(messages, spec.provider)
     ok, why = health.available(spec)
     if not ok:
         raise _Skip(why)
@@ -335,38 +384,36 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
-        if rpm or tpm:  # our own per-minute window: wait for a free slot or let the chain move on
-            reservation_id = uuid.uuid4().hex
-            reservation_key = health.request_window_key(spec, accounting_context)
-            got, wait = health.reserve_slot(reservation_key, rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S,
-                                            reservation_id=reservation_id,
-                                            accounting_context=accounting_context)
-            if not got:
-                if think_retried:  # this key's minute is used up: the bigger, lighter request goes to the model's
-                    health.fail(spec, 15)  # next key (own tokens/min window); after the last key, the next model
-                    raise _Skip("empty answer (ran out of tokens while thinking; no tokens/min room on this key for "
-                                "a bigger retry, next key tries it)", retry=False, boost=(max_tokens, extra))
-                raise _Skip("own rate window full" + (f" (free in {int(wait)}s)" if wait else ""), retry_in=wait)
-            if wait > 0:
-                await asyncio.sleep(wait)
-                ok, why = health.available(spec)  # somebody may have hit a 429 for this model meanwhile
-                if not ok:
-                    health.cancel_reservation(reservation_key, reservation_id)
-                    raise _Skip(why)
-
-        health.note_request(spec, accounting_context)
+        reservation_id = uuid.uuid4().hex if (rpm or tpm) else None
+        reservation_key = health.request_window_key(spec, accounting_context) if reservation_id else None
+        reserved = False
+        request_noted = False
         sent = time.perf_counter()
         try:
+            if reservation_id:
+                got, wait = health.reserve_slot(reservation_key, rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S,
+                                                reservation_id=reservation_id,
+                                                accounting_context=accounting_context)
+                if not got:
+                    if think_retried:  # this key's minute is used up: the bigger, lighter request goes to the model's
+                        health.fail(spec, 15)  # next key (own tokens/min window); after the last key, the next model
+                        raise _Skip("empty answer (ran out of tokens while thinking; no tokens/min room on this key for "
+                                    "a bigger retry, next key tries it)", retry=False, boost=(max_tokens, extra))
+                    raise _Skip("own rate window full" + (f" (retry in ~{int(wait)}s)" if wait else ""), retry_in=wait)
+                reserved = True
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                    ok, why = health.available(spec)  # somebody may have hit a 429 for this model meanwhile
+                    if not ok:
+                        raise _Skip(why)
             async with _sem(spec.provider):
+                health.note_request(spec, accounting_context)
+                request_noted = True
                 sent = time.perf_counter()  # the error text shows how long the connection lived, not the queue
-                try:
-                    if stream:
-                        r = await _post_stream(client, url, payload, headers, timeout)
-                    else:
-                        r = await client.post(url, json=payload, headers=headers, timeout=timeout)
-                finally:
-                    if rpm or tpm:
-                        health.finish_reservation(reservation_id)
+                if stream:
+                    r = await _post_stream(client, url, payload, headers, timeout)
+                else:
+                    r = await client.post(url, json=payload, headers=headers, timeout=timeout)
         except httpx.HTTPError as e:
             health.provider_error(spec.provider, slot)
             if attempts <= retries and health.available(spec)[0]:
@@ -374,6 +421,12 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                 continue
             health.fail(spec, 30)
             raise _Skip(f"network error: {type(e).__name__} after {time.perf_counter() - sent:.0f}s")
+        finally:
+            if reserved and reservation_id:
+                if request_noted:
+                    health.finish_reservation(reservation_id)
+                else:
+                    health.cancel_reservation(reservation_key, reservation_id)
 
         data = _json(r)
         code = r.status_code

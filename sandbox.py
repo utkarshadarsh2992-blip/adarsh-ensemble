@@ -6,9 +6,9 @@ Layers of protection (all best-effort):
   3. OS limits (Linux/Android/Termux): CPU seconds, memory, max file size.
   4. Wall-clock timeout.
 
-WARNING: this is NOT a hardened security sandbox. A determined attacker could escape an
-AST filter. It is fine for your own machine / private use. If you expose the API publicly,
-run the whole backend inside Docker (no network, read-only filesystem) or a VM.
+The default remains OFF unless CODE_PROOFS=1 is explicitly enabled. This is defense in depth,
+not a replacement for a container/VM with no network, read-only filesystem, dropped privileges,
+seccomp/AppArmor and a PID limit.
 """
 import ast
 import os
@@ -39,15 +39,23 @@ def _check_ast(code: str) -> None:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
+                if alias.name.startswith("_") or (alias.asname and alias.asname.startswith("_")):
+                    raise Rejected("underscore import not allowed")
                 if alias.name.split(".")[0] not in ALLOWED_IMPORTS:
                     raise Rejected(f"import not allowed: {alias.name}")
         elif isinstance(node, ast.ImportFrom):
             if node.level != 0 or (node.module or "").split(".")[0] not in ALLOWED_IMPORTS:
                 raise Rejected(f"import not allowed: {node.module}")
+            if any(a.name.startswith("_") or (a.asname and a.asname.startswith("_")) for a in node.names):
+                raise Rejected("underscore import not allowed")
         elif isinstance(node, ast.Name) and node.id in BLOCKED_NAMES:
             raise Rejected(f"name not allowed: {node.id}")
-        elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+        elif isinstance(node, ast.Name) and node.id.startswith("_"):
+            raise Rejected(f"name not allowed: {node.id}")
+        elif isinstance(node, ast.Attribute) and node.attr.startswith("_"):
             raise Rejected(f"attribute not allowed: {node.attr}")
+        elif isinstance(node, ast.Attribute) and node.attr == "format":
+            raise Rejected("format-string attribute access not allowed")
 
 
 def _status(returncode: int, stdout: str) -> str:
@@ -81,9 +89,15 @@ def run_python(code: str, timeout: int = 10, mem_mb: int = 1024, max_output: int
         resource.setrlimit(resource.RLIMIT_CPU, (timeout + 1, timeout + 1))
         resource.setrlimit(resource.RLIMIT_AS, (mem_mb * 1024 * 1024, mem_mb * 1024 * 1024))
         resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
+        if hasattr(resource, "RLIMIT_NPROC"):
+            resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+        if hasattr(resource, "RLIMIT_NOFILE"):
+            resource.setrlimit(resource.RLIMIT_NOFILE, (32, 32))
+        if hasattr(resource, "RLIMIT_CORE"):
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
     env = {
-        "PATH": os.environ.get("PATH", ""),
+        "PATH": "/usr/bin:/bin",
         "PYTHONIOENCODING": "utf-8",
         "OMP_NUM_THREADS": "1",
     }
