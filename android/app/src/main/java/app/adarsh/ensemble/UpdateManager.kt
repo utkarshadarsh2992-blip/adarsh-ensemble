@@ -202,7 +202,7 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
             if (!SAFE_TAG.matches(tag)) throw IOException("Invalid release tag")
             val assets = releaseJson.optJSONArray("assets") ?: throw IOException("Release has no assets")
             val updateAsset = findAsset(assets, UPDATE_MANIFEST_NAME)
-                ?: throw IOException("Release has no update.json asset")
+                ?: throw IOException("Is release me update.json nahi hai")
             val updateUrl = updateAsset.optString("browser_download_url", "")
             requireExactAssetUrl(updateUrl, tag, UPDATE_MANIFEST_NAME)
             val manifest = fetchJson(updateUrl, MAX_MANIFEST_BYTES, RequestKind.RELEASE_ASSET)
@@ -374,11 +374,11 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
             if (installedCurrent !in apkHistory) {
                 throw IOException("APK signing history does not include installed app signer")
             }
-            if (apkCurrent != OLD_CERTIFICATE_SHA256 && apkCurrent != NEW_CERTIFICATE_SHA256) {
-                throw IOException("APK uses an unpinned signing certificate")
+            if (!UpdateSignerPolicy.acceptsCurrentSigner(apkCertificates)) {
+                throw IOException("APK must use the current signing certificate")
             }
-            if (installedCurrent == NEW_CERTIFICATE_SHA256 && apkCurrent != NEW_CERTIFICATE_SHA256) {
-                throw IOException("APK attempts to roll back to the old signing certificate")
+            if (installedCurrent == UpdateSignerPolicy.CURRENT_CERTIFICATE_SHA256 && apkCurrent != UpdateSignerPolicy.CURRENT_CERTIFICATE_SHA256) {
+                throw IOException("APK attempts to roll back from the current signing certificate")
             }
         }
     }
@@ -570,7 +570,13 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
         if (!destroyed.get()) try { emit(value) } catch (_: Exception) {}
     }
 
-    private fun safeMessage(error: Throwable): String = error.message?.take(240)?.ifBlank { error.javaClass.simpleName } ?: error.javaClass.simpleName
+    private fun safeMessage(error: Throwable): String {
+        val raw = error.message.orEmpty()
+        if (raw.contains("HTTP 404", ignoreCase = true) || raw.contains("update.json", ignoreCase = true)) {
+            return "Is release me update.json nahi hai"
+        }
+        return raw.take(240).ifBlank { error.javaClass.simpleName }
+    }
 
     private enum class RequestKind { API, RELEASE_ASSET }
 
@@ -592,8 +598,6 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
         const val MAX_MANIFEST_BYTES = 64 * 1024
         const val MAX_APK_BYTES = 150L * 1024L * 1024L
         const val MAX_NOTES_LENGTH = 8_192
-        const val OLD_CERTIFICATE_SHA256 = "2123909dc50f1ea3b8c6807192c44dde19249fc5d9d0e76ca164cefde844b068"
-        const val NEW_CERTIFICATE_SHA256 = "600b196ec2224730ea8d24e83e9f9411bd661329569598e07180cd6b596ea5af"
         val SAFE_TAG = Regex("[A-Za-z0-9._-]{1,80}")
         val SAFE_ASSET_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
         val SAFE_COMMIT = Regex("[0-9a-fA-F]{7,64}")

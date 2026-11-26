@@ -258,7 +258,13 @@ class MainActivity : AppCompatActivity() {
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 if (request.isForMainFrame) pageTrusted = isAppOrigin(request.url)
-                return loader.shouldInterceptRequest(request.url)
+                val response = loader.shouldInterceptRequest(request.url)
+                if (request.isForMainFrame && response != null) {
+                    val headers = response.responseHeaders?.toMutableMap() ?: mutableMapOf()
+                    headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+                    response.responseHeaders = headers
+                }
+                return response
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 // M1: the bridge answers only while the top document is the bundled page.

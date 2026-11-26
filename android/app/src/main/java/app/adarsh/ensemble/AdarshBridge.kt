@@ -220,5 +220,18 @@ class AdarshBridge(
         return """{"ok":true}"""
     }
 
+    /** The page may migrate its one legacy localStorage value, but never stores the token there again. */
+    @JavascriptInterface
+    fun backendToken(): String = if (ok()) keys.getBackendToken().orEmpty() else ""
+
+    @JavascriptInterface
+    fun saveBackendToken(value: String): String = if (!ok()) denied
+    else if (value.isBlank()) err("Backend token is empty.")
+    else if (keys.putBackendToken(value)) """{"ok":true}""" else err("Backend token could not be saved.")
+
+    @JavascriptInterface
+    fun deleteBackendToken(): String = if (!ok()) denied
+    else if (keys.removeBackendToken()) """{"ok":true}""" else err("Backend token could not be deleted.")
+
     private fun err(msg: String) = JSONObject().put("ok", false).put("error", msg).toString()
 }
