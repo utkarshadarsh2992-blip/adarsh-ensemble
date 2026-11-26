@@ -69,6 +69,8 @@ test('a live session sends the model, the chosen voice and the saved philosophy'
   assert.equal(first.voice, 'Charon');
   assert.match(first.prompt, /Sach pehle, phir aaram\./);
   assert.match(first.prompt, /"Sir"/);
+  assert.match(first.prompt, /requested depth and format/);
+  assert.doesNotMatch(first.prompt, /about 2 years|little support at home|overthinking/i);
   assert.equal(first.key, undefined, 'the key never leaves Kotlin');
   // the socket pushes transcripts back into the captions
   app.window.__adarshLive({ type: 'user', text: 'kal ka mausam' });

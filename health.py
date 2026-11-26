@@ -483,11 +483,12 @@ def rate_limited(spec: ModelSpec, wait: float | None, daily: bool = False) -> No
 # Slots are handed out in order (never earlier than the previous one), so it is enough to check each new request
 # against the 60 s before it to keep EVERY 60 s window inside the limits.
 _WINDOW = 60.0
-_slots: dict[str, list[tuple[float, int]]] = {}  # key -> [(slot time, tokens)] in reservation order
+_slots: dict[str, list[tuple[float, int, str | None]]] = {}  # key -> [(slot time, tokens, reservation id)]
 _slots_lock = threading.Lock()
 
 
-def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now: float | None = None) -> tuple[bool, float | None]:
+def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now: float | None = None,
+                 reservation_id: str | None = None) -> tuple[bool, float | None]:
     """(True, seconds to wait before sending; 0.0 = now) or (False, seconds until a slot is free / None = never).
     rpm / tpm = 0 means no cap of that kind."""
     if not rpm and not tpm:
@@ -507,9 +508,30 @@ def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now
                 continue
             if t - now > max_wait:
                 return False, t - now
-            ev.append((t, tokens))
+            ev.append((t, tokens, reservation_id))
             return True, t - now
     return False, None
+
+
+def settle_slot(key: str, reservation_id: str | None, actual_tokens: int) -> bool:
+    """Replace one completed request's conservative TPM reservation with provider-reported usage.
+
+    The reservation stays at its original timestamp, so in-flight calls remain protected and RPM is unchanged.
+    A unique id prevents concurrent requests for the same model/key from settling each other's reservations.
+    """
+    if not reservation_id:
+        return False
+    try:
+        actual = max(0, int(actual_tokens))
+    except (TypeError, ValueError, OverflowError):
+        return False
+    with _slots_lock:
+        ev = _slots.get(key, [])
+        for i, item in enumerate(ev):
+            if len(item) >= 3 and item[2] == reservation_id:
+                ev[i] = (item[0], actual, item[2])
+                return True
+    return False
 
 
 # ------------------------------------------------------------------ trace (per request)

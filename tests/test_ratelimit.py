@@ -115,6 +115,14 @@ def test_window_counts_tokens_per_minute():
     assert health.reserve_slot("g", 0, 8000, 2500, 12, now=1000.0) == (True, 0.0)  # 5000 + 2500 fits
 
 
+def test_completed_reservation_settles_only_its_actual_token_usage():
+    assert health.reserve_slot("g", 0, 1000, 600, 0, now=1000.0, reservation_id="request-a") == (True, 0.0)
+    assert health.reserve_slot("g", 0, 1000, 300, 0, now=1000.0, reservation_id="request-b") == (True, 0.0)
+    assert health.settle_slot("g", "request-a", 20)
+    assert health._minute("g", 1000.0) == (2, 320)  # request count/timestamps stay; unused TPM reserve is released
+    assert not health.settle_slot("g", "missing", 1)
+
+
 def test_slots_are_handed_out_in_order():
     health.reserve_slot("k", 1, 0, 1, 100, now=1000.0)
     _, w1 = health.reserve_slot("k", 1, 0, 1, 200, now=1000.0)   # at ~1060

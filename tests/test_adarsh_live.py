@@ -130,7 +130,10 @@ def test_toggle_is_off_by_default_and_only_on_the_voice_screen():
 
 def test_philosophy_and_personality_reach_the_live_prompt():
     block = VOICE.split("function prompt()")[1].split("function start(")[0]
-    assert "S.philosophy" in block and "Sir" in block and "slice(0, 3000)" in block
+    assert "S.philosophy" in block and "slice(0, 3000)" in block
+    assert "Sir" in VOICE and "LEARNING_STYLE" in VOICE and "requested depth and format" in VOICE
+    for private_detail in ("the user is Utkarsh", "about 2 years", "little support at home"):
+        assert private_detail not in VOICE
 
 # Build note: this file is also a trigger for the Android APK workflow (tests/**).
 

@@ -18,6 +18,7 @@ import asyncio
 import json
 import re
 import time
+import uuid
 from dataclasses import replace
 
 import httpx
@@ -199,14 +200,24 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                 if tool_list:
                     payload["tools"] = tool_list  # tool_choice left at Groq's default ("auto")
                 rpm, tpm = config.rpm_limit(spec), config.tpm_limit(spec)
+                reservation_id = uuid.uuid4().hex
                 if rpm or tpm:
                     need = _est_tokens(msgs) + max_tokens
                     if tpm:  # search results make the real size unknowable; never let the estimate block forever
                         need = min(need, int(tpm * 0.9))
                     got, wait = health.reserve_slot(health.quota_key(spec), rpm, int(tpm * 0.9), need,
-                                                    min(config.RL_MAX_WAIT_S, max(0.0, left - 5)))
+                                                    min(config.RL_MAX_WAIT_S, max(0.0, left - 5)),
+                                                    reservation_id=reservation_id)
                     if not got:
-                        reasons[spec.label] = "own rate window full"
+                        used_req, used_tok = health._minute(health.quota_key(spec), time.time())
+                        limits = []
+                        if rpm:
+                            limits.append(f"{used_req}/{rpm} requests")
+                        if tpm:
+                            limits.append(f"{used_tok}/{int(tpm * 0.9)} tokens")
+                        detail = ", ".join(limits) or "last 60s"
+                        wait_note = f"; free in {int(wait + 0.999)}s" if wait else ""
+                        reasons[spec.label] = f"own rate window full (last 60s: {detail}{wait_note})"
                         break
                     if wait:
                         await asyncio.sleep(wait)
@@ -223,6 +234,10 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                 data = _json(r)
                 code = r.status_code
                 if code == 200 and isinstance(data, dict) and data.get("choices"):
+                    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+                    actual_tokens = usage.get("total_tokens")
+                    if isinstance(actual_tokens, (int, float)) and not isinstance(actual_tokens, bool) and actual_tokens > 0:
+                        health.settle_slot(health.quota_key(spec), reservation_id, int(actual_tokens))
                     try:
                         choice = data["choices"][0]
                         msg = choice.get("message") or {}

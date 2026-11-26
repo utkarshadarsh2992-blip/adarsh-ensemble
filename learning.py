@@ -1,8 +1,7 @@
 """Learning layer (change 1.2): how Utkarsh learns, in every mode.
 
-- MENTOR_STYLE: his learning style (beginner who wants full depth, first principles, feel/imagine, think like the
-  discoverer, evidence tags, zero fluff, builder cycle). Standard gets it here; the council modes get the same
-  points through prompts.LEARNER_PROFILE.
+- MENTOR_STYLE: concise learning preferences; explicit depth/format requests win, otherwise follow the selected mode.
+  Standard gets it here; the council modes get the same points through prompts.LEARNER_PROFILE.
 - Standard has two sub-styles (body.reply.std): "2.9" = short core answer first, the app then offers a
   "Gehrai mein jao" button; "9.2" = straight to the full deep answer the discoverer's way. ONE concept per answer,
   in Standard only (the council modes cover the whole question).
@@ -19,6 +18,7 @@ import os
 import re
 
 import config
+import prompts
 
 CHECK_OPEN = "<<<ADARSH_CHECK"
 CHECK_CLOSE = "ADARSH_CHECK>>>"
@@ -29,26 +29,15 @@ MAX_WORDS = 10
 # council modes: one small Groq call after the answer writes the check questions (CHECKS_POSTPASS=0 turns it off)
 POSTPASS = os.getenv("CHECKS_POSTPASS", "1") != "0"
 
-MENTOR_STYLE = (
-    "HOW SIR LEARNS (always): he is a beginner who wants FULL depth, not a summary. Teach from first principles so he "
-    "can feel and imagine it: start from the problem, build from the basic pieces, then the mechanism, with one "
-    "'imagine this' picture. Show how the original discoverer thought: the problem he faced, the observation or move "
-    "that triggered the idea, the thought step he took. Tag claims: [PAKKA] = established fact or evidence, "
-    "[ANDAAZA] = reasonable reconstruction or assumption, [SPECULATION] = open or unproven; a reconstruction of what "
-    "someone 'probably thought' is always [ANDAAZA] unless it is documented. Define each NEW technical word inline "
-    "the first time, in brackets, with a plain meaning (and its root when that helps), but never re-define a word he "
-    "already knows. Zero fluff: every line must add understanding; no motivational talk, no flattery. Where it truly "
-    "fits, link the idea to his mission (AI/AGI, rockets, robots; business only funds them) and to his builder "
-    "cycle (build, learn, upgrade). If his premise is wrong, say so plainly."
-)
+MENTOR_STYLE = prompts.LEARNING_STYLE
 
 STD_STYLES = {
     "2.9": (
         "STANDARD 2.9 (short first): explain exactly ONE concept, the core one this question needs. If the question "
-        "holds several concepts, take the first and name the next ones in one closing line. 90-160 words: the core "
+        "holds several concepts, take the first and name the next ones in one closing line. Normally use 90-160 words; "
+        "if Sir explicitly asks for more depth, expand that same concept instead of forcing a short answer. The core "
         "idea in one or two sentences, one 'imagine this' picture that makes it felt, and one line on why it matters. "
-        "No derivation and no history section here: Sir switches to Standard 9.2 himself when he wants depth, "
-        "so do not ask whether to go deeper and do not mention any button."
+        "No derivation or history unless he explicitly asks. Do not ask whether to go deeper or mention any button."
     ),
     "9.2": (
         "STANDARD 9.2 (deep, the discoverer's way): explain exactly ONE concept in full depth. If the question holds "

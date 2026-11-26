@@ -86,6 +86,21 @@ def test_request_uses_only_gpt_oss_120b_with_both_tools(monkeypatch):
     assert body["tools"][1]["function"]["name"] == "wikipedia_search"
 
 
+def test_completed_short_requests_settle_their_tpm_reservations(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
+    monkeypatch.setattr(config, "GROQ_RPM", 0)
+    monkeypatch.setattr(config, "GROQ_TPM_DEFAULT", 3000)
+    monkeypatch.setattr(config, "RL_MAX_WAIT_S", 0.0)
+    log = fake_net(monkeypatch, [final("short answer"), final("another short answer")])
+
+    run(standard_agent.answer(Q, tools=False, web=False, max_tokens=1500, budget=5))
+    run(standard_agent.answer(Q, tools=False, web=False, max_tokens=1500, budget=5))
+
+    assert len(log) == 2  # without settlement, two 1,500-token reservations exceed the 2,700-token guard
+    key = health.quota_key(standard_agent._base_spec())
+    assert health._minute(key, __import__("time").time()) == (2, 100)  # actual usage: 50 tokens each
+
+
 def test_configured_standard_chain_selects_its_groq_model(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
     monkeypatch.setattr(config, "STANDARD_CHAIN_LABELS", ("gpt-oss-20b",))

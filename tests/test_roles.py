@@ -142,8 +142,8 @@ def test_common_and_mode_hint_in_every_role_prompt(script):
         for sys_text in systems:
             assert sys_text.startswith(RP.COMMON.split("\n")[0]), r
             assert RP.MODE_HINTS["physics"] in sys_text, r
-    assert "READER PROFILE" in script["systems"]["judge"][0]        # writers get the learner profile
-    assert "READER PROFILE" not in script["systems"]["falsifier"][0]  # checkers do not
+    assert "HOW SIR LEARNS" in script["systems"]["judge"][0]        # writers get the concise learner style
+    assert "HOW SIR LEARNS" not in script["systems"]["falsifier"][0]  # checkers do not
 
 
 def test_research_uses_architect_queries_and_sources_reach_roles(script):
