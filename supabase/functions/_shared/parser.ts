@@ -32,7 +32,7 @@ export function isStateMedia(url:string, feedFlag:boolean):boolean { const domai
 function safeFeedUrl(raw:string): URL | null {
   try {
     const u=new URL(raw.trim());
-    if(u.protocol!=='https:'||u.username||u.password||u.port||u.search||u.hash)return null;
+    if(u.protocol!=='https:'||u.username||u.password||u.port||u.hash)return null;
     const h=u.hostname.toLowerCase();
     if(h==='localhost'||h.endsWith('.localhost')||h==='metadata.google.internal'||h==='metadata'||h.endsWith('.local'))return null;
     if(/^\d+$/.test(h)||/^0x[0-9a-f]+$/i.test(h)||h.includes(':'))return null;
@@ -42,13 +42,25 @@ function safeFeedUrl(raw:string): URL | null {
   }catch{return null}
 }
 export async function fetchFeed(feed:Feed, fetcher:FetchLike=fetch, cap=30):Promise<{items:Parsed[];status:number;bytes:number;error?:string}> {
-  const url=safeFeedUrl(feed.url); if(!url)return {items:[],status:0,bytes:0,error:'Feed URL rejected'};
+  let url=safeFeedUrl(feed.url); if(!url)return {items:[],status:0,bytes:0,error:'Feed URL rejected'};
   const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),8000);
   try {
-    const r=await fetcher(feed.url,{redirect:'error',headers:{'user-agent':'AdarshNews/1.0','accept':'application/rss+xml, application/atom+xml, application/json'},signal:ctl.signal});
+    let r:Response|null=null;
+    // Publishers often redirect to a canonical URL. Follow at most 3 hops by hand and re-validate every hop,
+    // so a feed can never be bounced to http, a port, credentials, localhost or a private IP literal.
+    for(let hop=0;hop<=3;hop++){
+      r=await fetcher(hop===0?feed.url.trim():url.toString(),{redirect:'manual',headers:{'user-agent':'AdarshNews/1.0','accept':'application/rss+xml, application/atom+xml, application/json'},signal:ctl.signal});
+      if(![301,302,303,307,308].includes(r.status))break;
+      const loc=r.headers.get('location'); try{await r.body?.cancel()}catch{}
+      if(!loc||hop===3)return {items:[],status:r.status,bytes:0,error:'Too many or invalid redirects'};
+      let next:URL|null=null; try{next=safeFeedUrl(new URL(loc,url).toString())}catch{next=null}
+      if(!next)return {items:[],status:r.status,bytes:0,error:'Feed redirect rejected'};
+      url=next;
+    }
+    if(!r)return {items:[],status:0,bytes:0,error:'No response'};
     const contentType=(r.headers.get('content-type')||'').toLowerCase();
-    if(!r.ok)return {items:[],status:r.status,bytes:0,error:`HTTP ${r.status}`};
-    if(contentType&&!/(xml|rss|atom|json|text\/plain)/i.test(contentType))return {items:[],status:415,bytes:0,error:'Unsupported feed content type'};
+    if(!r.ok){try{await r.body?.cancel()}catch{};return {items:[],status:r.status,bytes:0,error:`HTTP ${r.status}`}}
+    if(/^(image|audio|video)\//.test(contentType)){try{await r.body?.cancel()}catch{};return {items:[],status:415,bytes:0,error:'Unsupported feed content type'}}
     const text=await r.text(); if(new TextEncoder().encode(text).byteLength>2_000_000)return {items:[],status:413,bytes:2_000_001,error:'Feed too large'};
     if(feed.kind==='json'||feed.kind==='hf_papers')return {items:parseJsonFeed(text,cap),status:r.status,bytes:text.length};
     return {items:parseFeed(text,cap),status:r.status,bytes:text.length};

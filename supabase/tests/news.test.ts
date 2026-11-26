@@ -1,5 +1,5 @@
 import {assert,assertEquals,assertFalse,assertMatch} from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import {parseFeed,decodeEntities,normalizeUrl,sha256,jaccard,relevant,isStateMedia} from '../functions/_shared/parser.ts';
+import {parseFeed,decodeEntities,normalizeUrl,sha256,jaccard,relevant,isStateMedia,fetchFeed} from '../functions/_shared/parser.ts';
 import {extractJson,parseScores,reviewerResult} from '../functions/_shared/scoring.ts';
 import {MemoryStore} from '../functions/_shared/store.ts';
 import {budgetState, digestDue, localDay} from '../functions/_shared/budget.ts';
@@ -68,4 +68,26 @@ Deno.test('digest claims the local day before sending and does not repeat after 
     if(oldToken===undefined) Deno.env.delete('TELEGRAM_BOT_TOKEN'); else Deno.env.set('TELEGRAM_BOT_TOKEN',oldToken);
     if(oldFcm===undefined) Deno.env.delete('FCM_SERVICE_ACCOUNT'); else Deno.env.set('FCM_SERVICE_ACCOUNT',oldFcm);
   }
+});
+
+Deno.test('fetchFeed accepts Google News query URLs but rejects unsafe feed URLs',async()=>{
+  const feed:any={id:'f',url:'https://news.google.com/rss/search?q=(Nvidia+OR+ISRO)+when:1h&hl=en-IN&gl=IN&ceid=IN:en',kind:'rss',grp:'x',region:'IN',tag_hint:'AI',state_media:false,every_min:5,active:true};
+  const rss='<?xml version="1.0"?><rss><channel><item><title>Nvidia ships chip</title><link>https://example.com/a</link><description>AI chip</description></item></channel></rss>';
+  let r=await fetchFeed(feed,async()=>new Response(rss,{status:200,headers:{'content-type':'application/rss+xml'}}));
+  assertEquals(r.error,undefined);assertEquals(r.items.length,1);
+  for(const bad of ['http://news.google.com/rss','https://user:pw@news.google.com/rss','https://news.google.com:8443/rss','https://127.0.0.1/rss','https://localhost/rss','https://169.254.169.254/latest']){
+    r=await fetchFeed({...feed,url:bad},async()=>new Response(rss,{status:200}));assertEquals(r.error,'Feed URL rejected');
+  }
+});
+
+Deno.test('fetchFeed follows validated redirects only',async()=>{
+  const feed:any={id:'f',url:'https://example.com/rss',kind:'rss',grp:'x',region:'US',tag_hint:'AI',state_media:false,every_min:5,active:true};
+  const rss='<?xml version="1.0"?><rss><channel><item><title>AI chip</title><link>https://example.com/a</link><description>AI</description></item></channel></rss>';
+  const seen:string[]=[];
+  let r=await fetchFeed(feed,async(u:any,i:any)=>{seen.push(String(u));assertEquals(i.redirect,'manual');return String(u)==='https://example.com/rss'?new Response(null,{status:301,headers:{location:'/feed.xml'}}):new Response(rss,{status:200,headers:{'content-type':'text/html'}})});
+  assertEquals(r.error,undefined);assertEquals(r.items.length,1);assertEquals(seen,['https://example.com/rss','https://example.com/feed.xml']);
+  for(const loc of ['http://example.com/x','https://127.0.0.1/x','https://example.com:8443/x','https://u:p@example.com/x']){
+    r=await fetchFeed(feed,async()=>new Response(null,{status:302,headers:{location:loc}}));assertEquals(r.error,'Feed redirect rejected');
+  }
+  r=await fetchFeed(feed,async()=>new Response(null,{status:302,headers:{location:'/again'}}));assertEquals(r.error,'Too many or invalid redirects');
 });
