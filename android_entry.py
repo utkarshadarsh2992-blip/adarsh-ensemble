@@ -210,6 +210,7 @@ async def _run(body: dict, progress):
 # Stop in the app must stop the model calls, not only hide the answer: tokens are spent per call.
 _running: dict = {}  # request id -> (event loop, main task)
 _early_cancel = collections.deque(maxlen=64)  # Stop arrived before the request had registered itself
+_finished = collections.deque(maxlen=128)  # recently completed IDs; stale Stop must not cancel a later request
 _cancel_lock = threading.Lock()
 
 
@@ -219,18 +220,31 @@ def _run_cancellable(make_coro, timeout: float, request_id):
     request_id = str(request_id) if request_id else None
 
     async def main():
+        registered = False
         if request_id:
             with _cancel_lock:
                 if request_id in _early_cancel:
                     _early_cancel.remove(request_id)
                     raise asyncio.CancelledError()
+                if request_id in _running:
+                    # A duplicate native request must not overwrite the first task in _running; otherwise Stop
+                    # would cancel whichever task registered last and the first task's cleanup could remove it.
+                    raise asyncio.CancelledError()
+                try:
+                    _finished.remove(request_id)
+                except ValueError:
+                    pass
                 _running[request_id] = (asyncio.get_running_loop(), asyncio.current_task())
+                registered = True
         try:
             return await asyncio.wait_for(make_coro(), timeout=timeout)
         finally:
-            if request_id:
+            if request_id and registered:
                 with _cancel_lock:
-                    _running.pop(request_id, None)
+                    current = _running.get(request_id)
+                    if current is not None and current[1] is asyncio.current_task():
+                        _running.pop(request_id, None)
+                        _finished.append(request_id)
 
     return asyncio.run(main())
 
@@ -243,6 +257,8 @@ def cancel(request_id: str) -> bool:
     with _cancel_lock:
         item = _running.get(request_id)
         if item is None:
+            if request_id in _finished:
+                return False
             if request_id not in _early_cancel:
                 _early_cancel.append(request_id)
             return False

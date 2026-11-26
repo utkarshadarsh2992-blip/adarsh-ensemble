@@ -570,6 +570,10 @@ NVIDIA_RPM = int(os.getenv("NVIDIA_RPM", "30"))  # free dev tier is about 40
 RPM_LIMIT = {"openai/gpt-oss-safeguard-20b": 3}  # per-model exceptions (Groq: safeguard is 3 RPM)
 RL_MAX_WAIT_S = float(os.getenv("RL_MAX_WAIT_S", "12"))        # wait this long for a free slot, else try the next model
 RL_ROUND_WAIT_S = float(os.getenv("RL_ROUND_WAIT_S", "45"))    # if EVERY model is only rate-limited, wait up to this long once
+# Standard has no useful provider fallback: wait for a Groq key window rather than failing a healthy request.
+STANDARD_RL_MAX_WAIT_S = float(os.getenv("STANDARD_RL_MAX_WAIT_S", "60"))
+STANDARD_TIMEOUT_S = float(os.getenv("STANDARD_TIMEOUT_S", "150"))
+STANDARD_OUTPUT_RESERVE = int(os.getenv("STANDARD_OUTPUT_RESERVE", "1200"))
 
 # Quota saving (see health.py). Stages that may use the LAST part of a daily quota (QUOTA_RESERVE_MARGIN):
 CRITICAL_STAGES = ("judge", "repair", "refine", "revise", "synth", "single", "classify", "architect")
