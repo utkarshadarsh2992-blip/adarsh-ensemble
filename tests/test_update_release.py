@@ -247,9 +247,8 @@ def test_cache_provider_is_narrow_and_ci_release_is_main_only():
     assert "secrets.ADARSH_RELEASE_STORE_PASSWORD" in workflow
 
 
-def test_gradle_version_name_tracks_run_number_without_changing_debug_identity():
+def test_gradle_version_name_tracks_run_number_and_has_no_embedded_signing_password():
     build = BUILD.read_text(encoding="utf-8")
     assert 'versionCode = ciRun' in build
     assert 'versionName = "1.0.$ciRun"' in build
-    assert 'storePassword = "adarsh123456"' in build
-    assert 'keyAlias = "adarsh"' in build
+    assert "storePassword" not in build and "keyPassword" not in build

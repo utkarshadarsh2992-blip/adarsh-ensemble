@@ -58,9 +58,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             "main" to "Main voice", "think" to "Advanced reasoning", "transcribe" to "Speech recognition",
             "translate" to "Translation", "backup" to "Backup", "test" to "Backup/testing"
         )
-        /** Header-authenticated WebSocket services only; query-string API keys are never used. */
+        /** v1beta + header first: the documented WebSocket service, verified from the sandbox. */
         private val VARIANTS = listOf(
-            Variant("v1beta"), Variant("v1alpha")
+            Variant("v1beta", true), Variant("v1alpha", true),
+            Variant("v1beta", false), Variant("v1alpha", false)
         )
         /** Tried in order when the chosen model is refused for this key. Each is a normal Live dialogue model. */
         private val FALLBACK = listOf("gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview")
@@ -100,9 +101,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     }
 
     /** One endpoint + auth form. v1alpha is what the Gemini 3.8 Live docs use; v1beta is the WebSocket guide. */
-    data class Variant(val api: String) {
-        val label: String get() = api + "/header"
-        fun url() = HOST + api + METHOD
+    data class Variant(val api: String, val header: Boolean) {
+        val label: String get() = api + "/" + (if (header) "header" else "key")
+        fun url(key: String) = HOST + api + METHOD + if (header) "" else "?key=" + key
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -327,10 +328,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         if (plan == null) { finish(); return }
         val (variant, model, shape) = plan
         val request = try {
-            // Gemini Live authentication is header-only. Never put the API key in a URL/query string.
-            Request.Builder().url(variant.url())
-                .header("x-goog-api-key", key)
-                .build()
+            val b = Request.Builder().url(variant.url(key))
+            if (variant.header) b.header("x-goog-api-key", key)
+            b.build()
         } catch (_: Exception) { note("url"); next(); return }
         val socket = try { client!!.newWebSocket(request, listener) } catch (_: Exception) { null }
         if (socket == null) { note("socket"); next(); return }

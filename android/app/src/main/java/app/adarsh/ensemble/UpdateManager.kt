@@ -572,8 +572,11 @@ class UpdateManager(ctx: Context, private val emit: (JSONObject) -> Unit) {
 
     private fun safeMessage(error: Throwable): String {
         val raw = error.message.orEmpty()
-        if (raw.contains("HTTP 404", ignoreCase = true) || raw.contains("update.json", ignoreCase = true)) {
+        if (raw.contains("update.json", ignoreCase = true)) {
             return "Is release me update.json nahi hai"
+        }
+        if (raw.contains("HTTP 404", ignoreCase = true)) {
+            return "Release nahi mila (HTTP 404). Latest release me APK aur update.json dono hone chahiye"
         }
         return raw.take(240).ifBlank { error.javaClass.simpleName }
     }
