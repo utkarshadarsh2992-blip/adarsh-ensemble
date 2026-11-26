@@ -95,6 +95,15 @@ PROVIDERS = {
 }
 # The fallback plan must always be answerable from these three; the other providers are optional extras.
 CORE_PROVIDERS = ("groq", "openrouter", "gemini")
+# Personal profile, goals, episodic memory and prior-turn context are only sent to providers
+# whose retention/training policy the app treats as core. This is local configuration only:
+# controller documents cannot change it. Cloudflare remains owner-approved by default;
+# OpenRouter and NVIDIA are intentionally excluded.
+_personal_context_raw = os.getenv("PERSONAL_CONTEXT_PROVIDERS", "groq,cloudflare,gemini")
+PERSONAL_CONTEXT_PROVIDERS = frozenset(
+    p.strip().lower() for p in _personal_context_raw.split(",")
+    if p.strip() in {"groq", "cloudflare", "gemini", "openrouter", "nvidia"}
+)
 # Every env name a key screen / android_entry may set: 3 slots x (5 provider keys + the Cloudflare account id) + Tavily.
 _SLOTTED_ENVS = ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY",
                  "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "NVIDIA_API_KEY")
@@ -429,7 +438,7 @@ AUDIT_ENABLED = os.getenv("AUDIT", "1") == "1"
 AUDIT_MAX_ISSUES = 6
 # Manual mode builds ONE master answer only from the pasted answers (master.py). MASTER=0 restores the old manual flow.
 MASTER_ENABLED = os.getenv("MASTER", "1") == "1"
-LEARNER_PROFILE = os.getenv("LEARNER_PROFILE", "1") == "1"  # teach Utkarsh in his style (see prompts.LEARNER_PROFILE)
+LEARNER_PROFILE = os.getenv("LEARNER_PROFILE", "1") == "1"  # apply the learner style (see prompts.LEARNER_PROFILE)
 GROUND_ENABLED = os.getenv("GROUND", "1") == "1"  # grounding check + rewrite of the master answer
 GROUND_MAX_ISSUES = 6
 GROUND_MAX_TOKENS = int(os.getenv("GROUND_MAX_TOKENS", "3000"))  # reasoning models spend part of it on thinking: 1800 was too little

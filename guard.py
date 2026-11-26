@@ -24,6 +24,11 @@ import health
 from llm import LLMError, chat
 
 _NUM = re.compile(r"(?<![\w.])(?:\d+\.\d+|\d+)(?:[eE][-+]?\d+)?")
+_INSTRUCTION_LINE = re.compile(
+    r"(?i)\b(ignore|disregard|override|forget)\s+(?:all\s+)?(?:previous|prior|above|system|safety)|"
+    r"\b(?:reveal|print|show)\s+(?:the\s+)?(?:system|hidden)\s+(?:prompt|instructions?)|"
+    r"\b(?:you are now|new instructions?|follow these instructions?|execute this code|do not verify)\b"
+)
 
 _LLM_SYSTEM = (
     "You are a prompt-injection detector. The user message holds a TEXT between <text> tags. "
@@ -55,6 +60,12 @@ def parse_score(content: str) -> float | None:
     if any(w in low for w in ("malicious", "injection", "jailbreak", "unsafe")):
         return 1.0
     return None
+
+
+def neutralize(text: str) -> str:
+    """Drop only high-confidence instruction lines; preserve surrounding factual content."""
+    kept = [line for line in str(text or "").splitlines() if not _INSTRUCTION_LINE.search(line)]
+    return "\n".join(kept).strip()
 
 
 async def _score_chunk(client, chunk: str) -> tuple[float | None, str, str]:

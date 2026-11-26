@@ -54,6 +54,13 @@ MAX_HISTORY_TEXT = 2000
 MAX_ATTACHMENTS = 8
 MAX_ATTACHMENT_DATA_CHARS = 12 * 1024 * 1024
 MAX_META_CHARS = 64 * 1024
+_PRIVATE_OPEN = "<ADARSH_PRIVATE_CONTEXT>"
+_PRIVATE_CLOSE = "</ADARSH_PRIVATE_CONTEXT>"
+
+
+def _private_block(text: str) -> str:
+    text = str(text or "")
+    return f"{_PRIVATE_OPEN}\n{text}\n{_PRIVATE_CLOSE}"
 
 
 def _bound_meta(value, depth: int = 0):
@@ -456,13 +463,23 @@ async def handle(body: dict) -> dict | list[dict]:
             return [quick]
 
     perms = app_context.access(body)
-    extra = _context(body.get("history") if perms["currentChat"] else [], text)
-    private_context = bool(extra)
-    extra += app_context.context(body, text)
+    personal_parts = []
+    history_context = _context(body.get("history") if perms["currentChat"] else [], text)
+    if history_context:
+        personal_parts.append(history_context)
+    records_context = app_context.context(body, text)
+    if records_context:
+        personal_parts.append(records_context)
     if brief is not None:
-        extra += briefing.followup_note(brief)   # follow-up in the briefing chat: goals + projects as private context
-    private_context = private_context or "[Permitted relevant app records;" in extra
-    extra += app_knowledge.context(text, ui_mode, perms["architecture"])
+        followup = briefing.followup_note(brief)
+        if followup:
+            personal_parts.append(followup)   # goals + projects are private context
+    philosophy = app_context.philosophy(body)
+    if philosophy:
+        personal_parts.append(philosophy)
+    private_context = bool(personal_parts)
+    extra = _private_block("\n\n".join(personal_parts)) if personal_parts else ""
+    task_extra = app_knowledge.context(text, ui_mode, perms["architecture"])
     # Attached PDFs are read on the phone (no service): their text is data the models may quote.
     pdf_block, pdf_names = pdf_read.attachments_text(body.get("attachments"))
     # Real sources in every mode, Standard included (sources.py): papers, books, standards, statistics, launches,
@@ -472,8 +489,9 @@ async def handle(body: dict) -> dict | list[dict]:
     src_block, src_rows = ("", [])
     if rp.get("research") != "off" and not has_records and len(str(text or "").split()) >= 3:
         src_block, src_rows = await sources.gather(text)
-    # Philosophy first, then the user's own document, then the sources: the 6000-char cap never cuts them.
-    extra = (app_context.philosophy(body) + pdf_block + src_block + extra)[:6000]
+    # Personal context is marked separately so fallback providers can remove it without losing task material.
+    # Legacy ordering contract: (app_context.philosophy(body) + pdf_block + src_block + extra).
+    extra = (extra + pdf_block + src_block + task_extra)[:6000]
     learn = learning.options(body)
     truth_opts = _effective_truth_options(body)
     if QUICK_STANDARD and source == "auto" and ui_mode == "standard":

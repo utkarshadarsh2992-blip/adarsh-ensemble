@@ -12,7 +12,7 @@ def test_about_sir_is_compact_identity_not_personal_history():
     t = prompts.ABOUT_SIR
     assert "ADARSH" in t and "Sir" in t
     assert len(t) < 120
-    for private_detail in ("Utkarsh", "creator", "MIT", "robots and rockets", "overthinking", "support at home"):
+    for private_detail in ("Example User", "creator", "Example University", "example robotics and space projects", "fictional overthinking detail", "fictional home-support detail"):
         assert private_detail not in t
 
 
@@ -33,5 +33,5 @@ def test_live_voice_prompt_keeps_style_without_repeated_personal_history():
     js = (ROOT / "ui/src/js/05-voice.js").read_text()
     assert "LEARNING_STYLE" in js and "requested depth and format" in js
     assert "You are ADARSH" in js and "Always address the user as" in js and '"Sir"' in js
-    for private_detail in ("the user is Utkarsh", "about 2 years", "MIT", "robots and rockets", "little support at home"):
+    for private_detail in ("the user is Example User", "about 2 months", "Example University", "example robotics and space projects", "fictional home-support detail"):
         assert private_detail not in js

@@ -59,6 +59,19 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+
+@app.middleware("http")
+async def _reject_oversized_requests(request: Request, call_next):
+    """Reject declared oversized bodies before FastAPI/Pydantic materializes them."""
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_CHAT_BODY_BYTES:
+                return JSONResponse({"error": "Request body is too large"}, status_code=413)
+        except ValueError:
+            return JSONResponse({"error": "Invalid Content-Length"}, status_code=400)
+    return await call_next(request)
+
 UI_PAGE = pathlib.Path(__file__).parent / "ui" / "dist" / "adarsh.html"
 
 
@@ -191,10 +204,10 @@ async def ask(req: AskRequest):
                 style=req.style,
             )
     except RuntimeError:
-        _LOG.exception("request %s failed in /ask", cid)
+        _LOG.error("request %s failed in /ask", cid)
         return _server_error(cid, 503)
     except Exception:
-        _LOG.exception("request %s failed in /ask", cid)
+        _LOG.error("request %s failed in /ask", cid)
         return _server_error(cid)
 
 
@@ -215,10 +228,10 @@ async def api_chat(request: Request):
     except HTTPException:
         raise
     except RuntimeError:
-        _LOG.exception("request %s failed in /api/chat", cid)
+        _LOG.error("request %s failed in /api/chat", cid)
         return _server_error(cid, 503)
     except Exception:
-        _LOG.exception("request %s failed in /api/chat", cid)
+        _LOG.error("request %s failed in /api/chat", cid)
         return _server_error(cid)
 
 

@@ -892,7 +892,20 @@ _WINDOW = 60.0
 _slots: dict[str, list[tuple[float, int, str | None]]] = {}  # key -> [(slot time, tokens, reservation id)]
 _slots_lock = threading.Lock()
 _reservation_context: dict[str, tuple[str, int, str]] = {}
+_reservation_created: dict[str, float] = {}
 _generation_windows: dict[str, tuple[str, int, str]] = {}
+_RESERVATION_TTL = max(3600.0, float(getattr(config, "LLM_TIMEOUT_S", 120.0)) * 4)
+
+
+def _reap_reservations_locked(now: float) -> None:
+    """Drop abandoned reservation metadata and its slot, without retaining request IDs forever."""
+    cutoff = now - _RESERVATION_TTL
+    stale = [rid for rid, created in _reservation_created.items() if created < cutoff]
+    for rid in stale:
+        for events in _slots.values():
+            events[:] = [event for event in events if len(event) < 3 or event[2] != rid]
+        _reservation_created.pop(rid, None)
+        _reservation_context.pop(rid, None)
 
 
 def _generation_window_key(key: str, generation: str) -> str:
@@ -934,6 +947,7 @@ def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now
         return True, 0.0
     now = time.time() if now is None else now
     with _slots_lock:
+        _reap_reservations_locked(now)
         ev = _slots.setdefault(key, [])
         ev[:] = [e for e in ev if e[0] > now - _WINDOW]  # what left the window can not matter any more
         start = max(now, ev[-1][0]) if ev else now
@@ -948,6 +962,8 @@ def reserve_slot(key: str, rpm: int, tpm: int, tokens: int, max_wait: float, now
             if t - now > max_wait:
                 return False, t - now
             ev.append((t, tokens, reservation_id))
+            if reservation_id:
+                _reservation_created[reservation_id] = now
             if (reservation_id and isinstance(accounting_context, tuple) and len(accounting_context) == 4
                     and accounting_context[2]):
                 _reservation_context[reservation_id] = (accounting_context[0], accounting_context[1],
@@ -964,6 +980,7 @@ def cancel_reservation(key: str, reservation_id: str | None) -> None:
         events = _slots.get(key, [])
         events[:] = [event for event in events if len(event) < 3 or event[2] != reservation_id]
         _reservation_context.pop(reservation_id, None)
+        _reservation_created.pop(reservation_id, None)
 
 
 def finish_reservation(reservation_id: str | None) -> None:
@@ -971,6 +988,7 @@ def finish_reservation(reservation_id: str | None) -> None:
     if reservation_id:
         with _slots_lock:
             _reservation_context.pop(reservation_id, None)
+            _reservation_created.pop(reservation_id, None)
 
 
 def settle_slot(key: str, reservation_id: str | None, actual_tokens: int) -> bool:
@@ -1388,6 +1406,9 @@ def reset(clear_usage: bool = False) -> None:
     _perr.clear()
     with _slots_lock:
         _slots.clear()
+        _reservation_context.clear()
+        _reservation_created.clear()
+        _generation_windows.clear()
     if clear_usage:
         with _usage_lock:
             _usage.clear()

@@ -1,4 +1,4 @@
-"""Learning layer (change 1.2): how Utkarsh learns, in every mode.
+"""Learning layer (change 1.2): how the learner learns, in every mode.
 
 - MENTOR_STYLE: concise learning preferences; explicit depth/format requests win, otherwise follow the selected mode.
   Standard gets it here; the council modes get the same points through prompts.LEARNER_PROFILE.
@@ -212,7 +212,7 @@ def clean_checks(raw, known: list[str] | None = None) -> dict | None:
 
 # ----------------------------------------------------------------------------- council modes: one small call
 POST_SYSTEM = (
-    "You write check questions for a beginner learner (Utkarsh, called 'sir') right after he read an answer. "
+    "You write check questions for a beginner learner (called 'Sir') right after reading an answer. "
     "Output ONLY one JSON object, no prose: "
     '{"concept":"<main concept of the answer>","heavy":true or false,"questions":[...],"words":[...]}. '
 )
