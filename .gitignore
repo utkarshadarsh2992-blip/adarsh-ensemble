@@ -16,3 +16,15 @@ android/app/signing/*.keystore
 android/app/signing/*.b64
 node_modules/
 tests/.usage-test.json
+
+# Key material and secrets must never be committed (anywhere in the tree).
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+*.b64
+.env.*
+!.env.example
+secrets/

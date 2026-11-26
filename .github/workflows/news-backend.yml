@@ -92,7 +92,7 @@ jobs:
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@689adcfb80d947100a1eab127289b97d1fb07b13 # v3
         with:
-          version: "^3"
+          version: "3.4.0"
 
       - name: Validate deployment credentials
         env:

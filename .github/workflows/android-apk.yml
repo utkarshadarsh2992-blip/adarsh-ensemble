@@ -93,59 +93,77 @@ jobs:
           gradle-version: "8.9"
 
       # The engine .py files and ui/dist/adarsh.html are copied into the app by the syncEngine / syncUi Gradle tasks.
-      - name: Build debug APK
-        run: gradle -p android assembleDebug --stacktrace
+      - name: Build release APK (unsigned, not debuggable)
+        run: gradle -p android assembleRelease --stacktrace
 
-      - name: Sign APK with rotated release key when secrets are configured
+      - name: Sign APK with the release key (secrets are mandatory)
         if: github.event_name != 'pull_request'
         env:
           ADARSH_RELEASE_KEYSTORE_B64: ${{ secrets.ADARSH_RELEASE_KEYSTORE_B64 }}
           ADARSH_RELEASE_STORE_PASSWORD: ${{ secrets.ADARSH_RELEASE_STORE_PASSWORD }}
           ADARSH_RELEASE_KEY_ALIAS: ${{ secrets.ADARSH_RELEASE_KEY_ALIAS }}
           ADARSH_RELEASE_KEY_PASSWORD: ${{ secrets.ADARSH_RELEASE_KEY_PASSWORD }}
-          EXPECTED_NEW_CERT_SHA256: 600b196ec2224730ea8d24e83e9f9411bd661329569598e07180cd6b596ea5af
+          EXPECTED_CERT_SHA256: 600b196ec2224730ea8d24e83e9f9411bd661329569598e07180cd6b596ea5af
         run: |
           set -euo pipefail
-          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
-          if [ -z "$ADARSH_RELEASE_KEYSTORE_B64" ] || [ -z "$ADARSH_RELEASE_STORE_PASSWORD" ] || [ -z "$ADARSH_RELEASE_KEY_ALIAS" ] || [ -z "$ADARSH_RELEASE_KEY_PASSWORD" ]; then
-            echo "::warning::Rotated signing secrets are not configured; keeping the legacy APK signature for this build."
-          else
-            NEW_KS="$RUNNER_TEMP/adarsh-release.jks"
-            printf '%s' "$ADARSH_RELEASE_KEYSTORE_B64" | base64 --decode > "$NEW_KS"
-            chmod 600 "$NEW_KS"
-            apksigner sign \
-              --in "$APK" --out "$APK.rotated" \
-              --min-sdk-version 26 --rotation-min-sdk-version 28 \
-              --v1-signing-enabled true --v2-signing-enabled true --v3-signing-enabled true \
-              --lineage android/app/signing/adarsh-release-lineage.bin \
-              --ks android/app/adarsh-debug.keystore --ks-key-alias adarsh \
-              --ks-pass pass:adarsh123456 --key-pass pass:adarsh123456 \
-              --next-signer \
-              --ks "$NEW_KS" --ks-key-alias "$ADARSH_RELEASE_KEY_ALIAS" \
-              --ks-pass "pass:$ADARSH_RELEASE_STORE_PASSWORD" --key-pass "pass:$ADARSH_RELEASE_KEY_PASSWORD"
-            mv "$APK.rotated" "$APK"
-            VERIFY_OUTPUT=$(apksigner verify -v --print-certs "$APK" 2>&1)
-            printf '%s\n' "$VERIFY_OUTPUT"
-            printf '%s\n' "$VERIFY_OUTPUT" | grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true'
-            CURRENT_CERT=$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
-            if [ "$CURRENT_CERT" != "$EXPECTED_NEW_CERT_SHA256" ]; then
-              echo "Expected rotated v3 certificate $EXPECTED_NEW_CERT_SHA256 but got $CURRENT_CERT" >&2
+          # The legacy key (adarsh-debug.keystore) was public. It is retired: never used to sign, never trusted.
+          for v in ADARSH_RELEASE_KEYSTORE_B64 ADARSH_RELEASE_STORE_PASSWORD ADARSH_RELEASE_KEY_ALIAS ADARSH_RELEASE_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Signing secret $v is missing. Refusing to build an unsigned or legacy-signed APK."
               exit 1
             fi
+          done
+          UNSIGNED=$(ls android/app/build/outputs/apk/release/*.apk | head -n1)
+          SIGNED="$RUNNER_TEMP/adarsh-signed.apk"
+          KS="$RUNNER_TEMP/adarsh-release.jks"
+          trap 'rm -f "$KS"' EXIT
+          printf '%s' "$ADARSH_RELEASE_KEYSTORE_B64" | base64 --decode > "$KS"
+          chmod 600 "$KS"
+          # v3 only: the lineage (old -> new certificate) lets phones that still carry the old
+          # certificate upgrade, while the old private key is no longer needed anywhere.
+          # minSdk is 28, the first Android version that understands v3 signing.
+          apksigner sign \
+            --in "$UNSIGNED" --out "$SIGNED" \
+            --min-sdk-version 28 --rotation-min-sdk-version 28 \
+            --v1-signing-enabled false --v2-signing-enabled false --v3-signing-enabled true \
+            --lineage android/app/signing/adarsh-release-lineage.bin \
+            --ks "$KS" --ks-key-alias "$ADARSH_RELEASE_KEY_ALIAS" \
+            --ks-pass env:ADARSH_RELEASE_STORE_PASSWORD --key-pass env:ADARSH_RELEASE_KEY_PASSWORD
+          rm -f "$UNSIGNED"
+          mv "$SIGNED" "android/app/build/outputs/apk/release/adarsh-ensemble-signed.apk"
+          APK=android/app/build/outputs/apk/release/adarsh-ensemble-signed.apk
+          VERIFY_OUTPUT=$(apksigner verify -v --print-certs "$APK" 2>&1)
+          printf '%s\n' "$VERIFY_OUTPUT" | grep -v -i 'warning' || true
+          printf '%s\n' "$VERIFY_OUTPUT" | grep -Fq 'Verified using v3 scheme (APK Signature Scheme v3): true'
+          CURRENT_CERT=$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          if [ "$CURRENT_CERT" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "Expected release certificate $EXPECTED_CERT_SHA256 but got $CURRENT_CERT" >&2
+            exit 1
           fi
-
+      - name: Safety checks on the APK (not debuggable, minSdk 28)
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n1)
+          BADGING=$(aapt2 dump badging "$APK")
+          if printf '%s\n' "$BADGING" | grep -q 'application-debuggable'; then
+            echo "::error::The APK is debuggable. Release builds must not be debuggable." >&2
+            exit 1
+          fi
+          printf '%s\n' "$BADGING" | grep -q "^sdkVersion:'28'"
       - name: Check the APK contains the engine and the page
         run: |
-          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n1)
           unzip -l "$APK" | grep -q "assets/index.html"
           unzip -l "$APK" | grep -q "assets/chaquopy"
           ls -lh "$APK"
 
-      # Keep the existing downloadable CI artifact unchanged.
+      # Only signed builds are uploaded (pull requests from forks have no signing secrets).
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
         with:
-          name: adarsh-ensemble-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: adarsh-ensemble-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -157,7 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          APK=$(ls android/app/build/outputs/apk/debug/*.apk | head -n1)
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n1)
           cp "$APK" "release-assets/$RELEASE_ASSET"
           CERT_SHA256=$(apksigner verify --print-certs -v "release-assets/$RELEASE_ASSET" 2>&1 | sed -n 's/.*certificate SHA-256 digest: //p' | head -n1 | tr -d ':' | tr '[:upper:]' '[:lower:]')
           if [ -z "$CERT_SHA256" ]; then
