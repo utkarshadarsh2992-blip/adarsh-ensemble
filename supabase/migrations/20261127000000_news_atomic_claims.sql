@@ -58,7 +58,7 @@ begin
   end if;
   perform pg_advisory_xact_lock(hashtext('adarsh-controller-pair-'||p_actor_id::text));
   select count(*) into v_count from public.controller_pair_codes where created_by=p_actor_id and consumed_at is null and expires_at > now();
-  if v_count >= 3 or exists(select 1 from public.controller_pair_codes where created_by=p_actor_id and created_at > now()-interval '1 minute') then
+  if v_count >= 3 or exists(select 1 from public.controller_pair_codes where created_by=p_actor_id and created_at > now()-interval '15 seconds') then
     raise exception using errcode = 'P0001', message = 'pair code rate limited';
   end if;
   insert into public.controller_pair_codes(code_hash, name, created_by, expires_at)
