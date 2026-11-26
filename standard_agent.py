@@ -30,6 +30,7 @@ from llm import _est_tokens, _json, _rate_info, _sem
 
 MODEL_LABEL = "gpt-oss-120b"
 MAX_TOOL_ROUNDS = 3
+MAX_RESPONSE_PARTS = 4
 WIKI_RESULTS = 3
 WIKI_CHARS = 1200
 EVIDENCE_CHARS = 900   # per source: snippet kept for the fact-check (truth.py)
@@ -160,7 +161,7 @@ def _split_evidence(sources: list[dict]) -> tuple[list[dict], list[dict]]:
 
 async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, tools: bool = True, web: bool = True,
                       max_tokens: int = 1500, effort: str = "low", temperature: float = 0.6,
-                      budget: float = 75.0) -> dict:
+                      budget: float | None = None) -> dict:
     """Run the Groq-only agent. Returns {"text", "used", "searches", "wiki", "sources", "evidence", "secs"};
     evidence = short snippets of what the tools returned (for truth.check);
     raises StandardError when no Groq key could answer. `web=False` keeps Wikipedia but never sends browser_search."""
@@ -170,6 +171,7 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
     if not slots:
         raise StandardError("Standard mode sirf Groq se chalta hai: Settings > API keys mein kam se kam ek Groq key daalo.")
     t0 = time.monotonic()
+    budget = config.STANDARD_TIMEOUT_S if budget is None else min(float(budget), config.STANDARD_TIMEOUT_S)
     deadline = t0 + budget
     msgs = [dict(m) for m in messages]
     reasons: dict[str, str] = {}
@@ -177,6 +179,8 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
     tool_sets = TOOL_SETS if web else TOOL_SETS_NO_WEB
     tool_idx = 0 if tools else len(tool_sets) - 1
     rounds, forced = 0, False
+    response_parts: list[str] = []
+    continuation_parts = 0
     async with _client() as client:
         for slot in slots:
             spec = config.keyed(base, slot)
@@ -203,18 +207,41 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                     payload["tools"] = tool_list  # tool_choice left at Groq's default ("auto")
                 rpm, tpm = config.rpm_limit(spec), config.tpm_limit(spec)
                 reservation_id = uuid.uuid4().hex
-                reservation_key = health.quota_key(spec)
+                api_key = prov.key(slot)
+                account_snapshot = {name: prov._need(name, slot) for name in prov.needs}
+                accounting_context = health.capture_request_context(spec, api_key, account_snapshot)
+                reservation_key = health.request_window_key(spec, accounting_context)
                 reserved = False
                 request_noted = False
+                def close_reservation(actual_tokens: int | None = None) -> None:
+                    nonlocal reserved
+                    if not reserved:
+                        return
+                    if request_noted:
+                        health.settle_slot(reservation_key, reservation_id, 0 if actual_tokens is None else actual_tokens)
+                    else:
+                        health.cancel_reservation(reservation_key, reservation_id)
+                    health.finish_reservation(reservation_id)
+                    reserved = False
+
                 if rpm or tpm:
-                    need = _est_tokens(msgs) + max_tokens
-                    if tpm:  # search results make the real size unknowable; never let the estimate block forever
-                        need = min(need, int(tpm * 0.9))
+                    prompt_tokens = _est_tokens(msgs)
+                    guard = int(tpm * 0.9) if tpm else 0
+                    if tpm and prompt_tokens >= guard:
+                        reasons[spec.label] = (f"single request too big (prompt ~{prompt_tokens} tokens, "
+                                               f"Groq guard {guard}/{tpm} tokens/min)")
+                        break
+                    planned_output = min(max_tokens, max(0, int(getattr(config, "STANDARD_OUTPUT_RESERVE", 1200))))
+                    need = prompt_tokens + planned_output
+                    if tpm:
+                        need = min(need, guard)
                     got, wait = health.reserve_slot(reservation_key, rpm, int(tpm * 0.9), need,
-                                                    min(config.RL_MAX_WAIT_S, max(0.0, left - 5)),
-                                                    reservation_id=reservation_id)
+                                                    min(getattr(config, "STANDARD_RL_MAX_WAIT_S", 60.0),
+                                                        max(0.0, left - 5)),
+                                                    reservation_id=reservation_id,
+                                                    accounting_context=accounting_context)
                     if not got:
-                        used_req, used_tok = health._minute(health.quota_key(spec), time.time())
+                        used_req, used_tok = health._minute(reservation_key, time.time())
                         limits = []
                         if rpm:
                             limits.append(f"{used_req}/{rpm} requests")
@@ -222,7 +249,8 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                             limits.append(f"{used_tok}/{int(tpm * 0.9)} tokens")
                         detail = ", ".join(limits) or "last 60s"
                         wait_note = f"; free in {int(wait + 0.999)}s" if wait else ""
-                        reasons[spec.label] = f"own rate window full (last 60s: {detail}{wait_note})"
+                        reasons[spec.label] = (f"Groq key {slot} ka 60s token/request window full "
+                                               f"(last 60s: {detail}{wait_note})")
                         break
                     reserved = True
                     if wait:
@@ -233,34 +261,33 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                             raise
                 try:
                     async with _sem("groq"):
-                        health.note_request(spec)
+                        health.note_request(spec, accounting_context)
                         request_noted = True
                         r = await client.post(f"{prov.url_for(slot)}/chat/completions", json=payload, headers=headers,
                                               timeout=max(5.0, min(45.0, deadline - time.monotonic())))
                 except httpx.HTTPError as e:
-                    if reserved:
-                        health.finish_reservation(reservation_id) if request_noted else health.cancel_reservation(reservation_key, reservation_id)
+                    close_reservation()
                     health.provider_error("groq", slot)
                     health.fail(spec, 30)
                     reasons[spec.label] = f"network error: {type(e).__name__}"
                     break  # server down / unreachable: next key
                 except BaseException:
-                    if reserved:
-                        health.finish_reservation(reservation_id) if request_noted else health.cancel_reservation(reservation_key, reservation_id)
+                    close_reservation()
                     raise
                 data = _json(r)
                 code = r.status_code
+                actual_tokens = None
                 if code == 200 and isinstance(data, dict) and data.get("choices"):
                     usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-                    actual_tokens = usage.get("total_tokens")
-                    if isinstance(actual_tokens, (int, float)) and not isinstance(actual_tokens, bool) and actual_tokens > 0:
-                        health.settle_slot(reservation_key, reservation_id, int(actual_tokens))
-                if reserved:
-                    health.finish_reservation(reservation_id) if request_noted else health.cancel_reservation(reservation_key, reservation_id)
+                    value = usage.get("total_tokens")
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+                        actual_tokens = int(value)
+                close_reservation(actual_tokens)
                 if code == 200:
                     try:
                         choice = data["choices"][0]
                         msg = choice.get("message") or {}
+                        finish = choice.get("finish_reason")
                     except (KeyError, IndexError, TypeError, AttributeError):
                         health.fail(spec, 30)
                         reasons[spec.label] = "malformed response"
@@ -288,6 +315,12 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                             msgs.append({"role": "tool", "tool_call_id": str(c.get("id") or ""), "content": out})
                         continue
                     text = clean(msg.get("content") or "")
+                    if text and finish == "length" and continuation_parts < MAX_RESPONSE_PARTS:
+                        response_parts.append(text)
+                        continuation_parts += 1
+                        msgs.append({"role": "assistant", "content": text})
+                        msgs.append({"role": "user", "content": "Pichhle jawab ko bina dohraye agle hissa se continue karo."})
+                        continue
                     if not text:
                         if calls and not forced:  # tool rounds used up but the model still wants tools: once more, no tools
                             forced, rounds = True, MAX_TOOL_ROUNDS
@@ -296,12 +329,14 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                         health.fail(spec, 15)
                         reasons[spec.label] = "empty answer"
                         break
+                    response_parts.append(text)
                     usage = data.get("usage") or {}
                     health.success(spec, int(usage.get("total_tokens") or (_est_tokens(msgs) + len(text) // 3)))
                     secs = time.monotonic() - t0
-                    health.trace_add(base, spec, True, messages=messages, output=text, secs=secs)
+                    answer_text = clean(" ".join(response_parts))
+                    health.trace_add(base, spec, True, messages=messages, output=answer_text, secs=secs)
                     uniq, evidence = _split_evidence(sources)
-                    return {"text": text, "used": spec.label, "searches": searches, "wiki": wiki_queries,
+                    return {"text": answer_text, "used": spec.label, "searches": searches, "wiki": wiki_queries,
                             "sources": uniq, "evidence": evidence, "secs": round(secs, 1)}
                 if code == 429:
                     wait, daily = _rate_info(r, data)
@@ -334,7 +369,7 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
 
 
 async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
-                 effort: str = "low", temperature: float = 0.6, budget: float = 75.0) -> dict:
+                 effort: str = "low", temperature: float = 0.6, budget: float | None = None) -> dict:
     """Try the configured Standard chain in order; every member is validated as Groq-only."""
     failures = []
     labels = _standard_chain_labels() or (MODEL_LABEL,)

@@ -389,6 +389,19 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
         reserved = False
         request_noted = False
         sent = time.perf_counter()
+
+        def close_reservation(actual_tokens: int | None = None) -> None:
+            """Release planning TPM after this attempt while retaining a sent request's RPM count."""
+            nonlocal reserved
+            if not reserved or not reservation_id:
+                return
+            if request_noted:
+                health.settle_slot(reservation_key, reservation_id, 0 if actual_tokens is None else actual_tokens)
+            else:
+                health.cancel_reservation(reservation_key, reservation_id)
+            health.finish_reservation(reservation_id)
+            reserved = False
+
         try:
             if reservation_id:
                 got, wait = health.reserve_slot(reservation_key, rpm, int(tpm * 0.9), need, config.RL_MAX_WAIT_S,
@@ -415,18 +428,16 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
                 else:
                     r = await client.post(url, json=payload, headers=headers, timeout=timeout)
         except httpx.HTTPError as e:
+            close_reservation()
             health.provider_error(spec.provider, slot)
             if attempts <= retries and health.available(spec)[0]:
                 await asyncio.sleep(1.0 * attempts)
                 continue
             health.fail(spec, 30)
             raise _Skip(f"network error: {type(e).__name__} after {time.perf_counter() - sent:.0f}s")
-        finally:
-            if reserved and reservation_id:
-                if request_noted:
-                    health.finish_reservation(reservation_id)
-                else:
-                    health.cancel_reservation(reservation_key, reservation_id)
+        except BaseException:
+            close_reservation()
+            raise
 
         data = _json(r)
         code = r.status_code
@@ -434,6 +445,14 @@ async def _try_model(client, spec, messages, temperature, max_tokens, timeout, r
             err = data["error"]  # OpenRouter sometimes reports upstream errors inside a 200
             c = err.get("code") if isinstance(err, dict) else None
             code = c if isinstance(c, int) else 502
+
+        actual_tokens = None
+        if code == 200 and isinstance(data, dict):
+            usage = data.get("usage") or {}
+            value = usage.get("total_tokens") if isinstance(usage, dict) else None
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+                actual_tokens = int(value)
+        close_reservation(actual_tokens)
 
         if code == 200:
             try:
