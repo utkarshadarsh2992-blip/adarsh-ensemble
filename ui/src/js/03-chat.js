@@ -6,6 +6,8 @@ const Chat = (() => {
   let callRows = [];   // this answer's model calls: {stage, model, state: run|ok|fail|dead|stop, why, secs, asked}
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
+  const typedReplies = new WeakMap(); // transient UI state only; the complete answer remains in S.chats
+  let displayedChatId = null;
   const MAX_REPLY_BYTES = 256 * 1024;
   const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
   function capReply(reply) {
@@ -59,7 +61,7 @@ const Chat = (() => {
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
     thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
     /* the moment the user takes the scroll, stop following: no fight between the finger and the ease */
-    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(t => thread.addEventListener(t, () => Motion.release(thread), { passive: true }));
+    ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(t => thread.addEventListener(t, stopFollowing, { passive: true }));
     ta = h('textarea', { rows: 1, placeholder: Modes.current().placeholder, 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
     atts = h('div', { class: 'atts' });
     drawAtts();
@@ -96,6 +98,13 @@ const Chat = (() => {
     const away = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
     jump.classList.toggle('show', away > 220); hdrEl.classList.toggle('scrolled', thread.scrollTop > 6);
   }
+  function stopFollowing() {
+    if (!thread) return;
+    Motion.release(thread);
+    const c = cur(), last = c && c.msgs[c.msgs.length - 1];
+    const state = last && typedReplies.get(last);
+    if (state) state.follow = false;
+  }
   function useStarter(st) {
     ta.value = st.p; onInput();
     if (st.send) submit(); else { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -109,9 +118,13 @@ const Chat = (() => {
 
   /* ---------- thread ---------- */
   function renderThread() {
-    const c = cur(); col.textContent = '';
-    /* only follow the newest line when the reader is already at the bottom; a page they scrolled up to stays put */
-    const near = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260;
+    const c = cur();
+    const nextChatId = c ? c.id : null;
+    const priorTop = thread.scrollTop;
+    const switching = App.view === 'chat' && displayedChatId !== nextChatId;
+    /* Measure before clearing: an empty column makes every scroll position look like the bottom. */
+    const near = switching || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260;
+    col.textContent = '';
     const has = !!(c && c.msgs.length);
     titleEl.className = has ? '' : 'wm'; titleEl.textContent = has ? (c.title || 'New chat') : 'ADARSH';
     if (!has) {
@@ -123,13 +136,44 @@ const Chat = (() => {
         h('div', { class: 'starters' }, m.starters.map(st => h('button', { class: 'starter', on: { click: () => useStarter(st) } }, icon(st.ic || m.ic, 's'), h('span', {}, st.t))))));
     } else {
       col.className = 'col';
-      c.msgs.forEach((m, i) => col.append(msgEl(m, i === c.msgs.length - 1)));
+      c.msgs.forEach((m, i) => {
+        const node = msgEl(m, i === c.msgs.length - 1);
+        col.append(node);
+        const state = typedReplies.get(m);
+        if (state && state.full === String((m.reply && m.reply.text) || '')) {
+          state.follow = near && App.view === 'chat';
+          startTypedReply(m, node, state);
+        }
+      });
     }
     if (busy && thinkEl) col.append(thinkEl);
-    if (near) scroll();
+    if (App.view === 'chat') displayedChatId = nextChatId;
+    if (near && App.view === 'chat') scroll();
+    else thread.scrollTop = Math.min(priorTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
   }
   /* eased, not a jump: the thread glides to the newest line and keeps following while it grows */
   const scroll = () => Motion.glide(thread);
+
+  function paintTypedReply(m, state) {
+    if (App.view !== 'chat') return;
+    const current = [...col.querySelectorAll('.msg[data-id]')].find(el => el.dataset.id === m.id);
+    if (!current) return;
+    const body = [...current.children].find(el => el.classList.contains('prose'));
+    if (!body) return;
+    body.replaceWith(renderReply({ ...m.reply, text: state.visible }, { msg: m, redraw: () => {} }));
+    if (state.follow) scroll();
+  }
+
+  function startTypedReply(m, node, state) {
+    if (state.rev || state.visible === state.full || !state.full) return;
+    const body = [...node.children].find(el => el.classList.contains('prose'));
+    if (!body) return;
+    state.rev = Motion.reveal(body, { quick: 85, fast: 28, onText: (text) => {
+      state.visible = text;
+      paintTypedReply(m, state);
+    } });
+    state.rev.set(state.full);
+  }
 
   function msgEl(m, isLast) {
     if (m.role === 'user') {
@@ -155,7 +199,8 @@ const Chat = (() => {
       wrap.append(h('details', { class: 'steps mcalls-msg' }, h('summary', {}, icon('search2', 's'), 'Model calls: ' + r.calls.length + (bad ? ' · ' + bad + ' fail' : '')),
         h('div', { class: 'mcl' }, r.calls.map(c => callRowEl({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails }, false)))));
     }
-    wrap.append(renderReply(r, ctx));
+    const typed = typedReplies.get(m);
+    wrap.append(typed && typed.full === String(r.text || '') ? renderReply({ ...r, text: typed.visible }, ctx) : renderReply(r, ctx));
     const pdfCard = pdfEl(m); if (pdfCard) wrap.append(pdfCard);
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
     if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* check questions, new words, Gehrai mein jao */
@@ -523,6 +568,9 @@ const Chat = (() => {
     if (r.briefing) Briefing.absorb(c, r);   // night briefing history (S.briefings)
     if (r.quota) Usage.absorb(c, r);   // Groq quota running low: one toast a day
     const m = { id: uid('m'), role: 'ai', ts: Date.now(), reply: r, personalContext: !!r.personalContext };
+    if (typeof App !== 'undefined' && App.view === 'chat' && S.cur === c.id && r.type === 'text' && typeof r.text === 'string' && r.text) {
+      typedReplies.set(m, { full: r.text, visible: '', rev: null, follow: false });
+    }
     c.msgs.push(m); c.ts = Date.now();
     Bus.emit('reply', { chat: c, msg: m });
     if (document.hidden && S.settings.notif && window.Notification && Notification.permission === 'granted') { try { new Notification('Adarsh', { body: speechOf(r).slice(0, 120) }); } catch (e) {} }

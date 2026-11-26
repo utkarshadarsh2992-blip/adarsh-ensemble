@@ -240,8 +240,9 @@ test('long council answer: Part 1/N appears live, the final list replaces it wit
   const done = app.Chat.submit('bahut lamba sawaal');
   await settle(10);
   app.window.__adarshProgress(reply, part({ n: 1, of: 2, text: '**Part 1/2**\n## 1. Newton laws\nlive one' }));
-  await settle(10);
   const thread = () => text(app.document.querySelector('.thread'));
+  const until = async (fn, ms = 2000) => { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('timed out waiting for gradual reply'); await settle(20); } };
+  await until(() => thread().includes('live one'));
   assert.match(thread(), /live one/);
   assert.equal(app.Chat.isBusy(), true, 'still working on Part 2');
   app.window.__adarshResult(reply, JSON.stringify([
@@ -249,7 +250,7 @@ test('long council answer: Part 1/N appears live, the final list replaces it wit
     { type: 'text', text: '**Part 2/2**\n## 2. Friction\nchecked two', part: { n: 2, of: 2 } }
   ]), null);
   await done;
-  await settle(10);
+  await until(() => thread().includes('checked one') && thread().includes('checked two'));
   assert.doesNotMatch(thread(), /live one/);
   assert.match(thread(), /checked one/);
   assert.match(thread(), /checked two/);
@@ -263,10 +264,13 @@ test('Stop during a long answer keeps the parts that already arrived', async t =
   const done = app.Chat.submit('bahut lamba sawaal');
   await settle(10);
   app.window.__adarshProgress(reply, '\u0001part ' + JSON.stringify({ n: 1, of: 3, text: '**Part 1/3**\nfirst part text' }));
-  await settle(10);
   await click(app.document, 'Stop');
   await done;
-  await settle(10);
+  const end = Date.now() + 1500;
+  while (!text(app.document.querySelector('.thread')).includes('first part text')) {
+    if (Date.now() > end) throw new Error('timed out waiting for stopped partial reply');
+    await settle(20);
+  }
   assert.match(text(app.document.querySelector('.thread')), /first part text/);
   assert.equal(app.Chat.isBusy(), false);
 });

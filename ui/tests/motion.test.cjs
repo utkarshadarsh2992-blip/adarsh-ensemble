@@ -27,8 +27,8 @@ function mount() {
   w.ADARSH_BACKEND = { async send() { return { type: 'text', text: 'ok' }; }, async ping() { return { ok: true }; } };
   const ctx = dom.getInternalVMContext();
   for (const f of ORDER) new vm.Script(fs.readFileSync(path.join(UI, 'src', f), 'utf8'), { filename: f }).runInContext(ctx);
-  new vm.Script('globalThis.TEST = { Motion };').runInContext(ctx);
-  return { window: w, document: w.document, Motion: w.TEST.Motion, close: () => dom.window.close() };
+  new vm.Script('globalThis.TEST = { Motion, Chat, App, S };').runInContext(ctx);
+  return { window: w, document: w.document, ...w.TEST, close: () => dom.window.close() };
 }
 
 test('an answer is typed out word by word, never in one block', async (t) => {
@@ -97,4 +97,45 @@ test('glide eases towards the end and stops when it arrives', async (t) => {
   assert.ok(mid > 0 && mid < 800, 'it moves in steps, not straight to the bottom: ' + mid);
   await settle(900);
   assert.ok(box.scrollTop > mid, 'it keeps going');
+});
+
+test('a held speech caption waits for audio onset, then reveals only a word at a time', async (t) => {
+  const app = mount();
+  t.after(() => app.close());
+  const host = app.document.createElement('div'); app.document.body.append(host);
+  const rev = app.Motion.reveal(host, { mode: 'hold', pace: 100, quick: 40, fast: 10 });
+  rev.set('Sir, audio ke saath shabd aayenge.');
+  await settle(35);
+  assert.equal(host.textContent, '', 'model transcript stays hidden before speech starts');
+  rev.pace();
+  assert.match(host.textContent, /^Sir,/);
+  assert.ok(host.textContent.length < rev.full.length, 'the caption does not arrive as a whole block');
+  rev.stop();
+});
+
+test('new ordinary chat answers reveal gradually without changing the full stored answer', async (t) => {
+  const app = mount();
+  t.after(() => app.close());
+  const full = 'Sir, this answer should appear gradually one word at a time.';
+  app.Chat.push({ type: 'text', text: full });
+  const stored = app.S.chats.find(c => c.id === app.S.cur).msgs.at(-1).reply.text;
+  const body = app.document.querySelector('#v-chat .msg[data-id] .prose');
+  const shown = body.textContent;
+  assert.equal(stored, full, 'the saved answer is not replaced by its visible prefix');
+  assert.ok(shown.length > 0 && shown.length < full.length, 'only an initial prefix is visible');
+  app.Chat.renderThread();
+  assert.equal(app.document.querySelector('#v-chat .msg[data-id] .prose').textContent, shown, 'a rerender keeps typing progress');
+});
+
+test('a new reply preserves the reader position when the thread was scrolled up', (t) => {
+  const app = mount();
+  t.after(() => app.close());
+  app.Chat.push({ type: 'text', text: 'Initial answer.' });
+  const thread = app.document.querySelector('#v-chat .thread');
+  app.Motion.release(thread);
+  Object.defineProperty(thread, 'scrollHeight', { configurable: true, value: 1200 });
+  Object.defineProperty(thread, 'clientHeight', { configurable: true, value: 200 });
+  thread.scrollTop = 450;
+  app.Chat.push({ type: 'text', text: 'A second answer should not pull the reader away.' });
+  assert.equal(thread.scrollTop, 450, 'DOM rebuilding does not reset or jump the reading position');
 });

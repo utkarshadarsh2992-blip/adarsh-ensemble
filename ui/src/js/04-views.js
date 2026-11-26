@@ -574,5 +574,72 @@ const App = (() => {
     if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
   });
 
+  let edgeSwipeBound = false;
+  const swipeBlocked = (target) => !!(target && target.closest && target.closest(
+    'button,a,input,textarea,select,[contenteditable="true"],[role="button"],.drawer,.scrim,.shade,.sheet,.pop,.pop-scrim,.voice,.lock'
+  ));
+  function inHorizontalScroller(target, stop) {
+    for (let el = target; el && el !== stop; el = el.parentElement) {
+      if (el.scrollWidth <= el.clientWidth + 4) continue;
+      const overflow = window.getComputedStyle ? window.getComputedStyle(el).overflowX : '';
+      if (/auto|scroll/.test(overflow)) return true;
+    }
+    return false;
+  }
+  function bindNewsEdgeSwipe() {
+    if (edgeSwipeBound) return;
+    edgeSwipeBound = true;
+    let pointerStart = null, touchStart = null;
+    function begin(target, x, y) {
+      const lock = $('#lock'), voice = $('#voice');
+      if (view === 'news' || root().classList.contains('open') || document.querySelector('.shade,.pop-scrim') ||
+          (lock && !lock.hidden) || (voice && !voice.hidden) || swipeBlocked(target)) return null;
+      const phone = root(), rect = phone.getBoundingClientRect();
+      const left = rect.width > 0 ? rect.left : 0;
+      const width = rect.width > 0 ? rect.width : (window.innerWidth || 480);
+      const right = rect.width > 0 ? rect.right : (window.innerWidth || 480);
+      const top = rect.height > 0 ? rect.top : 0, bottom = rect.height > 0 ? rect.bottom : Infinity;
+      if (x < left + width / 2 || x > right || y < top || y > bottom || inHorizontalScroller(target, phone)) return null;
+      return { x, y };
+    }
+    function finish(target, x, y, from, e) {
+      if (!from || view === 'news') return;
+      const dx = x - from.x, dy = y - from.y;
+      if (dx > -56 || Math.abs(dy) > 80 || Math.abs(dx) < Math.abs(dy) * 1.2 || swipeBlocked(target)) return;
+      if (e.cancelable) e.preventDefault();
+      show('news');
+    }
+    document.addEventListener('pointerdown', e => {
+      pointerStart = null;
+      if (e.isPrimary === false || (e.pointerType && e.pointerType !== 'touch')) return;
+      pointerStart = begin(e.target, e.clientX, e.clientY);
+    }, { passive: true });
+    document.addEventListener('pointerup', e => {
+      const from = pointerStart; pointerStart = null;
+      finish(e.target, e.clientX, e.clientY, from, e);
+    }, { passive: false });
+    document.addEventListener('pointercancel', () => { pointerStart = null; }, { passive: true });
+
+    // Android WebView can cancel pointer events when it classifies a horizontal move as a native gesture.
+    // Keep a Touch Events path as a fallback and claim a clear left-swipe before the browser takes it over.
+    document.addEventListener('touchstart', e => {
+      touchStart = null;
+      if (!e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0]; touchStart = begin(e.target, t.clientX, t.clientY);
+    }, { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (!touchStart || !e.touches || e.touches.length !== 1) return;
+      const t = e.touches[0], dx = t.clientX - touchStart.x, dy = t.clientY - touchStart.y;
+      if (dx < -12 && Math.abs(dx) > Math.abs(dy) * 1.15 && e.cancelable) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchend', e => {
+      const from = touchStart; touchStart = null;
+      const t = e.changedTouches && e.changedTouches[0];
+      if (t) finish(e.target, t.clientX, t.clientY, from, e);
+    }, { passive: false });
+    document.addEventListener('touchcancel', () => { touchStart = null; }, { passive: true });
+  }
+  bindNewsEdgeSwipe();
+
   return { show, drawer, buildDrawer, drawerList, applyTheme, ask, draft, get view() { return view; } };
 })();

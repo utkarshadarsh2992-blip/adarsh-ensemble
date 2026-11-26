@@ -66,6 +66,56 @@ test('not configured: setup card, no network call', async () => {
   assert.equal(m.News.configured(), false);
   m.close();
 });
+test('right-half inward swipe opens News; controls, vertical motion and horizontal scrollers are ignored', () => {
+  const m = mount();
+  const phone = m.document.querySelector('#phone');
+  phone.getBoundingClientRect = () => ({ left: 0, right: 480, top: 0, bottom: 900, width: 480, height: 900 });
+  const pointer = (target, type, x, y) => {
+    const ev = new m.window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(ev, { clientX: { value: x }, clientY: { value: y }, pointerType: { value: 'touch' }, isPrimary: { value: true } });
+    target.dispatchEvent(ev);
+  };
+  pointer(phone, 'pointerdown', 300, 220); pointer(phone, 'pointerup', 190, 224);
+  assert.equal(m.App.view, 'news', 'a leftward swipe from anywhere in the app right half opens News');
+
+  m.App.show('chat');
+  pointer(phone, 'pointerdown', 220, 220); pointer(phone, 'pointerup', 110, 224);
+  assert.equal(m.App.view, 'chat', 'a swipe starting in the left half is not hijacked');
+
+  const control = m.document.createElement('button'); phone.append(control);
+  pointer(control, 'pointerdown', 472, 220); pointer(control, 'pointerup', 370, 220);
+  assert.equal(m.App.view, 'chat', 'a swipe that begins on an interactive control is ignored');
+
+  pointer(phone, 'pointerdown', 472, 220); pointer(phone, 'pointerup', 360, 330);
+  assert.equal(m.App.view, 'chat', 'vertical movement is not treated as navigation');
+
+  const scroller = m.document.createElement('div'); scroller.style.overflowX = 'auto';
+  Object.defineProperty(scroller, 'scrollWidth', { value: 320 }); Object.defineProperty(scroller, 'clientWidth', { value: 120 });
+  phone.append(scroller);
+  pointer(scroller, 'pointerdown', 472, 220); pointer(scroller, 'pointerup', 360, 220);
+  assert.equal(m.App.view, 'chat', 'nested horizontal scrollers retain their own gesture');
+  m.close();
+});
+test('Android touch events open News from the right half and claim the horizontal move', () => {
+  const m = mount();
+  const phone = m.document.querySelector('#phone');
+  phone.getBoundingClientRect = () => ({ left: 0, right: 480, top: 0, bottom: 900, width: 480, height: 900 });
+  const emit = (type, x, y) => {
+    const point = { clientX: x, clientY: y, identifier: 1 };
+    const ev = new m.window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperties(ev, {
+      touches: { value: type === 'touchend' ? [] : [point] },
+      changedTouches: { value: [point] }
+    });
+    phone.dispatchEvent(ev);
+    return ev;
+  };
+  emit('touchstart', 300, 220);
+  assert.equal(emit('touchmove', 270, 222).defaultPrevented, true, 'WebView should not take over a clear leftward swipe');
+  emit('touchend', 240, 224);
+  assert.equal(m.App.view, 'news', 'Touch Events fallback opens News after a short right-half swipe');
+  m.close();
+});
 test('dashboard lists cards with badges, filter chips and the request body', async () => {
   const a = api({ list: (b) => L(b.filter === 'CN' ? [item({ id: 'c1', title: 'Xinhua daava', region: 'CN', state_media: true, claim_tag: 'sarkari daava', verified: 'state-only', breaking: false })] : [item(), item({ id: 'i2', title: 'Doosri khabar', breaking: false, verified: 'single' })]) });
   const m = mount({ fetchImpl: a.f, ls: CFG });

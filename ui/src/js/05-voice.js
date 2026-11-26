@@ -36,33 +36,38 @@ const TTS = (() => {
   let devVoice = null; // last phone voice pushed to Kotlin
   const info = { last: '', why: '' };
   /* Kotlin -> page: ('start'|'done'|'error'|'stopped', id) */
-  window.__adarshTts = (type, id) => { if (!cur || !cur.waiting || cur.waiting.id !== id) return; const w = cur.waiting; if (type === 'start') return; cur.waiting = null; w.done(type === 'done'); };
+  window.__adarshTts = (type, id) => {
+    if (!cur || !cur.waiting || cur.waiting.id !== id) return;
+    const w = cur.waiting;
+    if (type === 'start') { if (!w.started) { w.started = true; if (w.start) { try { w.start(); } catch (e) {} } } return; }
+    cur.waiting = null; w.done(type === 'done');
+  };
   const rate = () => +S.settings.rate || 1;
   /* V6 offline neural voice (Piper on the phone): tried after the natural voice failed, before the phone's own voice */
   const neuralOk = () => { try { return !!(N && N.neuralSpeak && N.neuralReady && N.neuralReady()); } catch (e) { return false; } };
-  function neural(job, text) {
+  function neural(job, text, onStart) {
     return new Promise((done) => {
       const id = 'tts' + (++seq);
-      job.waiting = { id, done };
+      job.waiting = { id, done, start: onStart, started: false };
       try { N.neuralSpeak(id, text, S.settings.lang || 'en-IN', rate()); } catch (e) { job.waiting = null; done(false); }
     });
   }
-  /* neural first when installed, then the phone voice. Resolves true when something spoke. */
-  async function fallback(job, text) {
+  /* neural first when installed, then the phone voice. Resolves true when something spoke */
+  async function fallback(job, text, onStart) {
     if (neuralOk()) {
       info.last = 'offline';
-      const ok = await neural(job, text);
+      const ok = await neural(job, text, onStart);
       if (job !== cur || ok) return ok;
     }
     info.last = 'device';
-    return device(job, text);
+    return device(job, text, onStart);
   }
   /* play one piece on the device voice; resolves true when it finished speaking */
-  function device(job, text) {
+  function device(job, text, onStart) {
     return new Promise((done) => {
       if (nativeDev()) {
         const id = 'tts' + (++seq);
-        job.waiting = { id, done };
+        job.waiting = { id, done, start: onStart, started: false };
         if (N.ttsSetVoice && S.settings.deviceVoice !== devVoice) {   // the voice picked in Settings (blank = automatic)
           devVoice = S.settings.deviceVoice || '';
           try { N.ttsSetVoice(devVoice); } catch (e) {}
@@ -76,23 +81,25 @@ const TTS = (() => {
         const vs = speechSynthesis.getVoices(); const two = (S.settings.lang || 'en').slice(0, 2);
         const v = vs.find(x => x.lang === S.settings.lang && /natural|neural|google|online/i.test(x.name)) || vs.find(x => x.lang === S.settings.lang) || vs.find(x => x.lang.startsWith(two));
         if (v) u.voice = v;
+        u.onstart = () => { if (onStart) onStart(); };
         u.onend = () => done(true); u.onerror = () => done(false);
         speechSynthesis.speak(u);
       } catch (e) { done(false); }
     });
   }
   /* play an engine clip: {file} natively on Android, {b64} with <audio> in the browser */
-  function playClip(job, clip) {
+  function playClip(job, clip, onStart) {
     return new Promise((done) => {
       if (clip.file && N && N.ttsPlayFile) {
         const id = 'tts' + (++seq);
-        job.waiting = { id, done };
+        job.waiting = { id, done, start: onStart, started: false };
         try { N.ttsPlayFile(id, clip.file, rate()); } catch (e) { job.waiting = null; done(false); }
         return;
       }
       if (!clip.b64) return done(false);
       try {
         audio = new Audio('data:' + (clip.mime || 'audio/wav') + ';base64,' + clip.b64); audio.playbackRate = rate();
+        audio.onplay = () => { if (onStart) onStart(); };
         audio.onended = () => done(true); audio.onerror = () => done(false);
         audio.play().catch(() => done(false));
       } catch (e) { done(false); }
@@ -105,7 +112,7 @@ const TTS = (() => {
     const m = text.match(/^(.{20,180}?[.!?।])\s+(.+)$/s);
     return m ? [m[1], m[2]] : [text];
   }
-  async function run(job, text) {
+  async function run(job, text, onStart) {
     const parts = natural() && Date.now() > naturalDown ? pieces(text) : null;
     if (parts) {
       const clips = parts.map((p, i) => fetchClip(p, i ? 45000 : 15000));   // all requested at once: the 2nd is ready when the 1st ends
@@ -117,29 +124,31 @@ const TTS = (() => {
         if (!clip) {
           if (S.settings.voiceEngine === 'natural' && !nativeDev() && !webDev()) return;
           naturalDown = Date.now() + 5 * 60e3;   // natural voice is down (no Gemini key / quota): device voice for 5 min
-          await fallback(job, parts.slice(i).join(' '));
+          await fallback(job, parts.slice(i).join(' '), onStart);
           return;
         }
         info.last = 'natural'; info.model = clip.model || info.model;
-        const ok = await playClip(job, clip);
+        const ok = await playClip(job, clip, onStart);
         if (job !== cur) return;
-        if (!ok) { await fallback(job, parts.slice(i).join(' ')); return; }
+        if (!ok) { await fallback(job, parts.slice(i).join(' '), onStart); return; }
       }
       return;
     }
-    if (S.settings.voiceEngine === 'device') { info.last = 'device'; await device(job, text); return; }
-    await fallback(job, text);
+    if (S.settings.voiceEngine === 'device') { info.last = 'device'; await device(job, text, onStart); return; }
+    await fallback(job, text, onStart);
   }
   return {
     VOICES, info, neuralOk,
     ok: () => natural() || nativeDev() || webDev(),
-    /* speak(text, onEnd): onEnd runs once when speech finished or failed, never after stop() */
-    speak(text, onEnd) {
+    /* speak(text, onEnd, onStart): callbacks bracket audible playback, never after stop() */
+    speak(text, onEnd, onStart) {
       this.stop();
       const t = speakable(text);
       if (!t) { if (onEnd) onEnd(); return; }
       const job = { waiting: null }; cur = job;
-      run(job, t).catch(() => {}).finally(() => { if (cur === job) { cur = null; if (onEnd) onEnd(); } });
+      let started = false;
+      const startedOnce = () => { if (started) return; started = true; if (onStart) { try { onStart(); } catch (e) {} } };
+      run(job, t, startedOnce).catch(() => {}).finally(() => { if (cur === job) { cur = null; if (onEnd) onEnd(); } });
     },
     speaking: () => !!cur,
     pause() { try { if (N && N.neuralPause) N.neuralPause(); if (audio) audio.pause(); } catch (e) {} },
@@ -328,7 +337,7 @@ const Voice = (() => {
     cap.textContent = '';
     capU = h('div', { class: 'u' });
     capA = h('div', { class: 'a' });
-    capRev = Motion.reveal(capA, { pace: 240, quick: 70, fast: 14, onTick: () => Motion.glide(cap) });
+    capRev = Motion.reveal(capA, { pace: 320, quick: 85, fast: 28, onTick: () => Motion.glide(cap) });
     cap.append(capU, capA);
   }
   function caption(u, a) {
@@ -340,6 +349,7 @@ const Voice = (() => {
     Motion.glide(cap);
   }
   const capFlush = () => { if (capRev) capRev.flush(); };
+  const capHold = () => { if (capRev) capRev.hold(); };
   const capNow = () => { if (capRev) capRev.finish(); };   /* errors and closures read at once, no typing */
   const capPace = () => { if (capRev) capRev.pace(); };
 
@@ -372,13 +382,14 @@ const Voice = (() => {
   function startLive() {
     const token = session;
     liveUser = ''; liveModel = '';
+    capHold();
     setState('connecting');
     caption('', 'Adarsh Live jud raha hai…');
     const ok = Live.start({
       onState: (s, m, ev) => {
         if (!active(token)) return;
         if (s === 'speaking') { setState('speaking'); capPace(); }
-        else if (s === 'listening') { setState('listening'); capFlush(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
+        else if (s === 'listening') { setState('listening'); capPace(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
         else if (s === 'connecting') {
           setState('connecting');
           /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
@@ -389,7 +400,9 @@ const Voice = (() => {
       onNotice: (m) => { if (active(token)) caption(liveUser, m); },
       onUser: (t) => {
         if (!active(token)) return;
-        liveUser = (liveUser + ' ' + t).trim().slice(-600); caption(liveUser, liveModel);
+        if (capRev) capRev.finish();
+        liveUser = (liveUser + ' ' + t).trim().slice(-600); liveModel = '';
+        capHold(); caption(liveUser, liveModel);
         /* auto role routing: the sentence itself decides which Live model should answer it */
         const want = Live.roleFor(t, Live.role);
         if (want && want !== Live.role && Live.switch(want, t)) setState('thinking');
@@ -466,7 +479,7 @@ const Voice = (() => {
       const fin = () => { if (done) return; done = true; clearTimeout(timer); releasePrompt = null; resolve(); };
       releasePrompt = fin;
       if (!active(token)) return fin();
-      TTS.speak(text, fin);
+      TTS.speak(text, fin, () => { if (active(token)) { setState('speaking'); capPace(); } });
     });
   }
   function askOnce(ms, token) {
@@ -502,8 +515,9 @@ const Voice = (() => {
     if (risky.length) {   // "Sir, message bhejne se pehle confirm chahiye. Haan bolo to kar dunga."
       const a = risky[0];
       const q = 'Sir, ' + ((a.steps.find(s => s.risk !== 'safe') || {}).detail || 'ye kaam') + ' ke liye confirm chahiye. Haan bolo to kar dunga.';
+      if (speakOn && TTS.ok()) capHold();
       caption(text, q);
-      if (speakOn && TTS.ok()) { setState('speaking'); capPace(); await prompt(q, token); capFlush(); }
+      if (speakOn && TTS.ok()) { await prompt(q, token); capFlush(); }
       if (!active(token)) return;
       const ans = (await askOnce(7000, token)).trim().replace(/[.!?।]+$/g, '').toLowerCase();
       if (!active(token)) return;
@@ -516,12 +530,15 @@ const Voice = (() => {
     }
     if (!active(token)) return;
     const spoken = collected.map(r => (r && r.type === 'text' ? voiceText(r.text) : speechOf(r))).filter(Boolean).join(' ');
+    const audible = !!(speakOn && spoken && TTS.ok());
+    if (audible) capHold();
     caption(text, spoken || 'Done.');
     if (structured) {
-      if (speakOn) { capPace(); TTS.speak(spoken, capFlush); } toast('Adarsh needs your answer in chat');
-      setTimeout(() => { if (active(token)) close(); }, speakOn ? 1800 : 400); return;
+      if (audible) TTS.speak(spoken, capFlush, () => { if (active(token)) { setState('speaking'); capPace(); } });
+      toast('Adarsh needs your answer in chat');
+      setTimeout(() => { if (active(token)) close(); }, audible ? 1800 : 400); return;
     }
-    if (speakOn && spoken && TTS.ok()) { setState('speaking'); capPace(); TTS.speak(spoken, () => { capFlush(); if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }); }
+    if (audible) { TTS.speak(spoken, () => { capFlush(); if (!active(token) || el.dataset.state !== 'speaking') return; setState('idle'); if (handsfree && STT.supported()) listen(); }, () => { if (active(token)) { setState('speaking'); capPace(); } }); }
     else { capFlush(); setState('idle'); if (handsfree && STT.supported() && !spoken) listen(); }
   }
   /* Settings > Speak replies: read every new chat answer aloud (voice mode speaks on its own) */

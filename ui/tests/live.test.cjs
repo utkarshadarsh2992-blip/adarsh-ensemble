@@ -31,8 +31,8 @@ function mount({ settings = {}, native = {} } = {}) {
   w.AdarshNative = native;
   w.ADARSH_BACKEND = { async send() { return { type: 'text', text: 'ok' }; }, async ping() { return { ok: true }; } };
   const ctx = dom.getInternalVMContext();
-  for (const f of ORDER) new vm.Script(fs.readFileSync(path.join(UI, 'src', f), 'utf8'), { filename: f }).runInContext(ctx);
-  new vm.Script('globalThis.TEST = { S, Voice, Live, Chat };').runInContext(ctx);
+  for (const f of ORDER) new vm.Script(fs.readFileSync(path.join(UI, 'src', f), 'utf8'), { filename: path.join(UI, 'src', f) }).runInContext(ctx);
+  new vm.Script('globalThis.TEST = { S, Voice, Live, Chat, TTS };').runInContext(ctx);
   return { dom, window: w, document: w.document, ...w.TEST, close: () => dom.window.close() };
 }
 
@@ -72,13 +72,18 @@ test('a live session sends the model, the chosen voice and the saved philosophy'
   assert.match(first.prompt, /requested depth and format/);
   assert.doesNotMatch(first.prompt, /about 2 years|little support at home|overthinking/i);
   assert.equal(first.key, undefined, 'the key never leaves Kotlin');
-  // the socket pushes transcripts back into the captions
+  // model text waits for the first received audio before revealing
   app.window.__adarshLive({ type: 'user', text: 'kal ka mausam' });
   app.window.__adarshLive({ type: 'model', text: 'Sir, kal dhoop rahegi.' });
-  await settle(400);   // the caption is typed out word by word, so give the reveal a moment
-  const cap = text(app.document.querySelector('#voice .v-cap'));
+  await settle(80);
+  let cap = text(app.document.querySelector('#voice .v-cap'));
   assert.match(cap, /kal ka mausam/);
-  assert.match(cap, /dhoop rahegi/);
+  assert.doesNotMatch(cap, /Sir, kal dhoop rahegi\./, 'model text stays hidden before audio starts');
+  app.window.__adarshLive({ type: 'state', state: 'speaking', model: 'gemini-3.8-live' });
+  await settle(380);
+  cap = text(app.document.querySelector('#voice .v-cap'));
+  assert.match(cap, /Sir,/);
+  assert.doesNotMatch(cap, /Sir, kal dhoop rahegi\./, 'caption continues at a steady speaking cadence');
   app.Voice.close();
   assert.ok(calls.some(c => c.stop), 'closing the screen ends the session (no background listening)');
 });
@@ -130,4 +135,25 @@ test('a live turn switches the model through the bridge', async (t) => {
   app.window.__adarshLive({ type: 'user', text: 'theek hai' });
   await settle(10);
   assert.ok(calls.some(c => c.switch === 'main'), 'plain talk returns to the main voice');
+});
+
+
+test('native TTS start and completion reach the UI as separate callbacks', async (t) => {
+  const calls = [];
+  const app = mount({ native: {
+    ttsAvailable: () => true,
+    ttsSpeak: (id) => { calls.push(id); },
+    ttsStop: () => {}
+  } });
+  t.after(() => app.close());
+  let started = 0, ended = 0;
+  app.TTS.speak('Namaste Sir.', () => { ended++; }, () => { started++; });
+  await settle(20);
+  assert.equal(calls.length, 1, 'native speech has been requested');
+  assert.equal(started, 0, 'caption start waits while the audio is only queued');
+  app.window.__adarshTts('start', calls[0]);
+  assert.equal(started, 1, 'the native playback-start callback releases the caption');
+  app.window.__adarshTts('done', calls[0]);
+  await settle(10);
+  assert.equal(ended, 1, 'completion remains a separate event');
 });

@@ -42,16 +42,22 @@ const Motion = (() => {
 
   /* ---------- reveal: one word at a time ---------- */
   function reveal(host, opts = {}) {
-    const node = document.createTextNode('');
-    host.append(node);
-    const pace = opts.pace || 230;      // ms per word while the voice is talking
-    const quick = opts.quick || 70;     // ms per word when nothing is spoken
-    const fast = opts.fast || 14;       // ms per word after the voice stopped, or on flush
+    const onText = typeof opts.onText === 'function' ? opts.onText : null;
+    const node = onText ? null : document.createTextNode('');
+    if (node) host.append(node);
+    const pace = opts.pace || 230;      // ms per word while audio is playing
+    const quick = opts.quick || 70;     // ms per word for ordinary written replies
+    const fast = opts.fast || 14;       // ms per word after speech ends, or on flush
     const onTick = opts.onTick || null;
-    /* quick until the voice actually starts: text that arrives while nobody is talking should not crawl */
-    let target = '', shown = 0, mode = 'quick', timer = 0, alive = true;
+    /* hold is used for speech: model text waits until the first audio callback arrives */
+    let target = '', shown = 0, visible = '', mode = opts.mode === 'hold' ? 'hold' : 'quick', timer = 0, alive = true;
 
     const stopTimer = () => { if (timer) { clearTimeout(timer); timer = 0; } };
+    const paint = (text) => {
+      visible = text;
+      if (onText) { try { onText(text); } catch (e) {} }
+      else node.data = text;
+    };
     /* end index of the next word, including the spaces that follow it */
     function boundary() {
       let i = shown;
@@ -60,26 +66,23 @@ const Motion = (() => {
       while (i < target.length && /\s/.test(target[i])) i++;
       return i;
     }
-    /* how long to wait for the next word: calm at reading pace, quicker when the voice is far ahead */
     function wait() {
       if (mode === 'fast') return fast;
       if (mode === 'quick') return quick;
-      const wordsLeft = Math.max(1, Math.round((target.length - shown) / 6));
-      return Math.round(Math.max(55, Math.min(pace, (pace * 9) / wordsLeft)));
+      return pace;       // a fixed speaking cadence; a long transcript must not make captions race ahead
     }
     function step() {
       timer = 0;
-      if (!alive) return;
+      if (!alive || mode === 'hold') return;
       const end = boundary();
       if (end <= shown) return;
       shown = Math.min(end, target.length);
-      node.data = target.slice(0, shown);
+      paint(target.slice(0, shown));
       if (onTick) { try { onTick(); } catch (e) {} }
       if (shown < target.length) timer = setTimeout(step, wait());
     }
-    /* the first word lands at once, so the caption never looks empty after a reply; the rest follows on the clock */
     function kick() {
-      if (!alive || timer || shown >= target.length) return;
+      if (!alive || mode === 'hold' || timer || shown >= target.length) return;
       if (shown === 0) step(); else timer = setTimeout(step, wait());
     }
 
@@ -88,20 +91,21 @@ const Motion = (() => {
       set(t) {
         if (!alive) return;
         t = String(t == null ? '' : t);
-        if (!t.startsWith(target.slice(0, Math.min(shown, target.length)))) { stopTimer(); shown = 0; node.data = ''; }
+        if (!t.startsWith(target.slice(0, Math.min(shown, target.length)))) { stopTimer(); shown = 0; paint(''); }
         target = t;
-        if (shown > target.length) { shown = target.length; node.data = target; }
+        if (shown > target.length) { shown = target.length; paint(target); }
         kick();
       },
+      hold() { mode = 'hold'; stopTimer(); },
       pace() { mode = 'pace'; kick(); },
       quick() { mode = 'quick'; kick(); },
       /* the voice has stopped: finish the rest quickly, still word by word */
       flush() { mode = 'fast'; kick(); },
       /* reveal everything now (screen closing, or the user interrupted) */
-      finish() { stopTimer(); shown = target.length; node.data = target; if (onTick) { try { onTick(); } catch (e) {} } },
-      stop() { alive = false; stopTimer(); if (node.parentNode) node.remove(); },
+      finish() { stopTimer(); shown = target.length; paint(target); if (onTick) { try { onTick(); } catch (e) {} } },
+      stop() { alive = false; stopTimer(); if (node && node.parentNode) node.remove(); },
       get busy() { return shown < target.length; },
-      get text() { return node.data; },
+      get text() { return visible; },
       get full() { return target; }
     };
   }
