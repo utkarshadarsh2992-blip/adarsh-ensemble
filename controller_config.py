@@ -20,6 +20,10 @@ from urllib.parse import unquote, urlsplit
 
 SCHEMA_VERSION = 1
 MAX_CONFIG_BYTES = 256 * 1024
+MAX_MODEL_ID = 128
+MAX_CONFIG_AGE_SECONDS = 30 * 86400
+MODEL_ID_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9._:/@+-]{0,127}$")
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
 PROVIDERS = {
     "groq": "api.groq.com",
     "openrouter": "openrouter.ai",
@@ -50,6 +54,7 @@ EXTRA_ENUMS = {
 _lock = threading.RLock()
 _base_config: dict[str, Any] | None = None
 _base_plans: dict[str, Any] | None = None
+_last_revision: int | None = None
 
 
 class ControllerConfigError(ValueError):
@@ -115,7 +120,17 @@ def route_keys() -> set[str]:
 def validate_document(document: Any) -> dict:
     """Validate the wire schema and URL/model constraints without importing engine modules."""
     doc = _object(document, "config")
-    _keys(doc, {"schema_version", "providers", "models", "routes", "quality", "limits"}, "config")
+    _keys(doc, {"schema_version", "revision", "issued_at", "rollback_of", "providers", "models", "routes", "quality", "limits"}, "config")
+    if type(doc.get("schema_version")) is not int or doc["schema_version"] != SCHEMA_VERSION:
+        raise ControllerConfigError("unsupported schema_version")
+    if "revision" in doc and (type(doc["revision"]) is not int or doc["revision"] < 1):
+        raise ControllerConfigError("invalid revision")
+    if "rollback_of" in doc and (type(doc["rollback_of"]) is not int or doc["rollback_of"] < 1):
+        raise ControllerConfigError("invalid rollback marker")
+    if "issued_at" in doc:
+        _text(doc["issued_at"], "issued_at", 40)
+        try: __import__("datetime").datetime.fromisoformat(doc["issued_at"].replace("Z", "+00:00"))
+        except ValueError as exc: raise ControllerConfigError("invalid issued_at") from exc
     if type(doc.get("schema_version")) is not int or doc["schema_version"] != SCHEMA_VERSION:
         raise ControllerConfigError("unsupported schema_version")
 
@@ -139,7 +154,7 @@ def validate_document(document: Any) -> dict:
         if not {"label", "provider", "model", "enabled"}.issubset(row):
             raise ControllerConfigError(f"models[{i}] is missing a required field")
         label = _text(row["label"], f"models[{i}].label", 80)
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", label):
+        if not LABEL_RE.fullmatch(label):
             raise ControllerConfigError("model labels may contain only letters, digits, dot, underscore, and hyphen")
         if label in labels:
             raise ControllerConfigError("model labels must be unique")
@@ -147,8 +162,8 @@ def validate_document(document: Any) -> dict:
         provider = row["provider"]
         if not isinstance(provider, str) or provider not in PROVIDERS:
             raise ControllerConfigError(f"models[{i}].provider is unsupported")
-        model = _text(row["model"], f"models[{i}].model", 200)
-        if any(c.isspace() for c in model):
+        model = _text(row["model"], f"models[{i}].model", MAX_MODEL_ID)
+        if not MODEL_ID_RE.fullmatch(model):
             raise ControllerConfigError("model IDs cannot contain whitespace")
         if type(row["enabled"]) is not bool:
             raise ControllerConfigError(f"models[{i}].enabled must be boolean")
@@ -196,7 +211,7 @@ def validate_document(document: Any) -> dict:
             clean[key] = value
         limits[provider] = clean
 
-    return {"schema_version": SCHEMA_VERSION, "providers": providers, "models": models,
+    return {"schema_version": SCHEMA_VERSION, **({"revision": doc["revision"]} if "revision" in doc else {}), **({"issued_at": doc["issued_at"]} if "issued_at" in doc else {}), **({"rollback_of": doc["rollback_of"]} if "rollback_of" in doc else {}), "providers": providers, "models": models,
             "routes": routes, "quality": dict(quality), "limits": limits}
 
 
@@ -401,7 +416,13 @@ def _read_candidate(path: str | None) -> tuple[dict | None, bytes | None, str | 
         if not raw or len(raw) > MAX_CONFIG_BYTES:
             return None, None, "config document is empty or exceeds 256 KiB"
         parsed = json.loads(raw.decode("utf-8"))
-        return validate_document(parsed), raw, None
+        checked = validate_document(parsed)
+        if checked.get("issued_at"):
+            from datetime import datetime, timezone
+            issued = datetime.fromisoformat(checked["issued_at"].replace("Z", "+00:00"))
+            if (datetime.now(timezone.utc) - issued).total_seconds() > MAX_CONFIG_AGE_SECONDS:
+                return None, None, "config document is stale"
+        return checked, raw, None
     except ControllerConfigError as exc:
         return None, None, str(exc)[:240]
     except (OSError, UnicodeError, json.JSONDecodeError, RecursionError):
@@ -432,13 +453,18 @@ def _atomic_write(path: str, raw: bytes) -> None:
 
 def apply_files(cache_path: str | None, pending_path: str | None = None) -> dict:
     """Apply a valid incoming document, otherwise a last-known-good cache, or bundled defaults."""
+    global _last_revision
     with _lock:
         incoming, incoming_raw, incoming_error = _read_candidate(pending_path)
         cached, cached_raw, cached_error = _read_candidate(cache_path)
         candidates = []
         last_error = incoming_error or cached_error
         if incoming is not None:
-            candidates.append((incoming, incoming_raw, True))
+            revision = incoming.get("revision")
+            if revision is not None and _last_revision is not None and revision < _last_revision:
+                incoming = None; incoming_raw = None; incoming_error = "config revision is older than the applied revision"
+            else:
+                candidates.append((incoming, incoming_raw, True))
         if cached is not None:
             candidates.append((cached, cached_raw, False))
         if not candidates:
@@ -467,8 +493,10 @@ def apply_files(cache_path: str | None, pending_path: str | None = None) -> dict
                         os.remove(pending_path)
                     except OSError:
                         pass
+                if doc.get("revision") is not None: _last_revision = doc["revision"]
                 return {"ok": True, "source": "remote", "active": True, "cached": True,
                         "config_digest": hashlib.sha256(raw).hexdigest()}
+            if doc.get("revision") is not None: _last_revision = max(_last_revision or 0, doc["revision"])
             result = {"ok": True, "source": "cache", "active": True, "cached": True,
                       "config_digest": hashlib.sha256(raw).hexdigest()}
             if last_error:

@@ -16,6 +16,9 @@ export type ControllerModel = {
 };
 export type ControllerConfig = {
   schema_version: 1;
+  revision?: number;
+  issued_at?: string;
+  rollback_of?: number;
   providers: Record<ProviderId, { base_url: string }>;
   models: ControllerModel[];
   routes: Record<string, string[]>;
@@ -69,6 +72,8 @@ function bool(value: unknown, code: string): boolean {
 }
 
 const providerIds = Object.keys(PROVIDER_HOSTS) as ProviderId[];
+const modelIdPattern = /^[A-Za-z0-9@][A-Za-z0-9._:/@+-]{0,127}$/;
+const labelPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const knownFeatures = new Set(['standard', 'briefing', 'checks', 'factcheck', 'guard', 'voice', 'news', 'council', 'other']);
 const providerNames: Record<ProviderId, string> = {
   groq: 'Groq', openrouter: 'OpenRouter', gemini: 'Gemini', nvidia: 'NVIDIA', cloudflare: 'Cloudflare',
@@ -273,8 +278,8 @@ function routeInvariantIssue(labels: string[], models: Map<string, ControllerMod
 
 export function validateConfig(input: unknown): ControllerConfig {
   if (!isObject(input)) fault(400, 'invalid_config');
-  exactKeys(input, ['schema_version', 'providers', 'models', 'routes', 'quality', 'limits']);
-  if (input.schema_version !== 1 || !isObject(input.providers) || !isObject(input.routes) || !isObject(input.quality) || !isObject(input.limits) || !Array.isArray(input.models)) fault(400, 'invalid_config');
+  exactKeys(input, ['schema_version', 'revision', 'issued_at', 'rollback_of', 'providers', 'models', 'routes', 'quality', 'limits']);
+  if (input.schema_version !== 1 || (input.revision !== undefined && (typeof input.revision !== 'number' || !Number.isSafeInteger(input.revision) || input.revision < 1)) || (input.rollback_of !== undefined && (typeof input.rollback_of !== 'number' || !Number.isSafeInteger(input.rollback_of) || input.rollback_of < 1)) || (input.issued_at !== undefined && (typeof input.issued_at !== 'string' || Number.isNaN(Date.parse(input.issued_at)))) || !isObject(input.providers) || !isObject(input.routes) || !isObject(input.quality) || !isObject(input.limits) || !Array.isArray(input.models)) fault(400, 'invalid_config');
   exactKeys(input.providers, providerIds);
   const providers = {} as ControllerConfig['providers'];
   for (const id of providerIds) {
@@ -289,9 +294,11 @@ export function validateConfig(input: unknown): ControllerConfig {
   const models: ControllerModel[] = input.models.map((raw) => {
     if (!isObject(raw)) fault(400, 'invalid_config');
     exactKeys(raw, ['label', 'provider', 'model', 'enabled', 'extra']);
-    const label = boundedString(raw.label, 100, 'invalid_config');
+    const label = boundedString(raw.label, 80, 'invalid_config');
+    if (!labelPattern.test(label)) fault(400, 'invalid_config');
     const provider = boundedString(raw.provider, 30, 'invalid_config') as ProviderId;
-    const model = boundedString(raw.model, 200, 'invalid_config');
+    const model = boundedString(raw.model, 128, 'invalid_config');
+    if (!modelIdPattern.test(model)) fault(400, 'invalid_config');
     if (looksSecretLike(label) || looksSecretLike(model)) fault(400, 'invalid_config');
     if (!providerIds.includes(provider) || labels.has(label) || !isObject(raw.extra)) fault(400, 'invalid_config');
     labels.add(label);
@@ -309,7 +316,7 @@ export function validateConfig(input: unknown): ControllerConfig {
   const routes: Record<string, string[]> = {};
   for (const [key, rawChain] of Object.entries(input.routes)) {
     if (!validRouteKey(key) || !Object.prototype.hasOwnProperty.call(BUNDLED_ROUTE_CHAINS, key) || !Array.isArray(rawChain) || rawChain.length < 1 || rawChain.length > 10) fault(400, 'invalid_route');
-    const routeLabels = rawChain.map((item) => boundedString(item, 100, 'invalid_route'));
+    const routeLabels = rawChain.map((item) => boundedString(item, 80, 'invalid_route'));
     if (new Set(routeLabels).size !== routeLabels.length) fault(400, 'invalid_route', { invalid_routes: [{ route_key: key, reason: 'duplicate-model-label' }] });
     routes[key] = routeLabels;
   }
@@ -327,7 +334,7 @@ export function validateConfig(input: unknown): ControllerConfig {
       routeIssues.push({
         route_key: key,
         reason: 'unavailable-model',
-        unavailable_labels: unavailable.filter((label) => /^[A-Za-z0-9._:/@+-]{1,100}$/.test(label) && !looksSecretLike(label)),
+        unavailable_labels: unavailable.filter((label) => /^[A-Za-z0-9._:/@+-]{1,128}$/.test(label) && !looksSecretLike(label)),
       });
       continue;
     }
@@ -352,10 +359,10 @@ export function validateConfig(input: unknown): ControllerConfig {
     if (!providerIds.includes(provider as ProviderId) || !isObject(rawLimits)) fault(400, 'invalid_config');
     exactKeys(rawLimits, ['daily_tokens', 'daily_requests']);
     const row: Record<string, number> = {};
-    for (const [key, value] of Object.entries(rawLimits)) row[key] = integer(value, 1, 1_000_000_000_000, 'invalid_config');
+    for (const [key, value] of Object.entries(rawLimits)) row[key] = integer(value, 0, 1_000_000_000_000, 'invalid_config');
     limits[provider] = row;
   }
-  return { schema_version: 1, providers, models, routes, quality, limits };
+  return { schema_version: 1, ...(input.revision === undefined ? {} : { revision: input.revision as number }), ...(input.issued_at === undefined ? {} : { issued_at: input.issued_at as string }), ...(input.rollback_of === undefined ? {} : { rollback_of: input.rollback_of as number }), providers, models, routes, quality, limits };
 }
 
 function dateOnly(value: unknown, code: string): string {

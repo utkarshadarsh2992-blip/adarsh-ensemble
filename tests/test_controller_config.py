@@ -214,3 +214,18 @@ def _apply(doc):
             json.dump(doc, stream)
         result = controller.apply_files(path)
         assert result["active"]
+
+def test_shared_controller_fixture_parity():
+    fixture = os.path.join(os.path.dirname(os.path.dirname(__file__)), "supabase", "functions", "_shared", "fixtures", "controller_config_cases.json")
+    with open(fixture, encoding="utf-8") as stream:
+        cases = json.load(stream)
+    shape = next(case for case in cases if case["name"] == "revision-6-shape-anonymized")
+    assert len(shape["config"]["models"]) == 34
+    assert len(shape["config"]["routes"]) == 99
+    for case in cases:
+        try:
+            controller.validate_document(case["config"])
+            valid = True
+        except controller.ControllerConfigError:
+            valid = False
+        assert valid is case["valid"], case["name"]

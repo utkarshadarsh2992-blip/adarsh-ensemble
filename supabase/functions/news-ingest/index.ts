@@ -5,14 +5,20 @@ import type { Feed, FetchLike, Store } from '../_shared/types.ts';
 import { safeFunctionError } from '../_shared/diagnostics.ts';
 
 export function auth(req: Request): boolean {
-  const a = new TextEncoder().encode(req.headers.get('x-cron-secret') || '');
-  const b = new TextEncoder().encode(Deno.env.get('CRON_SECRET') || '');
+  const configured = Deno.env.get('CRON_SECRET')?.trim() || '';
+  if (configured.length < 16) return false;
+  const supplied = req.headers.get('x-cron-secret')?.trim() || '';
+  if (!supplied) return false;
+  const a = new TextEncoder().encode(supplied);
+  const b = new TextEncoder().encode(configured);
   let diff = a.length ^ b.length;
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     diff |= (a[i % Math.max(1, a.length)] || 0) ^ (b[i % Math.max(1, b.length)] || 0);
   }
   return diff === 0;
 }
+
+export function authStatus(req: Request): 200 | 401 | 503 { return (Deno.env.get('CRON_SECRET')?.trim() || '').length < 16 ? 503 : (auth(req) ? 200 : 401); }
 
 function lastFetchedAt(feed: Feed): number {
   if (!feed.last_fetch) return Number.NEGATIVE_INFINITY;
@@ -68,8 +74,7 @@ export async function run(store: Store, fetcher: FetchLike = fetch, now = new Da
     for (const parsed of result.items) {
       const canonical = parsed.source_url || parsed.url;
       const hash = await sha256(canonical);
-      if (await store.seen(hash)) continue;
-      await store.markSeen(hash);
+      if (!(await store.claimSeen(hash))) continue;
       if (!relevant(parsed.title, parsed.summary, feed, watch)) {
         summary.skipped++;
         continue;
@@ -93,7 +98,7 @@ export async function run(store: Store, fetcher: FetchLike = fetch, now = new Da
         }
       }
 
-      await store.insertItem({
+      try { await store.insertItem({
         title: parsed.title,
         title_norm: parsed.title.toLowerCase(),
         url: parsed.url,
@@ -111,7 +116,7 @@ export async function run(store: Store, fetcher: FetchLike = fetch, now = new Da
         sources: [source],
         status: 'new',
       });
-      summary.items++;
+      summary.items++; } catch (error) { if (!(error && typeof error === 'object' && (error as any).code === '23505')) throw error; }
     }
   }
 
@@ -120,7 +125,7 @@ export async function run(store: Store, fetcher: FetchLike = fetch, now = new Da
 
 if (import.meta.main) {
   Deno.serve(async (req) => {
-    if (!auth(req)) return json({ ok: false, error: 'Cron auth galat' }, 401);
+    const authCode=authStatus(req); if (authCode !== 200) return json({ ok: false, error: authCode===503 ? 'server not configured' : 'Cron auth galat' }, authCode);
     try {
       return json({ ok: true, ...await run(supabaseStore()) });
     } catch (error) {

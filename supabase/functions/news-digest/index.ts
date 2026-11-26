@@ -4,7 +4,7 @@ import { digestDue, localDay } from '../_shared/budget.ts';
 import { telegram, htmlEscape, logDelivery } from '../_shared/alerts.ts';
 import { sendFcm } from '../_shared/fcm.ts';
 import type { Store, FetchLike } from '../_shared/types.ts';
-import { auth } from '../news-ingest/index.ts';
+import { auth, authStatus } from '../news-ingest/index.ts';
 export { auth };
 import { safeFunctionError } from '../_shared/diagnostics.ts';
 
@@ -91,7 +91,7 @@ export async function run(
 
 if (import.meta.main) {
   Deno.serve(async (req) => {
-    if (!auth(req)) return json({ ok: false, error: 'Cron auth galat' }, 401);
+    const authCode=authStatus(req); if(authCode!==200)return json({ok:false,error:authCode===503?'server not configured':'Cron auth galat'},authCode);
     try {
       return json({ ok: true, ...await run(supabaseStore()) });
     } catch (errorValue) {
