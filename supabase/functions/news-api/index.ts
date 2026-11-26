@@ -3,7 +3,7 @@ import {handleApi} from '../_shared/api.ts';
 import {json} from '../_shared/types.ts';
 import {safeFunctionError} from '../_shared/diagnostics.ts';
 
-const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type, x-app-secret','Access-Control-Allow-Methods':'POST, OPTIONS'};
+const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type, x-app-secret','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'};
 
 if (import.meta.main) Deno.serve(async req=>{
   try {

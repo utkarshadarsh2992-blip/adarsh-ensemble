@@ -6,23 +6,12 @@ import {
 import { newsSettingsSet, newsState } from '../_shared/newsadmin.ts';
 
 function corsHeaders(request: Request): HeadersInit {
-  const origin = request.headers.get('origin');
-  let allowOrigin = '*';
-  if (origin && origin !== 'null') {
-    try {
-      const parsed = new URL(origin);
-      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.origin === origin) allowOrigin = origin;
-    } catch { /* Invalid Origin is not reflected. */ }
-  }
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Max-Age': '600',
-    'Vary': 'Origin',
-  };
+  const configured = (Deno.env.get('ALLOWED_ORIGINS') || 'https://adarshctl-pc68aukk.manus.space,http://localhost:5173').split(',').map(x=>x.trim()).filter(Boolean);
+  const origin = request.headers.get('origin') || '';
+  const headers: Record<string,string> = {'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info','Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Max-Age':'600','Vary':'Origin'};
+  if (configured.includes(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  return headers;
 }
-
 function serviceClient(): SupabaseClient {
   const url = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -50,9 +39,9 @@ async function authorizeAdmin(request: Request): Promise<{ id: string; service: 
   const { data: userData, error: userError } = await userClient.auth.getUser(jwt);
   if (userError || !userData.user) fault(401, 'unauthorized');
   const { data: allowed, error: allowError } = await service
-    .from('controller_admins').select('user_id').eq('user_id', userData.user.id).eq('enabled', true).maybeSingle();
+    .from('controller_admins').select('user_id,email').eq('user_id', userData.user.id).eq('enabled', true).maybeSingle();
   if (allowError) fault(503, 'unavailable');
-  if (!allowed) fault(403, 'not_allowed');
+  if (!allowed || typeof allowed.email !== 'string' || !allowed.email || !userData.user.email || allowed.email.trim().toLowerCase() !== userData.user.email.trim().toLowerCase() || !userData.user.email_confirmed_at) fault(403, 'not_allowed');
   return { id: userData.user.id, service };
 }
 

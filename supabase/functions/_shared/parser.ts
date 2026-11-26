@@ -29,7 +29,31 @@ const mission=/\b(ai|model|llm|chip|gpu|compute|data cent(?:er|re)|rocket|launch
 const fluff=/\b(celebrity|sports|football|cricket|recipe|horoscope|fashion|reality tv|movie review)\b/i;
 export function relevant(title:string, summary:string, feed:Feed, watches:string[]):boolean { const text=`${title} ${summary}`; if(fluff.test(text)&&!mission.test(text)) return false; return Boolean(feed.tag_hint||mission.test(text)||watches.some(w=>text.toLowerCase().includes(w.toLowerCase()))); }
 export function isStateMedia(url:string, feedFlag:boolean):boolean { const domains=['tass.com','tass.ru','xinhuanet.com','news.cn','cgtn.com','globaltimes.cn','chinadaily.com.cn','people.cn','ria.ru','sputniknews.com','rt.com','pib.gov.in','ddnews.gov.in','airnews.gov.in','presstv.ir','voanews.com']; try { return feedFlag||domains.some(d=>new URL(url).hostname.endsWith(d)); } catch { return feedFlag; } }
-export async function fetchFeed(feed:Feed, fetcher:FetchLike=fetch, cap=30):Promise<{items:Parsed[];status:number;bytes:number;error?:string}> { const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),8000); try { const r=await fetcher(feed.url,{headers:{'user-agent':'AdarshNews/1.0','accept':'application/rss+xml, application/atom+xml, application/json'},signal:ctl.signal}); const text=(await r.text()).slice(0,2_000_000); if(!r.ok) return {items:[],status:r.status,bytes:text.length,error:`HTTP ${r.status}`}; if(feed.kind==='json'||feed.kind==='hf_papers') return {items:parseJsonFeed(text,cap),status:r.status,bytes:text.length}; return {items:parseFeed(text,cap),status:r.status,bytes:text.length}; } catch(e) { return {items:[],status:0,bytes:0,error:String(e).slice(0,180)}; } finally { clearTimeout(timer); } }
+function safeFeedUrl(raw:string): URL | null {
+  try {
+    const u=new URL(raw.trim());
+    if(u.protocol!=='https:'||u.username||u.password||u.port||u.search||u.hash)return null;
+    const h=u.hostname.toLowerCase();
+    if(h==='localhost'||h.endsWith('.localhost')||h==='metadata.google.internal'||h==='metadata'||h.endsWith('.local'))return null;
+    if(/^\d+$/.test(h)||/^0x[0-9a-f]+$/i.test(h)||h.includes(':'))return null;
+    const parts=h.split('.').map(Number);
+    if(parts.length===4&&parts.every(n=>Number.isInteger(n)&&n>=0&&n<=255))return null;
+    return u;
+  }catch{return null}
+}
+export async function fetchFeed(feed:Feed, fetcher:FetchLike=fetch, cap=30):Promise<{items:Parsed[];status:number;bytes:number;error?:string}> {
+  const url=safeFeedUrl(feed.url); if(!url)return {items:[],status:0,bytes:0,error:'Feed URL rejected'};
+  const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),8000);
+  try {
+    const r=await fetcher(feed.url,{redirect:'error',headers:{'user-agent':'AdarshNews/1.0','accept':'application/rss+xml, application/atom+xml, application/json'},signal:ctl.signal});
+    const contentType=(r.headers.get('content-type')||'').toLowerCase();
+    if(!r.ok)return {items:[],status:r.status,bytes:0,error:`HTTP ${r.status}`};
+    if(contentType&&!/(xml|rss|atom|json|text\/plain)/i.test(contentType))return {items:[],status:415,bytes:0,error:'Unsupported feed content type'};
+    const text=await r.text(); if(new TextEncoder().encode(text).byteLength>2_000_000)return {items:[],status:413,bytes:2_000_001,error:'Feed too large'};
+    if(feed.kind==='json'||feed.kind==='hf_papers')return {items:parseJsonFeed(text,cap),status:r.status,bytes:text.length};
+    return {items:parseFeed(text,cap),status:r.status,bytes:text.length};
+  }catch(e){return {items:[],status:0,bytes:0,error:String(e).slice(0,180)}} finally{clearTimeout(timer)}
+}
 function parseJsonFeed(text:string,cap:number):Parsed[] { try { const j=JSON.parse(text); const rows=Array.isArray(j)?j:(j.articles||j.data||j.items||j.papers||[]); return rows.slice(0,cap).map((x:any)=>({title:clean(x.title||x.paper?.title||''),url:normalizeUrl(x.url||x.link||x.paper?.url||x.paper?.arxiv_id||''),summary:clean(x.description||x.summary||x.abstract||x.paper?.summary||''),published_at:parseDate(x.published||x.published_at||x.created_at||''),publisher:clean(x.source||x.publisher||x.paper?.authors?.[0]||''),source_url:''})).filter((x:Parsed)=>x.title&&x.url); } catch { return []; } }
 export function sourceFor(parsed:Parsed, originalUrl:string, state:boolean):Source { let publisher=parsed.publisher; try { if(!publisher) publisher=new URL(parsed.url).hostname.replace(/^www\./,''); } catch {} return {title:parsed.title,url:parsed.source_url||parsed.url,publisher,state_media:isStateMedia(parsed.source_url||parsed.url,state)}; }
 export function feedTag(feed:Feed):Tag { return (feed.tag_hint||'WORLD') as Tag; }
