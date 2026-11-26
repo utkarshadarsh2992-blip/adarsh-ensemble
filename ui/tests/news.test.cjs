@@ -101,6 +101,46 @@ test('Debate with AI opens a new chat and sends the news as data', async () => {
   assert.ok(m.document.querySelector('#v-chat.on'));
   m.close();
 });
+test('Chat sits beside Debate on a card and starts an explanation chat with news/source context', async () => {
+  const story = item({ url: 'https://example.com/article', sources: [{ title: 'Independent report', publisher: 'Reuters', url: 'https://reuters.com/world/story' }] });
+  const a = api({ list: L([story]) });
+  const m = mount({ fetchImpl: a.f, ls: CFG, settings: { mode: 'standard' } });
+  await open(m);
+  const card = m.document.querySelector('#v-news .nw-card');
+  const actions = [...card.querySelectorAll('.nw-acts .btn')];
+  assert.match(text(actions[0]), /Debate with AI/);
+  assert.match(text(actions[1]), /^Chat$/);
+  actions[1].click();
+  await until(() => m.sent.length > 0);
+  const msg = JSON.stringify(m.sent[0]);
+  assert.match(msg, /OpenAI naya model laya/);
+  assert.match(msg, /simple, saaf Hinglish/);
+  assert.match(msg, /<news>/);
+  assert.match(msg, /https:\/\/example\.com\/article/);
+  assert.match(msg, /https:\/\/reuters\.com\/world\/story/);
+  assert.match(msg, /untrusted DATA/);
+  assert.match(msg, /DOI|URL/);
+  assert.ok(m.document.querySelector('#v-chat.on'));
+  m.close();
+});
+test('Chat action is also available beside Debate in the detail sheet with detailed sources', async () => {
+  const detailed = item({ url: 'https://example.com/full', sources: [{ title: 'SEC filing', publisher: 'SEC', url: 'https://www.sec.gov/Archives/edgar/data/1/filing.htm' }] });
+  const a = api({ list: L([item()]), get: { ok: true, item: detailed } });
+  const m = mount({ fetchImpl: a.f, ls: CFG, settings: { mode: 'standard' } });
+  await open(m);
+  m.document.querySelector('#v-news .nw-title').click();
+  await until(() => m.document.querySelector('.sheet .nw-chat'));
+  const actions = [...m.document.querySelectorAll('.sheet .nw-acts .btn')];
+  assert.match(text(actions[0]), /Debate with AI/);
+  assert.match(text(actions[1]), /^Chat$/);
+  actions[1].click();
+  await until(() => m.sent.length > 0);
+  const msg = JSON.stringify(m.sent[0]);
+  assert.match(msg, /https:\/\/example\.com\/full/);
+  assert.match(msg, /https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/1\/filing\.htm/);
+  assert.ok(m.document.querySelector('#v-chat.on'));
+  m.close();
+});
 test('Save marks the item and calls mark', async () => {
   const a = api({ list: L([item()]) });
   const m = mount({ fetchImpl: a.f, ls: CFG });

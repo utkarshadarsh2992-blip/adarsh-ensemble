@@ -483,6 +483,7 @@ async def handle(body: dict) -> dict | list[dict]:
                                    research=not has_records, deep=bool(meta.get("deep")), web=web_search,
 std=learning.std_style(body), learn=learn, deeper=bool(meta.get("deeper")),
                                    truth_opts=truth_opts)
+        quick["text"] = sources.strip_invalid_citations(quick.get("text") or "", src_rows)
         if cut_note:
             quick["text"] += "\n\n" + cut_note
         if src_rows:

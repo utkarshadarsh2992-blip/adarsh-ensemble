@@ -58,7 +58,9 @@ TOOL_SETS_NO_WEB = ([WIKI_TOOL], [])  # Settings > Built-in web search: off
 _HINT_TAIL = (
     "Search only when it really helps; answer simple or personal questions directly. "
     "Never put the user's private details (names, numbers, notes, reminders) into a search query. "
-    "Do not include citation markers in the answer."
+    "If a numbered [S#] source block is supplied, cite only an ID whose source directly supports that claim; "
+    "otherwise do not use [S#]. Never invent source IDs, publishers, authors, titles, DOIs or URLs, and do not create "
+    "a separate bibliography."
 )
 RESEARCH_HINT = (
     "You can research: use wikipedia_search for stable facts and browser_search for current or fast-changing facts. "

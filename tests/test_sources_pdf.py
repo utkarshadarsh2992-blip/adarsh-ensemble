@@ -44,6 +44,11 @@ def test_routing_follows_the_question():
     # a plain question still gets the two general paper APIs
     plain = sources.route("quantum entanglement simple words me")
     assert plain[:2] == ["arxiv", "openalex"] or set(plain) == {"arxiv", "openalex"}
+    # Current news/company claims must not inherit generic OpenAlex/arXiv papers as if they were evidence.
+    assert sources.route("Khabar samjhao <news> Alibaba share sale aur AI budget claim </news>") == []
+    assert sources.route("Fact-check this share sale: Alibaba sold ZTO shares") == []
+    assert sources.route("Alibaba sold 25 million ZTO Express shares") == []
+    assert "arxiv" in sources.route("Fact-check this quantum entanglement proof")
 
 
 def test_prompt_block_is_numbered_and_fenced():
@@ -51,11 +56,18 @@ def test_prompt_block_is_numbered_and_fenced():
             {"provider": "nasa", "label": "NASA", "title": "Artemis", "url": "https://images.nasa.gov/details/x"}]
     block = sources.block(rows)
     assert block.startswith("\n\n[SOURCES") and "[S1] arXiv · Entropy" in block and "[S2] NASA · Artemis" in block
-    assert "untrusted" in block and "never invent a source" in block
+    assert "untrusted" in block and "never invent IDs" in block and "directly supports" in block
     assert len(sources.block([{"title": "x" * 4000, "url": "https://a", "label": "L"}])) <= 1800
     assert sources.block([]) == ""
     footer = sources.footer(rows)
     assert footer.startswith("\n\nSources:") and "https://arxiv.org/abs/1" in footer
+
+
+def test_unresolved_source_citation_markers_are_removed():
+    rows = [{"provider": "reuters", "label": "Reuters", "title": "Story", "url": "https://reuters.com/story"}]
+    cleaned = sources.strip_invalid_citations("Claim [S1], fake [S2] and [S4].", rows)
+    assert "[S1]" in cleaned and "[S2]" not in cleaned and "[S4]" not in cleaned
+    assert "[S1]" not in sources.strip_invalid_citations("Claim [S1].", [])
 
 
 def test_query_forms_shrink_until_an_api_can_match():

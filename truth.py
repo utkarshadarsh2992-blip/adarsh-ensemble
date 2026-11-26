@@ -30,6 +30,8 @@ EVIDENCE_CHARS = 5000
 
 _BASE = (
     "HALLUCINATION CONTROL: never invent facts, numbers, dates, names, quotes, studies or links. "
+    "A citation is valid only when its source was actually supplied or retrieved in this turn and directly supports "
+    "that specific claim; never invent a source title, publisher, author, DOI or URL. "
     "Anything that changes over time (prices, news, versions, records, who holds a post, latest models) needs a "
     "search in this turn{web}; without one, say the information may be old. If you are not sure, say "
     "'pakka nahi pata' and what would settle it, instead of guessing."

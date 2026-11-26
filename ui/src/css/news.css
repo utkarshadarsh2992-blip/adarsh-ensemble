@@ -23,6 +23,7 @@
 .nw-src{font:500 11.5px var(--mono);color:var(--muted)}
 .nw-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
 .nw-b{padding:8px 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:4px;text-decoration:none;min-height:36px}
+.nw-chat{padding:7px 10px;min-height:34px;color:var(--accent)}
 .nw-more-b{margin:12px auto 4px;display:block}
 .nw-empty,.nw-note{margin:6px 2px}
 .nw-note.bad,.nw-out.bad{color:var(--bad)}

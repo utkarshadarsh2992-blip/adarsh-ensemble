@@ -292,3 +292,23 @@ def test_auto_factcheck_and_quota_warning_follow_the_model_actually_used(monkeyp
     assert seen_specs and all(s.model == config.REGISTRY["gpt-oss-20b"].model and s.key_slot == 2
                               for s in seen_specs)
     assert out["quota"] == {"provider": "groq", "left": 0.1}
+
+
+def test_standard_answer_strips_citations_without_a_displayed_source(monkeypatch):
+    async def fake_gather(_text):
+        row = {"provider": "reuters", "label": "Reuters", "title": "Verified report",
+               "url": "https://reuters.com/story"}
+        return ("\n\n[SOURCES — fetched just now]\n[S1] Reuters · Verified report · https://reuters.com/story", [row])
+
+    async def fake_answer(_messages, **_kw):
+        return {"text": "Claim [S1] is supported; invented citation [S2] is not.", "used": "gpt-oss-120b",
+                "searches": 0, "wiki": [], "sources": [], "secs": 1.0}
+
+    monkeypatch.setattr(chat_adapter.sources, "gather", fake_gather)
+    monkeypatch.setattr(standard_agent, "answer", fake_answer)
+    out = run(chat_adapter.handle({"text": "Alibaba sold shares <news> fact check this claim", "mode": "standard",
+                                   "meta": {"deep": True}}))[0]
+
+    assert "Claim [S1] is supported" in out["text"]
+    assert "[S2]" not in out["text"]
+    assert "[S1] Reuters: Verified report — https://reuters.com/story" in out["text"]
