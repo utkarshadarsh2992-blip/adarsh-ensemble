@@ -53,7 +53,7 @@ const RENDER = {
       h('div', { class: 'in' }, d.sources.map(s => {
         const href = safeExternalUrl(s && s.url), raw = s && typeof s.url === 'string' ? s.url : '';
         return h('div', { class: 'src' }, h('b', {}, '[' + (s && s.n != null ? s.n : '?') + ']'), href
-          ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(href))
+          ? externalAnchor(href, s.title || hostOf(href), { style: 'color:var(--fg)' })
           : h('span', {}, s && s.title ? s.title + (raw ? ' (' + raw + ')' : '') : raw), href ? h('small', {}, hostOf(href)) : null);
       }))));
     if (d.caveat) card.append(sec('', h('div', { class: 'note' }, icon('warn', 's'), d.caveat)));

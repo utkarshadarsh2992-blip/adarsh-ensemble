@@ -610,6 +610,16 @@ class MainActivity : AppCompatActivity() {
         fun ttsVoices(): String = onMain { current?.speaker?.voiceList() ?: "[]" }
         fun ttsSetVoice(name: String) = ui { it.speaker?.wanted = name.ifBlank { null } }
 
+        /** Open a source in the phone browser; reject every non-HTTP(S) scheme before creating the intent. */
+        fun openExternal(url: String): Boolean {
+            val uri = try { Uri.parse(url.trim()) } catch (_: Exception) { return false }
+            val scheme = uri.scheme?.lowercase()
+            if ((scheme != "http" && scheme != "https") || uri.host.isNullOrBlank()) return false
+            return onMainBool {
+                try { current?.startActivity(Intent(Intent.ACTION_VIEW, uri)); true } catch (_: Exception) { false }
+            }
+        }
+
         // ---- Standard-mode actions (ActionRunner.kt). Called from JS; must answer synchronously.
         private fun onMain(block: () -> String): String {
             val a = current ?: return """{"error":"no screen"}"""
@@ -618,6 +628,18 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) { """{"ok":false,"error":"Native operation failed"}""" }
             if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return safeBlock()
             var out = """{"error":"timeout"}"""
+            val latch = java.util.concurrent.CountDownLatch(1)
+            a.runOnUiThread { try { out = safeBlock() } finally { latch.countDown() } }
+            latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
+            return out
+        }
+        private fun onMainBool(block: () -> Boolean): Boolean {
+            val a = current ?: return false
+            fun safeBlock(): Boolean = try {
+                if (a.destroyed || current !== a) false else block()
+            } catch (_: Exception) { false }
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return safeBlock()
+            var out = false
             val latch = java.util.concurrent.CountDownLatch(1)
             a.runOnUiThread { try { out = safeBlock() } finally { latch.countDown() } }
             latch.await(6, java.util.concurrent.TimeUnit.SECONDS)
