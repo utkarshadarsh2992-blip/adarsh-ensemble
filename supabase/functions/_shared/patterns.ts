@@ -200,7 +200,7 @@ function compactItems(items: NewsItem[]): string {
 export function themeHints(items: NewsItem[], max = 8): string {
   const groups = new Map<string, Map<string, string[]>>();
   for (const [index, item] of items.entries()) {
-    if (item.region === 'WORLD') continue;
+    if (item.region === 'WORLD' || GENERIC_TAGS.has(String(item.tag))) continue; // ECON/BIG-TECH/WORLD hints only lead the model to forced links
     const key = item.activity && item.activity !== 'other' ? `${item.tag}/${item.activity}` : String(item.tag);
     const byRegion = groups.get(key) || new Map<string, string[]>();
     const ids = byRegion.get(item.region) || [];
@@ -293,11 +293,16 @@ function stems(...parts: unknown[]): Set<string> {
   return out;
 }
 function linkedPair(a: NewsItem, b: NewsItem): boolean {
+  // A tag alone never links two stories ("AI" covers a Russian chatbot launch and a US chip-export pause).
+  // Evidence must be in the headlines themselves: a shared name (Nvidia, DeepSeek...) or, with a shared SPECIFIC tag, a shared content word.
+  const names = (x: NewsItem) => new Set(properNames(x.title).map((w) => w.toLowerCase()));
+  const na = names(a), nb = names(b);
+  if ([...na].some((w) => nb.has(w))) return true;
   const tags = (x: NewsItem) => new Set([x.tag, ...(Array.isArray(x.tags) ? x.tags : [])].filter((t) => t && !GENERIC_TAGS.has(t)));
   const ta = tags(a), tb = tags(b);
-  if ([...ta].some((t) => tb.has(t))) return true;
-  const sa = stems(a.title, a.company), sb = stems(b.title, b.company);
-  return [...sa].some((w) => sb.has(w));
+  const sa = stems(a.title), sb = stems(b.title);
+  const shared = [...sa].filter((w) => sb.has(w)).length;
+  return [...ta].some((t) => tb.has(t)) ? shared >= 1 : shared >= 2;
 }
 export function coherent(items: NewsItem[]): boolean {
   for (let i = 0; i < items.length; i++) {
@@ -320,7 +325,7 @@ export function tightLinks(items: NewsItem[]): NewsItem[] {
     items.some((o) => o.region !== it.region && linkedPair(it, o)));
 }
 const isStateClaim = (item: NewsItem): boolean => !!item.state_media || item.claim_tag === 'sarkari daava';
-export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): NewsPattern[] {
+export function validatePatterns(raw: unknown, items: NewsItem[], max = 6, why: string[] = []): NewsPattern[] {
   const rows: unknown[] = Array.isArray(raw)
     ? raw
     : raw && typeof raw === 'object' && Array.isArray((raw as Record<string, unknown>).patterns)
@@ -336,7 +341,7 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
     const type = TYPES.includes(row.type as PatternType) ? row.type as PatternType : 'other';
     const signal = SIGNALS.includes(row.signal as PatternSignal) ? row.signal as PatternSignal : 'weak';
     // Weak/forced links are noise for a pattern finder: only strong or medium survive.
-    if (signal === 'weak' || !title || !pattern || !Array.isArray(row.regions)) continue;
+    if (signal === 'weak' || !title || !pattern || !Array.isArray(row.regions)) { why.push(`${title.slice(0, 40)}: weak/shape`); continue; }
     // The DB region of each item wins over the model's label (it often files a Kyiv/Arctic
     // story under the "wrong" country); an item is attached once, under its real region.
     const byRegion = new Map<string, PatternRegion>();
@@ -359,7 +364,7 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
       const said = stems(rr.what);
       if (said.size) {
         const own = (Array.isArray(rr.item_ids) ? rr.item_ids : []).map((v) => byId.get(itemId(v))).filter((x): x is NewsItem => !!x);
-        if (own.length && !own.some((it) => { const real = stems(it.title); return [...said].some((w) => real.has(w)); })) continue;
+        if (own.length && !own.some((it) => { const real = stems(it.title, ...(Array.isArray(it.points) ? it.points.slice(0, 2) : [])); return [...said].some((w) => real.has(w)); })) { why.push(`${title.slice(0, 40)}: ${text(rr.region, 4)} what!=headline`); continue; }
       }
       for (const idValue of Array.isArray(rr.item_ids) ? rr.item_ids : []) {
         const id = itemId(idValue);
@@ -378,8 +383,8 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
     const namedRegions = [...actualRegions].filter((x) => x !== 'WORLD');
     // A WORLD row is useful only when another named region is present, and every
     // pattern must still span two distinct actual regions.
-    if (actualRegions.size < 2 || !namedRegions.length || used.size < 2) continue;
-    if (!coherent([...used].map((id) => byId.get(id)!))) continue;
+    if (actualRegions.size < 2 || !namedRegions.length || used.size < 2) { why.push(`${title.slice(0, 40)}: <2 regions after pruning (listed ${listed.size}, kept ${used.size})`); continue; }
+    if (!coherent([...used].map((id) => byId.get(id)!))) { why.push(`${title.slice(0, 40)}: incoherent`); continue; }
     const linked = [...used].map((id) => byId.get(id)!);
     const attached = linked.map((item) => ({
       id: String(item.id), title: text(item.title, 220), url: text(item.url, 700), source: text(item.source, 120), region: item.region,
@@ -389,7 +394,7 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
     // One government's own claims (or one publisher under two region labels) is a narrative, not a cross-country pattern.
     const publishers = new Set(linked.map((item) => text(item.source, 120).toLowerCase() || String(item.id)));
     const stateShare = attached.filter((i) => i.state_media).length / attached.length;
-    if (stateShare === 1 || publishers.size < 2) continue;
+    if (stateShare === 1 || publishers.size < 2) { why.push(`${title.slice(0, 40)}: all state media or one publisher`); continue; }
     const trusted: PatternSignal = stateShare >= 0.5 && signal === 'strong' ? 'medium' : signal;
     out.push({
       title,
@@ -472,12 +477,14 @@ export async function getPatterns(
     // A cut-off or non-JSON answer is a failed attempt, never an "empty" result that replaces a good cache.
     if (result.finish === 'length' || !parsed) throw new Error('pattern output truncated or not JSON');
     const resolved = resolvePatternAliases(raw, items);
-    const patterns = validatePatterns(resolved, items);
+    const why: string[] = [];
+    const patterns = validatePatterns(resolved, items, 6, why);
     // Small ops trace (titles/signals only) so "why so few patterns?" is answerable from the kv table.
     const rawRows = Array.isArray(resolved) ? resolved : [];
     const diag = {
       raw: rawRows.length,
       kept: patterns.length,
+      why: why.slice(0, 8),
       rows: rawRows.slice(0, 8).map((r) => {
         const x = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>;
         const regs = Array.isArray(x.regions) ? x.regions as Record<string, unknown>[] : [];

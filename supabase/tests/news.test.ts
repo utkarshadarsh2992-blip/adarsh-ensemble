@@ -96,7 +96,7 @@ Deno.test('fetchFeed follows validated redirects only',async()=>{
 import {validatePatterns,getPatterns} from '../functions/_shared/patterns.ts';
 
 const patternItem=(id:string,region:'IN'|'CN'|'US'|'RU'|'EU'|'WORLD',n=0):any=>({
-  id,title:`News ${id} ${({IN:'India',CN:'China',US:'America',RU:'Russia',EU:'Europe',WORLD:'Global'} as any)[region]}`,points:[`Point ${id}`],tag:'AI',tags:['AI'],region,company:`C${id}`,activity:'model',score:8,
+  id,title:`News ${id} ${({IN:'India',CN:'China',US:'America',RU:'Russia',EU:'Europe',WORLD:'Global'} as any)[region]} Nvidia`,points:[`Point ${id}`],tag:'AI',tags:['AI'],region,company:`C${id}`,activity:'model',score:8,
   breaking:false,verified:'confirmed',n_sources:1,source:`Source ${id}`,url:`https://db.example/${id}`,published_at:null,
   created_at:`2026-11-27T0${n}:00:00.000Z`,read_at:null,saved:false,upvotes:0,kind:'news',status:'scored',cluster_key:null,
   title_norm:null,feed_id:null,raw_summary:'',sources:[],why:'',alerted_at:null,state_media:false,claim_tag:'',scored_at:null,tokens:0,
@@ -128,9 +128,9 @@ Deno.test('patterns: a state-media-only or single-publisher link is dropped; mix
 });
 Deno.test('patterns: loose extras and foreign state-media items are pruned from a pattern, the real pair stays',()=>{
   const mk=(id:string,region:any,tag:string,activity:string,extra:any={})=>({...patternItem(id,region,1),tag,tags:[tag],activity,source:`Pub ${id}`,...extra});
-  const items=[mk('in1','IN','ENERGY','funding'),mk('cn1','CN','ENERGY','funding'),
-    mk('ph','IN','HEALTH','guidance'),                                   // pharma stock inside a renewable-energy pattern
-    mk('eu','EU','POLICY','budget',{source:'tass.com',state_media:true,claim_tag:'sarkari daava'})]; // TASS about the EU budget
+  const items=[mk('in1','IN','ENERGY','funding',{title:'Waaree solar module order'}),mk('cn1','CN','ENERGY','funding',{title:'Longi solar module expansion'}),
+    mk('ph','IN','HEALTH','guidance',{title:'Piramal pharma guidance raised'}),                                   // pharma stock inside a renewable-energy pattern
+    mk('eu','EU','POLICY','budget',{title:'Brussels budget talks solar',source:'tass.com',state_media:true,claim_tag:'sarkari daava'})]; // TASS about the EU budget
   const row={title:'Energy funding',pattern:'Dono jagah funding.',type:'capital flow',signal:'medium',regions:[{region:'IN',what:'a',item_ids:['in1','ph']},{region:'CN',what:'b',item_ids:['cn1']},{region:'EU',what:'c',item_ids:['eu']}],why_it_matters:'w',watch_next:'n',assumption:'a'};
   const out=validatePatterns({patterns:[row]},items);
   assertEquals(out.length,1);
@@ -257,7 +257,7 @@ Deno.test('patterns: theme hints list tag/activity seen in 2+ named regions only
 import {coherent} from '../functions/_shared/patterns.ts';
 Deno.test('patterns: DB region wins over model label, and forced (incoherent) links are dropped',()=>{
   const mk=(id:string,region:any,tag:string,activity:string)=>({...patternItem(id,region,1),tag,tags:[tag],activity});
-  const items=[mk('ru','RU','AI','policy'),mk('eu','WORLD','AI','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other'),mk('cn','CN','ECON','funding')];
+  const items=[mk('ru','RU','AI','policy'),mk('eu','WORLD','AI','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other'),mk('cn','CN','ECON','funding')].map((x,i)=>({...x,title:['Gazprom Arctic policy shift','Gazprom Arctic policy talks','Quantum lattice funding','Textile orders slump','Lithium refinery stake'][i]}));
   // Model files the WORLD item under EU: kept, but moved to WORLD; RU+WORLD share the specific tag AI.
   const ok=validatePatterns({patterns:[{title:'Arctic',pattern:'p',type:'policy wave',signal:'medium',regions:[{region:'RU',what:'r',item_ids:['ru']},{region:'EU',what:'e',item_ids:['eu']}]}]},items as any);
   assertEquals(ok.length,1);assertEquals(ok[0].regions.map(r=>r.region),['RU','WORLD']);
