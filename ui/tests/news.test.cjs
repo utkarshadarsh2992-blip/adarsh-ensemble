@@ -433,3 +433,20 @@ test('Pattern chat marks sarkari/unverified items as claims and forbids invented
   assert.match(p, /X ka daava/); assert.match(p, /actor.*mat jodo|mat jodo/); assert.match(p, /seedha link nahi/);
   m.close();
 });
+
+
+test('stale Patterns view keeps polling until the fresh cache arrives', async () => {
+  const pattern = { title: 'Compute buildout', pattern: 'US and India are adding data-centre capacity in different ways.', type: 'compute/datacentre buildout', signal: 'medium', generated_at: '2026-11-27T10:00:00.000Z', regions: [{ region: 'US', what: 'Orbital data-centre plan', item_ids: ['u1'] }, { region: 'IN', what: 'Data-centre partnership talks', item_ids: ['i1'] }], items: [{ id: 'u1', title: 'US orbital data-centre plan', url: 'https://example.com/us', source: 'AP', region: 'US' }, { id: 'i1', title: 'India data-centre partnership', url: 'https://example.com/in', source: 'ET', region: 'IN' }] };
+  let calls = 0;
+  const a = api({ list: L([]), patterns: () => ++calls === 1
+    ? { ok: true, generated_at: '2026-11-27T10:00:00.000Z', cached: true, reason: 'refreshing', patterns: [] }
+    : { ok: true, generated_at: '2026-11-27T10:20:00.000Z', cached: false, reason: 'fresh-cache', patterns: [pattern] } });
+  const m = mount({ fetchImpl: a.f, ls: CFG }); await open(m);
+  const original = m.window.setTimeout.bind(m.window);
+  m.window.setTimeout = (fn, ms, ...rest) => original(fn, ms >= 15000 ? 5 : ms, ...rest);
+  [...m.document.querySelectorAll('.nw-mode')].find(b => text(b) === 'Patterns').click();
+  await until(() => m.document.querySelector('.nw-pattern-card'));
+  assert.ok(calls >= 2, 'a second cache read picks up the pattern that completed after the first 20 s poll');
+  assert.match(text(m.document.querySelector('#v-news')), /Compute buildout/);
+  m.close();
+});

@@ -80,6 +80,7 @@ test('Standard request carries the style and the learned words; reply words are 
     assert.equal(req.learn.known.join(','), 'Mass');
     assert.equal(req.learn.checks, true);
     assert.equal(app.S.vocab.map(x => x.w).sort().join(','), 'Force,Inertia,Mass');
+    await until(() => app.document.querySelector('.lwords')); // optional learning cards follow the typed answer
     const words = app.document.querySelector('.lwords');
     assert.match(text(words), /NAYE SHABD.*Inertia · Force/);
   } finally { app.close(); }

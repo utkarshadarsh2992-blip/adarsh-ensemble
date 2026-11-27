@@ -140,7 +140,7 @@ test('a new reply preserves the reader position when the thread was scrolled up'
   assert.equal(thread.scrollTop, 450, 'DOM rebuilding does not reset or jump the reading position');
 });
 
-test('automatic reveal follows the answer boundary, not the supplemental CHECK or FACT-CHECK cards', (t) => {
+test('automatic reveal follows the answer boundary and supplemental cards wait until typing ends', async (t) => {
   const app = mount(); t.after(() => app.close());
   const thread = app.document.querySelector('#v-chat .thread');
   Object.defineProperty(thread, 'scrollHeight', { configurable: true, value: 1600 });
@@ -150,12 +150,16 @@ test('automatic reveal follows the answer boundary, not the supplemental CHECK o
   app.Motion.glide = (_el, options) => { captured = options; };
   app.Chat.push({ type: 'text', text: 'Sir, read this answer before the optional check questions below.',
     learn: { concept: 'GPU', words: [], checks: [{ kind: 'fill', q: 'What is VRAM?', answer: 'video memory' }] },
-    truth: { rows: [], ok: 1, shak: 0, galat: 0 } });
-  const body = app.document.querySelector('#v-chat .msg[data-id] > .prose');
+    truth: { claims: [{ c: 'g = 9.8', v: 'ok', why: '' }], basis: 'model', ok: 1, shak: 0, galat: 0 } });
+  let body = app.document.querySelector('#v-chat .msg[data-id] > .prose');
   body.getBoundingClientRect = () => ({ top: 200, bottom: 500, height: 300 });
-  assert.ok(app.document.querySelector('.lcheck'), 'learning extras remain available');
+  assert.equal(app.document.querySelector('.lcheck'), null, 'CHECK card stays hidden while answer is being typed');
+  assert.equal(app.document.querySelector('.fcheck'), null, 'FACT-CHECK card stays hidden while answer is being typed');
   assert.equal(typeof captured?.to, 'function');
   assert.equal(captured.to(), 120, 'target stops at the answer boundary, not thread bottom (1200)');
+  await settle(900);
+  assert.ok(app.document.querySelector('.lcheck'), 'learning card appears after the final answer word');
+  assert.ok(app.document.querySelector('.fcheck'), 'fact-check card appears after the final answer word');
 });
 
 test('glide can follow a bounded answer target even when supplemental cards extend the thread', async (t) => {

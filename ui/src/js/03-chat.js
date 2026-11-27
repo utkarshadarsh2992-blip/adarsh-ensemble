@@ -220,6 +220,10 @@ const Chat = (() => {
     const body = [...current.children].find(el => el.classList.contains('prose'));
     if (!body) return;
     body.replaceWith(renderReply({ ...m.reply, text: state.visible }, { msg: m, redraw: () => {} }));
+    if (state.visible === state.full && current.dataset.afterAnswer !== '1') {
+      appendAfterAnswer(m, current, { msg: m, redraw: () => renderThread() });
+      current.dataset.afterAnswer = '1';
+    }
     if (state.follow) scroll();
   }
 
@@ -249,6 +253,8 @@ const Chat = (() => {
       b.setAttribute('data-copy-kind', 'user'); b.setAttribute('data-copy-text', m.text || '');
       return h('div', { class: 'msg user' }, b);
     }
+    const typed = typedReplies.get(m);
+    const answerDone = !typed || typed.visible === typed.full;
     const wrap = h('div', { class: 'msg', 'data-id': m.id });
     const ctx = { msg: m, redraw: () => { wrap.replaceWith(msgEl(m, isLast)); } };
     const r = m.reply;
@@ -260,15 +266,18 @@ const Chat = (() => {
       wrap.append(h('details', { class: 'steps mcalls-msg' }, h('summary', {}, icon('search2', 's'), 'Model calls: ' + r.calls.length + (bad ? ' · ' + bad + ' fail' : '')),
         h('div', { class: 'mcl' }, r.calls.map(c => callRowEl({ stage: c.stage, model: c.model, asked: c.asked, state: c.ok ? 'ok' : 'fail', secs: c.secs, fails: c.fails }, false)))));
     }
-    const typed = typedReplies.get(m);
     wrap.append(typed && typed.full === String(r.text || '') ? renderReply({ ...r, text: typed.visible }, ctx) : renderReply(r, ctx));
     const pdfCard = pdfEl(m); if (pdfCard) wrap.append(pdfCard);
     if (r.notes && r.notes.items && r.notes.items.length) wrap.append(notesEl(r.notes));
-    if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* check questions, new words, Gehrai mein jao */
-    if (r.type === 'text' && r.briefing) Briefing.extras(m, ctx).forEach(el => wrap.append(el));   /* KAL KA PLAN card */
-    if (r.type === 'text' && r.truth) Usage.extras(m, ctx).forEach(el => wrap.append(el));   /* FACT-CHECK card */
+    if (r.type === 'text' && r.briefing) Briefing.extras(m, ctx).forEach(el => wrap.append(el));
+    if (answerDone) appendAfterAnswer(m, wrap, ctx);
     if (!['ask', 'approve', 'memory', 'task', 'image', 'video'].includes(r.type)) wrap.append(actionsEl(m, isLast));
     return wrap;
+  }
+  function appendAfterAnswer(m, wrap, ctx) {
+    const r = m.reply;
+    if (r.type === 'text') Learn.extras(m, ctx).forEach(el => wrap.append(el));   /* CHECK, NAYE SHABD, Gehrai mein jao */
+    if (r.type === 'text' && r.truth) Usage.extras(m).forEach(el => wrap.append(el));   /* FACT-CHECK */
   }
   /* The report card: name, size and one button. Nothing is written to Downloads until it is pressed. */
   function pdfEl(m) {

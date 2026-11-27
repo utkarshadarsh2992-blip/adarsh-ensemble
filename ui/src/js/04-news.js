@@ -16,7 +16,7 @@ const News = (() => {
   const VER = { confirmed: ['good', 'PAKKA'], partly: ['warn', 'KUCH PAKKA'], single: ['warn', 'EK SOURCE'], 'state-only': ['bad', 'SIRF SARKARI'], unconfirmed: ['bad', 'UNCONFIRMED'] };
   const ACTN = { launch: 'launch', model: 'model', datacentre: 'data centre', funding: 'funding', acquisition: 'acquisition', partnership: 'partnership', ipo: 'IPO', layoffs: 'layoffs', policy: 'policy', research: 'research', incident: 'incident' };
   const ACTIONS = ['ping', 'list', 'get', 'top', 'patterns', 'mark', 'budget', 'settings_get', 'settings_set', 'telegram_link', 'telegram_test', 'fcm_test', 'telegram_copy', 'digest_now'];
-  const V = { filter: 'all', mode: 'feed', items: [], patterns: null, more: false, busy: false, patternBusy: false, offline: false, budget: null };
+  const V = { filter: 'all', mode: 'feed', items: [], patterns: null, more: false, busy: false, patternBusy: false, patternRepoll: 0, patternPollCount: 0, offline: false, budget: null };
   let topCache = null, pendSeq = 0;
   const pending = {};
   const str = (v, n) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, n) : '');
@@ -285,17 +285,32 @@ const News = (() => {
     const loadBudget = () => call('budget').then((r) => { if (r && r.ok !== false && r.groq) { V.budget = r; paint(); } });
     const loadPatterns = async (force) => {
       if (V.patternBusy) return;
+      if (force) { if (V.patternRepoll) clearTimeout(V.patternRepoll); V.patternRepoll = 0; V.patternPollCount = 0; }
       V.patternBusy = true; note.hidden = true; paint();
       const r = await call('patterns', force ? { refresh: true } : {});
       V.patternBusy = false;
       if (r && r.ok !== false) { V.patterns = { generated_at: str(r.generated_at, 40), cached: !!r.cached, reason: str(r.reason, 80), patterns: normPatterns(r.patterns) }; }
       else { note.hidden = false; note.textContent = (r && r.error) || 'Patterns nahi aaye.'; }
       if (r && r.reason === 'throttled') { note.hidden = false; note.textContent = 'Pattern refresh 30 minute mein ek baar. Purana cache dikha raha hoon.'; }
-      // Stale cache: the server answers at once and builds new patterns in the background. Re-check once, ~20 s later.
+      if (r && r.reason === 'budget-stopped') { note.hidden = false; note.textContent = 'News AI ka aaj ka budget ruk gaya hai; purana cache dikha raha hoon.'; }
+      if (r && r.reason === 'generation-failed') { note.hidden = false; note.textContent = 'Naye patterns nahi ban paaye; purana cache dikha raha hoon.'; }
+      // Background generation may take longer than one poll. Check every 15 s, at most four times;
+      // this uses cache reads only and stops once the fresh result arrives or the screen is left.
       if (r && r.reason === 'refreshing') {
-        note.hidden = false; note.textContent = 'Naye patterns ban rahe hain… thodi der mein khud update hoga.';
-        if (!V.patternRepoll && !V.patternRepolled) { V.patternRepolled = true; V.patternRepoll = setTimeout(() => { V.patternRepoll = 0; if (V.mode === 'patterns') loadPatterns(false); }, 20000); }
-      } else V.patternRepolled = false;
+        if (V.patternPollCount < 4) {
+          note.hidden = false; note.textContent = 'Naye patterns ban rahe hain… thodi der mein khud update hoga.';
+          if (!V.patternRepoll) {
+            V.patternPollCount++;
+            V.patternRepoll = setTimeout(() => { V.patternRepoll = 0; if (V.mode === 'patterns') loadPatterns(false); else V.patternPollCount = 0; }, 15000);
+          }
+        } else {
+          note.hidden = false; note.textContent = 'Pattern refresh me der ho rahi hai; purana cache dikha raha hoon. Refresh patterns dabakar baad mein dobara try karein.';
+          V.patternPollCount = 0;
+        }
+      } else {
+        if (V.patternRepoll) clearTimeout(V.patternRepoll);
+        V.patternRepoll = 0; V.patternPollCount = 0;
+      }
       paint();
     };
     patternRefresh.addEventListener('click', () => loadPatterns(true));
