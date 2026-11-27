@@ -193,6 +193,7 @@ async def run(
            "ui_mode": mode} if record else None
     lang = _language_hint(question, reply_lang)  # language only (falsifiers, debaters)
     lang_full = (lang + " " + prompts.DEPTH_HINTS.get(depth, "")).strip()  # + depth (drafters, judge, synthesizer)
+    lang_full = f"{lang_full}\n{prompts.CREATOR_LINE}"  # who made ADARSH, in every answer-writing model
     if config.LEARNER_PROFILE:  # concise learning style; never goes to falsifiers / auditor
         lang_full = f"{lang_full}\n{prompts.LEARNER_PROFILE}"
         if learner_note:

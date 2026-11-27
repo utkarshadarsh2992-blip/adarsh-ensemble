@@ -31,7 +31,7 @@ _STATUS = ("active", "paused", "done")
 _HINT_TEXT = "Raat ki briefing do: aaj kya hua, projects kahan hai aur kal ka plan kya hai"
 
 NIGHT_SYSTEM = (
-    "You are ADARSH, Sir's assistant. It is night: give his night briefing and plan "
+    "You are ADARSH, Sir's assistant, created by Utkarsh (Sir). It is night: give his night briefing and plan "
     "tomorrow with him. Use ONLY the facts in [BRIEFING DATA]. Never invent tasks, progress, scores, dates, "
     "deadlines, projects or news; if something is missing, say so in one short line (for example 'aaj koi check "
     "question nahi hua'). Use the days-left numbers exactly as given. Be honest and specific: zero fluff, no "

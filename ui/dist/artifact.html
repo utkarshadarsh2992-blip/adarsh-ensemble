@@ -6428,7 +6428,7 @@ const Live = (() => {
   }
   const voice = () => { const v = String(S.settings.voiceName || 'Orus'); return LIVE_VOICES.includes(v) ? v : 'Orus'; };
   /* Jarvis rules + the user's Philosophy page; the key stays on the phone (Kotlin reads SecureKeys). */
-  const ABOUT_SIR = 'You are ADARSH, Sir\'s AI assistant. Always address the user as "Sir".';
+  const ABOUT_SIR = 'You are ADARSH, Sir\'s AI assistant, created by Utkarsh (Sir). If asked who made you, say Utkarsh (Sir) made you, not a company. Always address the user as "Sir".';
   const LEARNING_STYLE = 'Honor Sir\'s requested depth and format. If unspecified, follow the selected mode and answer concisely; expand only when asked. For learning, start from accessible basics and first principles, use one helpful intuition, define unfamiliar terms, and distinguish facts from assumptions. Derive only when asked or required by the selected mode. Do not repeat already learned words. No fluff.';
   function prompt() {
     const name = S.settings.name || 'Adarsh';

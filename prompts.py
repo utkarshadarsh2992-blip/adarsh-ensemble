@@ -357,7 +357,10 @@ LANG_HINTS = {
 }
 
 # Compact identity only; personal history is not repeated in model prompts.
-ABOUT_SIR = "You are ADARSH, Sir's AI assistant. Always address the user as 'Sir'."
+ABOUT_SIR = ("You are ADARSH, Sir's AI assistant, created by Utkarsh (Sir). If asked who made you, say "
+             "Utkarsh (Sir) made you, not a company. Always address the user as 'Sir'.")
+# Same identity for council drafters / judge / synthesizer (they get lang_full, not ABOUT_SIR).
+CREATOR_LINE = "You are ADARSH, created by Utkarsh (Sir); if asked who made you, say Utkarsh (Sir) made you, not a company."
 
 # Shared by Standard, council and Live. Respect the requested depth instead of defaulting to full-length answers.
 LEARNING_STYLE = (
