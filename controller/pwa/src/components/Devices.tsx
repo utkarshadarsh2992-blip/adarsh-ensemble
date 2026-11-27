@@ -133,6 +133,17 @@ export default function Devices({
                   Last sent revision: {d.config_revision}. Applied state app ke
                   next successful sync par acknowledge hoti hai.
                 </p>
+                {!d.revoked_at &&
+                  d.config_revision != null &&
+                  (d.applied_revision ?? 0) < d.config_revision && (
+                    <p className="warning" role="status">
+                      Phone abhi rev {d.applied_revision ?? "bundled"} chala
+                      raha hai, rev {d.config_revision} apply nahi hua. App
+                      sync ho chuka hai to phone ne ye config reject kiya —
+                      latest APK update karke Settings → Controller → Sync
+                      karo.
+                    </p>
+                  )}
               </div>
               <Badge tone={d.revoked_at ? "bad" : "good"}>
                 {d.revoked_at ? "Revoked" : "Paired"}
