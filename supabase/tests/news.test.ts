@@ -126,6 +126,19 @@ Deno.test('patterns: a state-media-only or single-publisher link is dropped; mix
   assertEquals(out[0].items.find(i=>i.id==='ru')?.state_media,true);assertEquals(out[0].items.find(i=>i.id==='us')?.state_media,false);
   assertEquals(out[0].items.find(i=>i.id==='ru')?.verified,'none');
 });
+Deno.test('patterns: loose extras and foreign state-media items are pruned from a pattern, the real pair stays',()=>{
+  const mk=(id:string,region:any,tag:string,activity:string,extra:any={})=>({...patternItem(id,region,1),tag,tags:[tag],activity,source:`Pub ${id}`,...extra});
+  const items=[mk('in1','IN','ENERGY','funding'),mk('cn1','CN','ENERGY','funding'),
+    mk('ph','IN','HEALTH','guidance'),                                   // pharma stock inside a renewable-energy pattern
+    mk('eu','EU','POLICY','budget',{source:'tass.com',state_media:true,claim_tag:'sarkari daava'})]; // TASS about the EU budget
+  const row={title:'Energy funding',pattern:'Dono jagah funding.',type:'capital flow',signal:'medium',regions:[{region:'IN',what:'a',item_ids:['in1','ph']},{region:'CN',what:'b',item_ids:['cn1']},{region:'EU',what:'c',item_ids:['eu']}],why_it_matters:'w',watch_next:'n',assumption:'a'};
+  const out=validatePatterns({patterns:[row]},items);
+  assertEquals(out.length,1);
+  assertEquals(out[0].items.map(i=>i.id).sort(),['cn1','in1']);
+  assertEquals(out[0].regions.some(r=>r.region==='EU'),false);
+  // with only the loose extra on the other side there is no pattern at all
+  assertEquals(validatePatterns({patterns:[{...row,regions:[{region:'IN',what:'a',item_ids:['in1']},{region:'EU',what:'c',item_ids:['eu']}]}]},items).length,0);
+});
 Deno.test('patterns prompt marks state-media lines with SM and tells the model not to invent actors',()=>{
   const items=[{...patternItem('ru','RU',1),source:'tass.com',state_media:true,claim_tag:'sarkari daava'},patternItem('us','US',2)];
   const prompt=patternPrompt(items);

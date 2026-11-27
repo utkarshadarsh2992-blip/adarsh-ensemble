@@ -225,18 +225,31 @@ const SIGNAL_RANK: Record<string, number> = { strong: 0, medium: 1, weak: 2 };
  * Guard against forced links: at least two items from different regions must share a
  * topic tag (not the generic WORLD tag) or a concrete activity (not "other").
  */
+function linkedPair(a: NewsItem, b: NewsItem): boolean {
+  const tags = (x: NewsItem) => new Set([x.tag, ...(Array.isArray(x.tags) ? x.tags : [])].filter((t) => t && t !== 'WORLD'));
+  const ta = tags(a), tb = tags(b);
+  if ([...ta].some((t) => tb.has(t))) return true;
+  return !!a.activity && a.activity !== 'other' && a.activity === b.activity;
+}
 export function coherent(items: NewsItem[]): boolean {
   for (let i = 0; i < items.length; i++) {
     for (let j = i + 1; j < items.length; j++) {
-      const a = items[i], b = items[j];
-      if (a.region === b.region) continue;
-      const tags = (x: NewsItem) => new Set([x.tag, ...(Array.isArray(x.tags) ? x.tags : [])].filter((t) => t && t !== 'WORLD'));
-      const ta = tags(a), tb = tags(b);
-      if ([...ta].some((t) => tb.has(t))) return true;
-      if (a.activity && a.activity !== 'other' && a.activity === b.activity) return true;
+      if (items[i].region !== items[j].region && linkedPair(items[i], items[j])) return true;
     }
   }
   return false;
+}
+/** Only these regions may be represented by state media (their own government's voice). */
+const STATE_VOICE_REGIONS = new Set(['RU', 'CN', 'WORLD']);
+/**
+ * Keeps an item only if it really links to an item of ANOTHER region (same topic tag or activity), and
+ * state media may stand for RU/CN only: a TASS story about the EU budget is not "the EU's move".
+ * The model often adds loose extras (a pharma stock inside a renewable-energy pattern) next to one good pair.
+ */
+export function tightLinks(items: NewsItem[]): NewsItem[] {
+  return items.filter((it) =>
+    !(isStateClaim(it) && !STATE_VOICE_REGIONS.has(it.region)) &&
+    items.some((o) => o.region !== it.region && linkedPair(it, o)));
 }
 const isStateClaim = (item: NewsItem): boolean => !!item.state_media || item.claim_tag === 'sarkari daava';
 export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): NewsPattern[] {
@@ -260,6 +273,15 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
     // story under the "wrong" country); an item is attached once, under its real region.
     const byRegion = new Map<string, PatternRegion>();
     const used = new Set<string>();
+    const listed = new Set<string>();
+    for (const rawRegion of row.regions) {
+      if (!rawRegion || typeof rawRegion !== 'object') continue;
+      for (const idValue of Array.isArray((rawRegion as Record<string, unknown>).item_ids) ? (rawRegion as Record<string, unknown>).item_ids as unknown[] : []) {
+        const found = byId.get(itemId(idValue));
+        if (found) listed.add(String(found.id));
+      }
+    }
+    const allowed = new Set(tightLinks([...listed].map((id) => byId.get(id)!)).map((x) => String(x.id)));
     for (const rawRegion of row.regions) {
       if (!rawRegion || typeof rawRegion !== 'object') continue;
       const rr = rawRegion as Record<string, unknown>;
@@ -267,7 +289,7 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
       for (const idValue of Array.isArray(rr.item_ids) ? rr.item_ids : []) {
         const id = itemId(idValue);
         const item = byId.get(id);
-        if (!item || used.has(id)) continue;
+        if (!item || used.has(id) || !allowed.has(String(item.id))) continue;
         const r = item.region;
         used.add(id);
         const slot = byRegion.get(r) || { region: r, what: label === r ? stripAliases(text(rr.what, 240)) : '', item_ids: [] };
