@@ -87,10 +87,12 @@ test('wake event starts Google Live without turning on the saved Google Live swi
   await settle(20);
   assert.equal(app.S.settings.adarshLive, false);
   assert.ok(calls.some(c => c.liveStart), 'wake event opens a Google Live session');
+  assert.equal(app.document.querySelector('#voice').classList.contains('wake-mini'), true, 'wake voice opens as the compact in-app panel');
   assert.ok(calls.some(c => c.wakeWordPause === 'voice'));
   assert.ok(calls.some(c => c.wakeWordResume === 'wake'));
   assert.equal(calls.some(c => c.liveSendText), false, 'detector transcript is not forwarded to Live');
   app.Voice.close();
+  assert.equal(app.document.querySelector('#voice').classList.contains('wake-mini'), false, 'closing the panel restores normal voice mode');
   assert.ok(calls.some(c => c.wakeWordResume === 'voice'));
 });
 

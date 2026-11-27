@@ -451,7 +451,7 @@ const Voice = (() => {
   /* opts.listen: coming back from the background session, so start listening right away */
   function open(opts = {}) {
     if (BackgroundVoice.active()) return BackgroundVoice.open();
-    if (openFlag) return; wakeLive = opts.wakeWord === true; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.hidden = false; setState('idle');
+    if (openFlag) return; wakeLive = opts.wakeWord === true; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.classList.toggle('wake-mini', opts.wakeWord === true); el.hidden = false; setState('idle');
     caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
@@ -525,7 +525,7 @@ const Voice = (() => {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
-    liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop();
+    liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop(); el.classList.remove('wake-mini');
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc); WakeWord.resume('voice');
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
