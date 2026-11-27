@@ -35,7 +35,7 @@ object NewsFcm {
     private const val TAG = "NewsFcm"
     private val API_ACTIONS = setOf(
         "ping", "list", "get", "top", "mark", "register", "unregister", "budget",
-        "settings_get", "settings_set", "telegram_link", "telegram_test", "fcm_test",
+        "settings_get", "settings_set", "patterns", "telegram_link", "telegram_test", "fcm_test",
         "telegram_copy", "digest_now"
     )
     private val pool: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->

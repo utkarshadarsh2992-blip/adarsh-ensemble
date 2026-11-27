@@ -392,3 +392,32 @@ test('briefing copy goes to Telegram once a day and respects the switch', async 
   assert.equal(a.calls.filter(x => x.body.action === 'telegram_copy').length, 1);
   m.close();
 });
+
+
+test('Patterns view renders validated cards, region links, cache time and refresh request', async () => {
+  const pattern = { title: 'AI buildout wave', pattern: 'India aur China dono compute capacity badha rahe hain.', type: 'compute/datacentre buildout', signal: 'strong', generated_at: '2026-11-27T10:00:00.000Z', regions: [{ region: 'IN', what: 'India mein capacity move', item_ids: ['i1'] }, { region: 'CN', what: 'China mein parallel move', item_ids: ['i2'] }], why_it_matters: 'AGI compute race', watch_next: 'Next data-centre filings', assumption: 'Reported events complete nahi hain.', items: [{ id: 'i1', title: 'India compute news', url: 'https://example.com/in', source: 'Reuters', region: 'IN' }, { id: 'i2', title: 'China compute news', url: 'https://example.com/cn', source: 'FT', region: 'CN' }] };
+  const a = api({ list: L([]), patterns: { ok: true, generated_at: pattern.generated_at, cached: true, patterns: [pattern] } });
+  const m = mount({ fetchImpl: a.f, ls: CFG });
+  await open(m);
+  [...m.document.querySelectorAll('.nw-mode')].find(b => text(b) === 'Patterns').click();
+  await until(() => m.document.querySelector('.nw-pattern-card'));
+  const v = m.document.querySelector('#v-news');
+  assert.equal(v.querySelectorAll('.nw-pattern-card').length, 1);
+  assert.match(text(v), /AI buildout wave/); assert.match(text(v), /IN/); assert.match(text(v), /CN/); assert.match(text(v), /Assumption:/); assert.match(text(v), /Generated/);
+  assert.equal(a.calls.filter(c => c.body.action === 'patterns').length, 1);
+  v.querySelector('.nw-pattern-refresh').click(); await settle(20);
+  assert.ok(a.calls.some(c => c.body.action === 'patterns' && c.body.refresh === true));
+  m.close();
+});
+
+test('Patterns error state is visible and pattern Chat carries the linked evidence', async () => {
+  const pattern = { title: 'Policy wave', pattern: 'Dono regions policy signal de rahe hain.', type: 'policy wave', signal: 'medium', regions: [{ region: 'US', what: 'US policy', item_ids: ['i1'] }, { region: 'EU', what: 'EU policy', item_ids: ['i2'] }], why_it_matters: 'AI governance', watch_next: 'Implementation', assumption: 'Timing inferred hai.', items: [{ id: 'i1', title: 'US policy news', url: 'https://example.com/us', source: 'Source A', region: 'US' }, { id: 'i2', title: 'EU policy news', url: 'https://example.com/eu', source: 'Source B', region: 'EU' }] };
+  const a = api({ list: L([]), patterns: { ok: true, generated_at: new Date().toISOString(), patterns: [pattern] } });
+  const m = mount({ fetchImpl: a.f, ls: CFG, settings: { mode: 'standard' } }); await open(m);
+  [...m.document.querySelectorAll('.nw-mode')].find(b => text(b) === 'Patterns').click(); await until(() => m.document.querySelector('.nw-pattern-card'));
+  m.document.querySelector('.nw-pattern-card .nw-chat').click(); await until(() => m.sent.length > 0);
+  assert.match(JSON.stringify(m.sent[0]), /Policy wave/); assert.match(JSON.stringify(m.sent[0]), /US policy news/); assert.match(JSON.stringify(m.sent[0]), /untrusted DATA/); assert.ok(m.document.querySelector('#v-chat.on'));
+  m.close();
+  const err = api({ list: L([]), patterns: { ok: false, error: 'Pattern server down', __status: 500 } });
+  const e = mount({ fetchImpl: err.f, ls: CFG }); await open(e); [...e.document.querySelectorAll('.nw-mode')].find(b => text(b) === 'Patterns').click(); await until(() => /Pattern server down/.test(text(e.document.querySelector('#v-news')))); e.close();
+});
