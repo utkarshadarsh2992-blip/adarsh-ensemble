@@ -7,7 +7,9 @@ import {
   credentialInputError,
   credentialSetPayload,
   firebaseFieldsError,
+  groupSlotsByProvider,
   isHHMM,
+  parseOpenProviders,
   parseCredentialsState,
   parseGoogleServicesJson,
   setupUrlError,
@@ -236,5 +238,49 @@ test("google-services parsing extracts only supported Firebase fields from local
   assert.equal(
     parseGoogleServicesJson(JSON.stringify({ project_info: {}, client: [] })),
     null,
+  );
+});
+
+test("provider cards hold all three App slots together in slot order", () => {
+  const groups = groupSlotsByProvider(
+    CREDENTIAL_SLOTS.filter((slot) => slot.group === "App providers"),
+  );
+  assert.deepEqual(
+    groups.map((group) => group.key),
+    [
+      "app:groq",
+      "app:openrouter",
+      "app:gemini",
+      "app:nvidia",
+      "app:cloudflare",
+    ],
+  );
+  for (const group of groups) {
+    assert.deepEqual(
+      group.definitions.map((slot) => slot.slot),
+      [1, 2, 3],
+    );
+  }
+  assert.equal(groups[0].name, "Groq");
+  assert.equal(groups[4].name, "Cloudflare Workers AI");
+  const news = groupSlotsByProvider(
+    CREDENTIAL_SLOTS.filter((slot) => slot.scope === "news"),
+  );
+  assert.deepEqual(
+    news.map((group) => [group.key, group.definitions.length]),
+    [
+      ["news:groq", 2],
+      ["news:tavily", 2],
+    ],
+  );
+});
+
+test("remembered open provider list keeps only known provider keys", () => {
+  assert.deepEqual(parseOpenProviders(null), []);
+  assert.deepEqual(parseOpenProviders("not json"), []);
+  assert.deepEqual(parseOpenProviders('{"a":1}'), []);
+  assert.deepEqual(
+    parseOpenProviders('["app:groq","app:groq","news:tavily","app:evil",7]'),
+    ["app:groq", "news:tavily"],
   );
 });

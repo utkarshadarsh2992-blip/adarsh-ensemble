@@ -13,19 +13,25 @@ DEFAULTS = (ROOT / "ui/src/js/01-core.js").read_text()
 BACKGROUND = (ANDROID / "java/app/adarsh/ensemble/BackgroundVoiceService.kt").read_text()
 
 
-def test_service_uses_only_the_api31_on_device_recognizer_and_has_no_network_or_audio_upload_path():
+def test_service_prefers_on_device_recognizer_with_disclosed_system_fallback_and_no_upload_path():
     assert "SpeechRecognizer.createOnDeviceSpeechRecognizer(this)" in SERVICE
     assert "SpeechRecognizer.isOnDeviceRecognitionAvailable(context)" in SERVICE
-    assert "SpeechRecognizer.createSpeechRecognizer(" not in SERVICE
-    assert "EXTRA_PREFER_OFFLINE" in SERVICE
-    assert "EXTRA_LANGUAGE, WAKE_LOCALE" in SERVICE
+    # Phones without an on-device recognizer (Oppo/Realme/Vivo) use the default speech service, offline preferred.
+    assert "SpeechRecognizer.createSpeechRecognizer(this)" in SERVICE
+    assert "SpeechRecognizer.isRecognitionAvailable(context)" in SERVICE
+    assert "onDeviceRecognizerAvailable(context) -> ENGINE_ON_DEVICE" in SERVICE
+    assert "EXTRA_PREFER_OFFLINE, preferOffline" in SERVICE
+    assert 'listOf("en-IN", "en-US", "hi-IN", null)' in SERVICE
+    assert "triggerModelDownload" in SERVICE
+    assert '.put("engine", engine)' in SERVICE
     for forbidden in ("AudioRecord(", "NvidiaBnrClient", "Engine.submit", "Backend.", "OkHttpClient", "HttpURLConnection"):
         assert forbidden not in SERVICE
     # The recognizer callback only emits state and a fixed wake event, never the recognized transcript.
     assert "put(\"transcript\"" not in SERVICE
     assert "MainActivity.wakeWordEvent(JSONObject().put(\"type\", \"wake\"))" in SERVICE
-    assert 'val transcript = results?.getStringArrayList' in SERVICE
-    assert "WakeWordMatcher.matches(transcript)" in SERVICE
+    assert "WakeWordMatcher.matchesAny(transcript)" in SERVICE
+    assert "WakeWordMatcher.matchesAny(partial)" in SERVICE
+    assert "EXTRA_PARTIAL_RESULTS, true" in SERVICE
 
 
 def test_service_is_opt_in_visible_and_not_started_by_boot_or_task_restart():
@@ -42,22 +48,31 @@ def test_service_is_opt_in_visible_and_not_started_by_boot_or_task_restart():
     assert "ACTION_STOP -> stopStandby(\"off\"" in SERVICE
 
 
-def test_matcher_is_phrase_specific_and_stale_recognizer_callbacks_are_invalidated():
-    assert 'words[0] == "hey" && words[1] == "adarsh"' in MATCHER
+def test_matcher_is_tolerant_but_needs_greeting_and_stale_callbacks_are_invalidated():
+    assert '"hey", "hay"' in MATCHER and '"hi"' in MATCHER and '"हे"' in MATCHER
+    assert "distance(token, NAME) <= 2" in MATCHER
+    assert "if (w !in GREETINGS) continue" in MATCHER
+    assert "nameLike(one + two)" in MATCHER
     assert "private fun isCurrent(token: Long)" in SERVICE
     assert "token == recognizerEpoch && recognizer != null" in SERVICE
     assert "private fun destroyRecognizer()" in SERVICE
     destroy = SERVICE.split("private fun destroyRecognizer()", 1)[1].split("private fun cancelRestart()", 1)[0]
     assert destroy.index("recognizerEpoch++") < destroy.index("old?.cancel()") < destroy.index("old?.destroy()")
     assert "if (!isCurrent(token)) return" in SERVICE
-    assert "MAX_FAILURES = 3" in SERVICE
+    assert "MAX_FAILURES = 5" in SERVICE
 
 
-def test_wake_event_uses_notification_tap_while_backgrounded_and_never_starts_an_activity():
+def test_wake_event_opens_voice_in_foreground_and_raises_app_from_background():
     event = ACTIVITY.split("fun wakeWordEvent(value: JSONObject)", 1)[1].split("fun deliverPendingWakeWordOpen()", 1)[0]
     assert "a.resumed && pageTrusted" in event
-    assert "startActivity(" not in event
-    assert "pendingWakeOpen = true" not in event  # only ACTION_OPEN_WAKE/tap may queue a deferred open
+    assert "pendingWakeOpen = true" not in event  # only ACTION_OPEN_WAKE intents queue a deferred open
+    wake = SERVICE.split("private fun onWakeWord()", 1)[1].split("private fun retryOrStop", 1)[0]
+    assert "MainActivity.isOnScreen()" in wake and "bringAppForward()" in wake
+    assert ".setFullScreenIntent(open, true)" in SERVICE
+    assert "NotificationManager.IMPORTANCE_HIGH" in SERVICE
+    assert ".setAction(ACTION_OPEN_WAKE)" in SERVICE
+    assert "android.permission.USE_FULL_SCREEN_INTENT" in MANIFEST
+    assert "WakeWordService.clearWakeAlert(this)" in ACTIVITY
     assert "ACTION_OPEN_WAKE" in ACTIVITY
     assert "dispatchPendingWakeWordOpen()" in ACTIVITY
     assert "android:launchMode=\"singleTask\"" in MANIFEST
@@ -78,4 +93,4 @@ def test_bridge_has_only_nonsecret_settings_api_and_voice_modes_pause_detector()
     assert "WakeWord.pause('voice')" in VOICE and "WakeWord.resume('voice')" in VOICE
     assert "if (opts.wakeWord === true)" in VOICE
     assert "if (S.settings.adarshLive && Live.native())" in VOICE
-    assert "never silently switch a wake trigger to generic speech recognition" in VOICE
+    assert "if (STT.supported()) { caption('', 'Haan Sir, bolo" in VOICE

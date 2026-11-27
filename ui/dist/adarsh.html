@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-GxlfJVEiv79JV/ekm4hDK7+ah/q57WcRGBd4EAK7yEs='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"><title>ADARSH</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-abdDPijVXk1DDugOTVvfr+fCC0TrKJ0NCluTFMBjKKg='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"><title>ADARSH</title>
 <link rel="icon" href="data:,">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,10 +12,11 @@
    Scale: radius 10 / 14 / 20 / 26. Spacing in steps of 4. Shadows are --sh1 (resting) and --sh2 (floating).
    ===================================================================================== */
 :root{
-  --outer:#E9E6E0; --bg:#FAF9F6; --paper:#FFFFFF; --card:#F1EFE8; --card2:#E8E5DC; --code:#F5F3EC;
-  --fg:#1D1C1A; --fg2:#45423C; --muted:#78746B; --line:#E4E0D6; --line2:#D3CEC2;
-  --accent:#D0623A; --accent-fg:#FFFFFF; --sel:#2F6FD8; --user:#EDEAE1;
-  --good:#2C7A4B; --warn:#A8690F; --bad:#B03A2A; --info:#32679A;
+  /* colour grade v2: crisper paper, darker ink, AA+ muted text, deeper ember accent */
+  --outer:#E6E2DA; --bg:#FAF8F4; --paper:#FFFFFF; --card:#F1EEE6; --card2:#E6E1D6; --code:#F4F1E9;
+  --fg:#17161A; --fg2:#3B3833; --muted:#5F5A52; --line:#E1DCD0; --line2:#CEC6B7;
+  --accent:#B6461F; --accent-fg:#FFFFFF; --sel:#2563C9; --user:#ECE7DC;
+  --good:#1F6E43; --warn:#8A5508; --bad:#A2321F; --info:#28598A;
   --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --serif:'Newsreader','Iowan Old Style',Georgia,serif;
   --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -27,18 +28,18 @@
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --outer:#0A0A0A; --bg:#111111; --paper:#1A1A1A; --card:#1E1E1E; --card2:#2A2A2A; --code:#171717;
-    --fg:#EDEDED; --fg2:#C9C7C1; --muted:#8F8F8F; --line:#2C2C2C; --line2:#3A3A3A;
-    --accent:#DA7551; --accent-fg:#1B1410; --sel:#4C8DF0; --user:#2A2A2A;
-    --good:#58B67F; --warn:#D9A24A; --bad:#E5705E; --info:#6FA6D8; color-scheme:dark;
+    --outer:#07090C; --bg:#0E1116; --paper:#161A21; --card:#1B2029; --card2:#252B36; --code:#12151B;
+    --fg:#EEF0F4; --fg2:#CDD2DA; --muted:#9EA5B2; --line:#262C37; --line2:#353D4B;
+    --accent:#EC8A5E; --accent-fg:#1B1410; --sel:#5B9BFF; --user:#222937;
+    --good:#63C891; --warn:#E7B35A; --bad:#F08070; --info:#7FB3E6; color-scheme:dark;
     --sh1:0 1px 2px rgba(0,0,0,.45); --sh2:0 12px 36px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"]{
-  --outer:#0A0A0A; --bg:#111111; --paper:#1A1A1A; --card:#1E1E1E; --card2:#2A2A2A; --code:#171717;
-  --fg:#EDEDED; --fg2:#C9C7C1; --muted:#8F8F8F; --line:#2C2C2C; --line2:#3A3A3A;
-  --accent:#DA7551; --accent-fg:#1B1410; --sel:#4C8DF0; --user:#2A2A2A;
-  --good:#58B67F; --warn:#D9A24A; --bad:#E5705E; --info:#6FA6D8; color-scheme:dark;
+  --outer:#07090C; --bg:#0E1116; --paper:#161A21; --card:#1B2029; --card2:#252B36; --code:#12151B;
+  --fg:#EEF0F4; --fg2:#CDD2DA; --muted:#9EA5B2; --line:#262C37; --line2:#353D4B;
+  --accent:#EC8A5E; --accent-fg:#1B1410; --sel:#5B9BFF; --user:#222937;
+  --good:#63C891; --warn:#E7B35A; --bad:#F08070; --info:#7FB3E6; color-scheme:dark;
   --sh1:0 1px 2px rgba(0,0,0,.45); --sh2:0 12px 36px rgba(0,0,0,.6),0 2px 8px rgba(0,0,0,.4);
 }
 :root[data-font="sans"]{--reply:var(--sans)}
@@ -428,10 +429,10 @@ button.item:active{background:var(--card2)}
 .tile{width:100%;aspect-ratio:1.5;border-radius:20px;padding:9px;border:3px solid transparent;display:block}
 .tile i{display:block;width:100%;height:100%;border-radius:12px;position:relative;border:1px solid rgba(128,128,128,.35)}
 .tile i::before{content:"";position:absolute;left:12px;top:12px;width:44%;height:4px;border-radius:4px;background:#8885;box-shadow:0 9px 0 0 #8885}
-.tile i::after{content:"";position:absolute;right:10px;bottom:10px;width:14px;height:14px;border-radius:50%;background:#D0623A}
+.tile i::after{content:"";position:absolute;right:10px;bottom:10px;width:14px;height:14px;border-radius:50%;background:#B6461F}
 .tl .tile{background:#F3F1EC}.tl i{background:#fff}
-.td .tile{background:#111}.td i{background:#1E1E1E}
-.ts .tile{background:linear-gradient(135deg,#F3F1EC 50%,#111 50%)}.ts i{background:linear-gradient(135deg,#fff 50%,#1E1E1E 50%)}
+.td .tile{background:#0E1116}.td i{background:#1B2029}
+.ts .tile{background:linear-gradient(135deg,#F3F0EA 50%,#0E1116 50%)}.ts i{background:linear-gradient(135deg,#fff 50%,#1B2029 50%)}
 .themes button[aria-pressed="true"]{color:var(--sel)}
 .themes button[aria-pressed="true"] .tile{border-color:var(--sel)}
 .mem{display:flex;gap:12px;align-items:flex-start;background:var(--card);border-radius:20px;padding:14px 8px 14px 18px}
@@ -5547,6 +5548,15 @@ const App = (() => {
         toast(state.message || (v ? 'Hey Adarsh on' : 'Hey Adarsh off'));
         redraw();
       })));
+    /* permission dialogs and the native service report state later; keep the switch text current without a redraw */
+    const wakeEl = [...st.querySelectorAll('[role=switch]')].find(n => /Hey Adarsh/.test(n.textContent));
+    if (wakeEl) {
+      const off = Bus.on('wake-word-status', ws => {
+        if (!wakeEl.isConnected) { off(); return; }
+        wakeEl.setAttribute('aria-checked', String(!!ws.enabled));
+        const sm = wakeEl.querySelector('small'); if (sm) sm.textContent = wakeWordSummary(ws);
+      });
+    }
     st.append(label('Learning'), h('div', { class: 'grp' },
       navItem('sparkle', 'Standard style', Learn.styleName(), () => Learn.styleSheet(redraw)),
       swItem('ask', 'Check questions', '', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
@@ -5586,11 +5596,17 @@ const App = (() => {
     if (build) st.append(h('div', { class: 'buildline' }, 'ADARSH v' + build));
 
   };
-  function wakeWordSummary() {
-    const s = WakeWord.status();
-    if (s.state === 'unsupported' || s.supported === false) return 'Is device par on-device wake recognition available nahi';
-    if (s.active) return 'On · phone par sun raha hai';
-    return s.enabled ? (s.message || 'On · permission/setup check') : 'Off';
+  function wakeWordSummary(s = WakeWord.status()) {
+    const eng = s.engine === 'system' ? 'phone speech service' : 'on-device';
+    if (s.state === 'unsupported' || s.supported === false) return s.message || 'Is phone par speech recognizer nahi mila';
+    if (s.state === 'permission_required') return 'Mic permission chahiye · ' + (s.message || '');
+    if (s.state === 'notification_required') return 'Notifications allow karo · standby notice ke liye';
+    if (s.state === 'busy') return 'Pehle chal rahi voice/dictation band karo';
+    if (s.state === 'error') return s.message || 'Wake word ruk gaya · dobara on karo';
+    if (s.state === 'paused') return 'On · voice chal rahi hai, abhi ruka hua';
+    if (s.state === 'triggered') return 'On · Hey Adarsh suna';
+    if (s.active) return 'On · “Hey Adarsh” bolo · ' + eng;
+    return s.enabled ? (s.message || 'On · shuru ho raha hai') : 'Off · on karke “Hey Adarsh” bolo';
   }
   function nameSheet() {
     sheet({ title: 'Your name', build(b, close) {
@@ -6421,11 +6437,13 @@ const Voice = (() => {
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
     if (opts.wakeWord === true) {
+      /* Hey Adarsh: Google Live first; if Live cannot start, the normal listen -> answer -> speak loop answers. */
       if (Live.native() && startLive()) return;
       wakeLive = false;
       if (tagEl) tagEl.textContent = tagText();
-      toast('Google Live did not start; tap Talk and try again');
-      return; // never silently switch a wake trigger to generic speech recognition
+      if (STT.supported()) { caption('', 'Haan Sir, bolo — main sun raha hoon.'); listen(); }
+      else toast('Voice input is phone par available nahi; type karke poochho');
+      return;
     }
     if (S.settings.adarshLive && Live.native()) { if (startLive()) return; }   // the saved Live switch retains its normal fallback
     if (opts.listen && STT.supported()) listen();
@@ -6472,10 +6490,10 @@ const Voice = (() => {
       onError: (m) => {
         if (!active(token)) return;
         liveOn = false;
-        caption('', holdOnLiveFailure ? 'Adarsh Live: ' + m + ' — Talk tap karke dobara koshish karo.' : 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
+        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
-        if (holdOnLiveFailure) setState('idle');
-        else setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
+        /* a wake trigger also falls back, so "Hey Adarsh" always ends in a listening voice screen */
+        setTimeout(() => { if (active(token)) { if (holdOnLiveFailure) { wakeLive = false; if (tagEl) tagEl.textContent = tagText(); } setState('idle'); listen(); } }, 900);
       },
       onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
     });

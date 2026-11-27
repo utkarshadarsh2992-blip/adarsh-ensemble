@@ -214,8 +214,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun wakeWordError(state: String, message: String) = JSONObject()
         .put("ok", false).put("enabled", false).put("active", false)
-        .put("supported", WakeWordService.status(this).optBoolean("supported"))
-        .put("onDevice", true).put("phrase", "Hey Adarsh").put("state", state).put("message", message)
+        .put("supported", WakeWordService.supported(this))
+        .put("onDevice", WakeWordService.status(this).optBoolean("onDevice")).put("phrase", "Hey Adarsh").put("state", state).put("message", message)
 
     private fun publishWakeWordPermissionError(state: String, message: String) {
         MainActivity.wakeWordEvent(wakeWordError(state, message).put("type", "status"))
@@ -224,8 +224,8 @@ class MainActivity : AppCompatActivity() {
     /** A wake service may start only from an explicit, resumed-screen switch action after both permissions exist. */
     private fun continueWakeWordStart(token: Int): JSONObject {
         if (destroyed || token != wakeWordGeneration) return wakeWordError("off", "Wake word was cancelled")
-        if (!WakeWordService.status(this).optBoolean("supported")) {
-            return wakeWordError("unsupported", "On-device wake recognition is unavailable on this Android version/device; no online fallback was used")
+        if (!WakeWordService.supported(this)) {
+            return wakeWordError("unsupported", "Is phone par koi speech recognizer nahi mila. Google app / Speech Services install ya enable karo.")
         }
         if (!resumed || awaitingResult) return wakeWordError("permission_required", "Keep Adarsh open while wake-word permissions are requested")
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -260,6 +260,7 @@ class MainActivity : AppCompatActivity() {
     private fun dispatchPendingWakeWordOpen() {
         if (!pendingWakeOpen || !resumed || destroyed || !pageTrusted) return
         pendingWakeOpen = false
+        WakeWordService.clearWakeAlert(this)
         js("window.__adarshWakeWord&&window.__adarshWakeWord({type:'wake',source:'notification'})")
     }
 
@@ -550,7 +551,8 @@ class MainActivity : AppCompatActivity() {
         private fun prefs(c: Context) = c.getSharedPreferences("adarsh_ui", Context.MODE_PRIVATE)
         private fun ui(f: (MainActivity) -> Unit) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) f(a) } } }
 
-        /** Wake recognition never starts an Activity; background triggers wait for the user to tap its notice. */
+        /** Foreground wake goes straight to the page. Background wake is raised by WakeWordService (full-screen /
+         *  heads-up notice + direct start where Android allows); its ACTION_OPEN_WAKE intent queues the open. */
         fun wakeWordEvent(value: JSONObject) {
             if (value.optString("type") == "wake") {
                 val a = current

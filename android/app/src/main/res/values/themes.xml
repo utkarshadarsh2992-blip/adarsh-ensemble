@@ -5,8 +5,8 @@
         <item name="android:statusBarColor">@color/adarsh_bg</item>
         <item name="android:navigationBarColor">@color/adarsh_bg</item>
     </style>
-    <color name="adarsh_bg">#FAF9F6</color>
-    <color name="adarsh_fg">#1D1C1A</color>
+    <color name="adarsh_bg">#FAF8F4</color>
+    <color name="adarsh_fg">#17161A</color>
     <color name="adarsh_icon_bg">#111111</color>
     <!-- startup animation ground (ui/src/css/boot.css .boot) -->
     <color name="adarsh_boot">#05070B</color>

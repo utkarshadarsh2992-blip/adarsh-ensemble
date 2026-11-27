@@ -95,7 +95,7 @@ test('wake event starts Google Live without turning on the saved Google Live swi
 });
 
 
-test('failed wake-triggered Google Live leaves the microphone idle instead of falling through to generic dictation', async t => {
+test('failed wake-triggered Google Live falls back to the normal listening voice loop', async t => {
   const calls = [];
   const native = nativeWake(calls);
   native.liveStart = json => { calls.push({ liveStartAttempt: JSON.parse(json).model }); return JSON.stringify({ ok: false, message: 'Gemini API key nahi mili.' }); };
@@ -105,10 +105,23 @@ test('failed wake-triggered Google Live leaves the microphone idle instead of fa
   app.window.__adarshWakeWord({ type: 'wake' });
   await settle(1_050);
   assert.ok(calls.some(c => c.liveStartAttempt), 'the wake route attempts Google Live first');
-  assert.equal(calls.some(c => c.speechStart), false, 'no generic recognizer starts without an explicit Talk tap');
-  assert.equal(app.Voice.isOpen, true, 'user can still choose a manual voice action');
+  assert.ok(calls.some(c => c.speechStart), 'Hey Adarsh still ends in a listening voice screen');
+  assert.equal(app.Voice.isOpen, true);
 });
-
+test('Settings Hey Adarsh summary shows the exact native reason and live updates', () => {
+  const calls = [];
+  const native = nativeWake(calls);
+  native.wakeWordStatus = () => JSON.stringify({ ok: false, enabled: false, active: false, supported: false, state: 'unsupported', message: 'Is phone par koi speech recognizer nahi mila.' });
+  const app = mount({ native });
+  try {
+    app.App.show('settings');
+    const toggle = [...app.document.querySelectorAll('#v-settings [role=switch]')].find(node => /Hey Adarsh/.test(node.textContent));
+    assert.match(toggle.textContent, /speech recognizer nahi mila/);
+    app.window.__adarshWakeWord({ type: 'status', ok: true, enabled: true, active: true, supported: true, engine: 'system', state: 'listening', message: 'Listening' });
+    assert.equal(toggle.getAttribute('aria-checked'), 'true');
+    assert.match(toggle.textContent, /phone speech service/);
+  } finally { app.close(); }
+});
 test('Settings exposes an off-by-default Hey Adarsh toggle wired to native on/off', () => {
   const calls = [];
   const app = mount({ native: nativeWake(calls) });

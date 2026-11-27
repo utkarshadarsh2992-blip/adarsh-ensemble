@@ -177,6 +177,15 @@ const App = (() => {
         toast(state.message || (v ? 'Hey Adarsh on' : 'Hey Adarsh off'));
         redraw();
       })));
+    /* permission dialogs and the native service report state later; keep the switch text current without a redraw */
+    const wakeEl = [...st.querySelectorAll('[role=switch]')].find(n => /Hey Adarsh/.test(n.textContent));
+    if (wakeEl) {
+      const off = Bus.on('wake-word-status', ws => {
+        if (!wakeEl.isConnected) { off(); return; }
+        wakeEl.setAttribute('aria-checked', String(!!ws.enabled));
+        const sm = wakeEl.querySelector('small'); if (sm) sm.textContent = wakeWordSummary(ws);
+      });
+    }
     st.append(label('Learning'), h('div', { class: 'grp' },
       navItem('sparkle', 'Standard style', Learn.styleName(), () => Learn.styleSheet(redraw)),
       swItem('ask', 'Check questions', '', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
@@ -216,11 +225,17 @@ const App = (() => {
     if (build) st.append(h('div', { class: 'buildline' }, 'ADARSH v' + build));
 
   };
-  function wakeWordSummary() {
-    const s = WakeWord.status();
-    if (s.state === 'unsupported' || s.supported === false) return 'Is device par on-device wake recognition available nahi';
-    if (s.active) return 'On · phone par sun raha hai';
-    return s.enabled ? (s.message || 'On · permission/setup check') : 'Off';
+  function wakeWordSummary(s = WakeWord.status()) {
+    const eng = s.engine === 'system' ? 'phone speech service' : 'on-device';
+    if (s.state === 'unsupported' || s.supported === false) return s.message || 'Is phone par speech recognizer nahi mila';
+    if (s.state === 'permission_required') return 'Mic permission chahiye · ' + (s.message || '');
+    if (s.state === 'notification_required') return 'Notifications allow karo · standby notice ke liye';
+    if (s.state === 'busy') return 'Pehle chal rahi voice/dictation band karo';
+    if (s.state === 'error') return s.message || 'Wake word ruk gaya · dobara on karo';
+    if (s.state === 'paused') return 'On · voice chal rahi hai, abhi ruka hua';
+    if (s.state === 'triggered') return 'On · Hey Adarsh suna';
+    if (s.active) return 'On · “Hey Adarsh” bolo · ' + eng;
+    return s.enabled ? (s.message || 'On · shuru ho raha hai') : 'Off · on karke “Hey Adarsh” bolo';
   }
   function nameSheet() {
     sheet({ title: 'Your name', build(b, close) {

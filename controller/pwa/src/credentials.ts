@@ -51,6 +51,59 @@ export const CREDENTIAL_SLOTS: readonly CredentialSlotDefinition[] = [
   ),
 ];
 
+/** One tappable provider card: all of its slots (App providers have three) open together. */
+export type ProviderSlotGroup = {
+  key: string;
+  name: string;
+  definitions: CredentialSlotDefinition[];
+};
+
+export function groupSlotsByProvider(
+  definitions: readonly CredentialSlotDefinition[],
+): ProviderSlotGroup[] {
+  const groups = new Map<string, ProviderSlotGroup>();
+  for (const definition of definitions) {
+    const key = `${definition.scope}:${definition.provider}`;
+    const current = groups.get(key);
+    if (current) {
+      current.definitions.push(definition);
+    } else {
+      groups.set(key, {
+        key,
+        name: definition.label.replace(/ · slot \d+$/, ""),
+        definitions: [definition],
+      });
+    }
+  }
+  for (const group of groups.values()) {
+    group.definitions.sort((a, b) => a.slot - b.slot);
+  }
+  return [...groups.values()];
+}
+
+export const OPEN_PROVIDERS_STORAGE_KEY = "adarshctl.keys.openProviders.v1";
+
+/** Remembered open provider cards (UI layout only; never credential data). */
+export function parseOpenProviders(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    const valid = new Set(
+      CREDENTIAL_SLOTS.map((slot) => `${slot.scope}:${slot.provider}`),
+    );
+    return [
+      ...new Set(
+        value.filter(
+          (item): item is string => typeof item === "string" && valid.has(item),
+        ),
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
 export type CredentialSlotMetadata = {
   scope: "app" | "news" | "setup";
   provider: string;

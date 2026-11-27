@@ -7,6 +7,7 @@ import {
 } from "react";
 import {
   BellRing,
+  ChevronDown,
   Cloud,
   KeyRound,
   Link2,
@@ -22,6 +23,9 @@ import { admin, adminWriteOnly } from "../api";
 import {
   CREDENTIAL_SLOTS,
   DEFAULT_NEWS_RESET_TIME,
+  OPEN_PROVIDERS_STORAGE_KEY,
+  groupSlotsByProvider,
+  parseOpenProviders,
   RESET_TIMEZONE,
   credentialDeletePayload,
   credentialInputError,
@@ -152,8 +156,45 @@ export default function KeysSettings({ active, online, onNotice }: Props) {
       rows.push(definition);
       groups.set(definition.group, rows);
     }
-    return [...groups.entries()];
+    return [...groups.entries()].map(
+      ([group, definitions]) =>
+        [group, groupSlotsByProvider(definitions)] as const,
+    );
   }, []);
+  /* Provider cards: one tap opens every slot of that provider together and the
+     choice is remembered, so opened providers stay open on every visit. */
+  const [openProviders, setOpenProviders] = useState<string[]>(() => {
+    try {
+      return parseOpenProviders(
+        window.localStorage.getItem(OPEN_PROVIDERS_STORAGE_KEY),
+      );
+    } catch {
+      return [];
+    }
+  });
+  const allProviderKeys = useMemo(
+    () => groupedSlots.flatMap(([, providers]) => providers.map((p) => p.key)),
+    [groupedSlots],
+  );
+  function rememberOpen(next: string[]) {
+    setOpenProviders(next);
+    try {
+      window.localStorage.setItem(
+        OPEN_PROVIDERS_STORAGE_KEY,
+        JSON.stringify(next),
+      );
+    } catch {
+      /* layout preference only */
+    }
+  }
+  function toggleProvider(key: string) {
+    rememberOpen(
+      openProviders.includes(key)
+        ? openProviders.filter((item) => item !== key)
+        : [...openProviders, key],
+    );
+  }
+  const allOpen = allProviderKeys.every((key) => openProviders.includes(key));
 
   async function finishMetadataRefresh() {
     await loadMetadata();
@@ -192,7 +233,9 @@ export default function KeysSettings({ active, online, onNotice }: Props) {
   async function deleteCredential(definition: CredentialSlotDefinition) {
     const id = slotKey(definition.scope, definition.provider, definition.slot);
     if (
-      !window.confirm(`${definition.label} clear karein? Vault value aur paired phone ki is slot ki purani local value agle sync par remove hogi.`)
+      !window.confirm(
+        `${definition.label} clear karein? Vault value aur paired phone ki is slot ki purani local value agle sync par remove hogi.`,
+      )
     )
       return;
     setFormError("");
@@ -315,7 +358,12 @@ export default function KeysSettings({ active, online, onNotice }: Props) {
   async function deleteSetup(provider: "news" | "firebase") {
     const label =
       provider === "news" ? "News URL/APP_SECRET" : "Firebase configuration";
-    if (!window.confirm(`${label} clear karein? Vault aur paired phone ka setup agle sync par remove hoga.`)) return;
+    if (
+      !window.confirm(
+        `${label} clear karein? Vault aur paired phone ka setup agle sync par remove hoga.`,
+      )
+    )
+      return;
     setFormError("");
     setPending(`setup:${provider}`);
     try {
@@ -387,6 +435,124 @@ export default function KeysSettings({ active, online, onNotice }: Props) {
     !!settingsDraft &&
     JSON.stringify(metadata.device_settings) !== JSON.stringify(settingsDraft);
 
+  function renderSlot(definition: CredentialSlotDefinition) {
+    const id = slotKey(definition.scope, definition.provider, definition.slot);
+    const row = metadata ? metadataFor(metadata, definition) : undefined;
+    const configured = !!row?.key_set;
+    const cloudflareSlot = definition.provider === "cloudflare";
+    const hasAccount = !!row?.account_id_set;
+    return (
+      <article className="keys-slot-card" key={id}>
+        <div className="keys-slot-head">
+          <div>
+            <h4>Slot {definition.slot}</h4>
+            <p className="mono">
+              {definition.scope} / {definition.provider} / {definition.slot}
+            </p>
+          </div>
+          <Badge tone={configured ? "good" : "muted"}>
+            {configured ? "Configured" : "Missing"}
+          </Badge>
+        </div>
+        {row ? (
+          <div
+            className="keys-meta"
+            aria-label={`${definition.label} metadata`}
+          >
+            <span>
+              Key set <b>{row.key_set ? "Yes" : "No"}</b>
+            </span>
+            {cloudflareSlot && (
+              <span>
+                Account ID set <b>{hasAccount ? "Yes" : "No"}</b>
+              </span>
+            )}
+            {row.generation && (
+              <span className="mono keys-generation">
+                Generation {row.generation}
+              </span>
+            )}
+            {row.updated_at && (
+              <span className="mono keys-updated">
+                Updated {row.updated_at}
+              </span>
+            )}
+          </div>
+        ) : (
+          <p className="help">
+            Slot metadata abhi nahi mila; koi credential value display nahi
+            hoti.
+          </p>
+        )}
+        <label className="field">
+          {configured ? "Replace key" : "Enter key"}
+          <input
+            type="password"
+            value={keyDrafts[id] ?? ""}
+            autoComplete="new-password"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            data-form-type="other"
+            spellCheck={false}
+            disabled={!canWrite}
+            placeholder={
+              cloudflareSlot
+                ? "Optional for Account-ID-only update"
+                : "Write-only value"
+            }
+            onChange={(event) =>
+              setKeyDrafts((current) => ({
+                ...current,
+                [id]: event.target.value,
+              }))
+            }
+          />
+        </label>
+        {cloudflareSlot && (
+          <label className="field">
+            Cloudflare Account ID
+            <input
+              type="password"
+              value={accountDrafts[id] ?? ""}
+              autoComplete="new-password"
+              data-1p-ignore="true"
+              data-lpignore="true"
+              data-form-type="other"
+              spellCheck={false}
+              disabled={!canWrite}
+              placeholder="32-character account ID"
+              inputMode="text"
+              onChange={(event) =>
+                setAccountDrafts((current) => ({
+                  ...current,
+                  [id]: event.target.value,
+                }))
+              }
+            />
+          </label>
+        )}
+        <div className="form-actions keys-slot-actions">
+          <button
+            className="btn primary"
+            disabled={
+              !canWrite ||
+              (!(keyDrafts[id] ?? "") && !(accountDrafts[id] ?? "").trim())
+            }
+            onClick={() => void saveCredential(definition)}
+          >
+            <Save size={14} /> Save slot
+          </button>
+          <button
+            className="btn secondary danger-action"
+            disabled={!canWrite}
+            onClick={() => void deleteCredential(definition)}
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+        </div>
+      </article>
+    );
+  }
   return (
     <div className="page-module keys-settings">
       <div className="toolbar">
@@ -482,8 +648,21 @@ export default function KeysSettings({ active, online, onNotice }: Props) {
               dobara fetch ya reveal nahi hoti. Untouched phone keys retain
               rahti hain; Delete se purani local slot bhi clear hogi.
             </p>
+            <div className="keys-open-toolbar">
+              <span className="help">
+                Provider par tap karo · uske saare slots ek saath khulenge aur
+                khule rahenge.
+              </span>
+              <button
+                type="button"
+                className="text-btn"
+                onClick={() => rememberOpen(allOpen ? [] : allProviderKeys)}
+              >
+                {allOpen ? "Sab band karo" : "Sab kholo"}
+              </button>
+            </div>
             <div className="keys-groups">
-              {groupedSlots.map(([group, definitions]) => (
+              {groupedSlots.map(([group, providers]) => (
                 <section className="keys-group" key={group}>
                   <div className="keys-group-head">
                     <h3>{group}</h3>
@@ -497,131 +676,61 @@ export default function KeysSettings({ active, online, onNotice }: Props) {
                     )}
                     {group === "News Groq" && <Badge>News scope</Badge>}
                   </div>
-                  <div className="keys-slot-grid">
-                    {definitions.map((definition) => {
-                      const id = slotKey(
-                        definition.scope,
-                        definition.provider,
-                        definition.slot,
-                      );
-                      const row = metadataFor(metadata, definition);
-                      const configured = !!row?.key_set;
-                      const cloudflareSlot =
-                        definition.provider === "cloudflare";
-                      const hasAccount = !!row?.account_id_set;
+                  <div className="keys-provider-list">
+                    {providers.map((provider) => {
+                      const open = openProviders.includes(provider.key);
+                      const setCount = provider.definitions.filter(
+                        (definition) =>
+                          !!metadataFor(metadata, definition)?.key_set,
+                      ).length;
+                      const total = provider.definitions.length;
+                      const tone =
+                        setCount === total
+                          ? "good"
+                          : setCount > 0
+                            ? "warn"
+                            : "muted";
+                      const panelId = `keys-panel-${provider.key.replace(":", "-")}`;
                       return (
-                        <article className="keys-slot-card" key={id}>
-                          <div className="keys-slot-head">
-                            <div>
-                              <h4>{definition.label}</h4>
-                              <p className="mono">
-                                {definition.scope} / {definition.provider} /{" "}
-                                {definition.slot}
-                              </p>
-                            </div>
-                            <Badge tone={configured ? "good" : "muted"}>
-                              {configured ? "Configured" : "Missing"}
+                        <div
+                          className={`keys-provider${open ? " open" : ""}`}
+                          key={provider.key}
+                        >
+                          <button
+                            type="button"
+                            className="keys-provider-head"
+                            aria-expanded={open}
+                            aria-controls={panelId}
+                            onClick={() => toggleProvider(provider.key)}
+                          >
+                            <span
+                              className={`provider-avatar ${provider.definitions[0].provider}`}
+                              aria-hidden="true"
+                            >
+                              {provider.name[0]}
+                            </span>
+                            <span className="keys-provider-title">
+                              <b>{provider.name}</b>
+                              <small>
+                                {total === 1
+                                  ? "1 slot"
+                                  : `${total} slots · ek tap mein sab`}
+                              </small>
+                            </span>
+                            <Badge tone={tone}>
+                              {setCount}/{total} set
                             </Badge>
-                          </div>
-                          {row ? (
-                            <div
-                              className="keys-meta"
-                              aria-label={`${definition.label} metadata`}
-                            >
-                              <span>
-                                Key set <b>{row.key_set ? "Yes" : "No"}</b>
-                              </span>
-                              {cloudflareSlot && (
-                                <span>
-                                  Account ID set{" "}
-                                  <b>{hasAccount ? "Yes" : "No"}</b>
-                                </span>
-                              )}
-                              {row.generation && (
-                                <span className="mono keys-generation">
-                                  Generation {row.generation}
-                                </span>
-                              )}
-                              {row.updated_at && (
-                                <span className="mono keys-updated">
-                                  Updated {row.updated_at}
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <p className="help">
-                              Slot metadata abhi nahi mila; koi credential value
-                              display nahi hoti.
-                            </p>
-                          )}
-                          <label className="field">
-                            {configured ? "Replace key" : "Enter key"}
-                            <input
-                              type="password"
-                              value={keyDrafts[id] ?? ""}
-                              autoComplete="new-password"
-                              data-1p-ignore="true"
-                              data-lpignore="true"
-                              data-form-type="other"
-                              spellCheck={false}
-                              disabled={!canWrite}
-                              placeholder={
-                                cloudflareSlot
-                                  ? "Optional for Account-ID-only update"
-                                  : "Write-only value"
-                              }
-                              onChange={(event) =>
-                                setKeyDrafts((current) => ({
-                                  ...current,
-                                  [id]: event.target.value,
-                                }))
-                              }
+                            <ChevronDown
+                              size={17}
+                              className="keys-provider-chevron"
                             />
-                          </label>
-                          {cloudflareSlot && (
-                            <label className="field">
-                              Cloudflare Account ID
-                              <input
-                                type="password"
-                                value={accountDrafts[id] ?? ""}
-                                autoComplete="new-password"
-                                data-1p-ignore="true"
-                                data-lpignore="true"
-                                data-form-type="other"
-                                spellCheck={false}
-                                disabled={!canWrite}
-                                placeholder="32-character account ID"
-                                inputMode="text"
-                                onChange={(event) =>
-                                  setAccountDrafts((current) => ({
-                                    ...current,
-                                    [id]: event.target.value,
-                                  }))
-                                }
-                              />
-                            </label>
+                          </button>
+                          {open && (
+                            <div className="keys-slot-grid" id={panelId}>
+                              {provider.definitions.map(renderSlot)}
+                            </div>
                           )}
-                          <div className="form-actions keys-slot-actions">
-                            <button
-                              className="btn primary"
-                              disabled={
-                                !canWrite ||
-                                (!(keyDrafts[id] ?? "") &&
-                                  !(accountDrafts[id] ?? "").trim())
-                              }
-                              onClick={() => void saveCredential(definition)}
-                            >
-                              <Save size={14} /> Save slot
-                            </button>
-                            <button
-                              className="btn secondary danger-action"
-                              disabled={!canWrite}
-                              onClick={() => void deleteCredential(definition)}
-                            >
-                              <Trash2 size={14} /> Delete
-                            </button>
-                          </div>
-                        </article>
+                        </div>
                       );
                     })}
                   </div>

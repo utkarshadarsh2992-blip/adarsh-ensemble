@@ -456,11 +456,13 @@ const Voice = (() => {
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
     if (opts.wakeWord === true) {
+      /* Hey Adarsh: Google Live first; if Live cannot start, the normal listen -> answer -> speak loop answers. */
       if (Live.native() && startLive()) return;
       wakeLive = false;
       if (tagEl) tagEl.textContent = tagText();
-      toast('Google Live did not start; tap Talk and try again');
-      return; // never silently switch a wake trigger to generic speech recognition
+      if (STT.supported()) { caption('', 'Haan Sir, bolo — main sun raha hoon.'); listen(); }
+      else toast('Voice input is phone par available nahi; type karke poochho');
+      return;
     }
     if (S.settings.adarshLive && Live.native()) { if (startLive()) return; }   // the saved Live switch retains its normal fallback
     if (opts.listen && STT.supported()) listen();
@@ -507,10 +509,10 @@ const Voice = (() => {
       onError: (m) => {
         if (!active(token)) return;
         liveOn = false;
-        caption('', holdOnLiveFailure ? 'Adarsh Live: ' + m + ' — Talk tap karke dobara koshish karo.' : 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
+        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
-        if (holdOnLiveFailure) setState('idle');
-        else setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
+        /* a wake trigger also falls back, so "Hey Adarsh" always ends in a listening voice screen */
+        setTimeout(() => { if (active(token)) { if (holdOnLiveFailure) { wakeLive = false; if (tagEl) tagEl.textContent = tagText(); } setState('idle'); listen(); } }, 900);
       },
       onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
     });
