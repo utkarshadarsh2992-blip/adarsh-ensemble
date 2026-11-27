@@ -25,7 +25,7 @@ Numeric email code ke liye **Authentication → Email Templates → Magic Link**
 
 ## Controller aur ADARSH pairing
 
-Owner login ke baad **Devices & changes → Pair device** se short-lived one-time code banao. Updated ADARSH app mein **Settings → Controller** par code enter karke sync karo. Pairing token native encrypted storage mein rahega; provider keys PWA mein nahi jayengi.
+Owner login ke baad **Devices & changes → Pair device** se short-lived one-time code banao. Updated ADARSH app mein **Settings → Controller** par code enter karke sync karo. Pairing token native encrypted storage mein rahega. Provider keys aur News/Firebase setup secrets ab dedicated **Keys & settings** tab se owner-only write-only actions ke zariye manage honge; values browser/backend response mein dobara nahi dikhengi. Native encrypted credential delivery aur naya credentials API parent-owned integration hai, isliye purani hosted PWA mein settings backend unavailable dikh sakta hai jab tak woh integration publish na ho.
 
 **Android integration source mein hai, lekin purana installed APK ise nahi jaanta.** Is kaam mein APK/Gradle build nahi hua. Updated app ki ek initial release ke baad compatible remote config changes ke liye agla APK rebuild zaroori nahi.
 

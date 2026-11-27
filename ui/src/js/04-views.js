@@ -171,22 +171,21 @@ const App = (() => {
       swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
       swItem('search', 'Research sources', '', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
-      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet)));
+      navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet),
+      swItem('mic', 'Hey Adarsh', wakeWordSummary(), () => WakeWord.status().enabled, v => {
+        const state = WakeWord.setEnabled(v);
+        toast(state.message || (v ? 'Hey Adarsh on' : 'Hey Adarsh off'));
+        redraw();
+      })));
     st.append(label('Learning'), h('div', { class: 'grp' },
       navItem('sparkle', 'Standard style', Learn.styleName(), () => Learn.styleSheet(redraw)),
       swItem('ask', 'Check questions', '', () => S.settings.checks !== false, v => { S.settings.checks = v; toast(v ? 'Check questions on' : 'Check questions off · naye shabd phir bhi save honge'); }),
       navItem('book', 'Seekhe shabd', (S.vocab || []).length + ' shabd', () => Learn.vocabSheet())));
     st.append(label('Goals & briefing'), h('div', { class: 'grp' },
       navItem('target', 'Goals', ((n, m) => n + (n === 1 ? ' goal' : ' goals') + ' · ' + m + (m === 1 ? ' project' : ' projects'))(Mission.goals().length, Mission.projects().length), () => show('goals')),
-      swItem('moon', 'Raat ki briefing', '', () => S.settings.briefingOn !== false, v => { Briefing.setOn(v); redraw(); }),
-      navItem('bell', 'Briefing ka time', Briefing.status(), () => Briefing.timeSheet(redraw)),
       navItem('shield', 'Briefing privacy', S.settings.briefingConsent ? 'Allowed' : 'Not set', () => Briefing.privacySheet(() => redraw()))));
     st.append(label('News'), h('div', { class: 'grp' },
-      navItem('globe', 'News dashboard', News.summary(), () => show('news')),
-      navItem('link', 'News setup', '', () => News.setupSheet(redraw)),
-      swItem('moon', 'Briefing mein news', '', () => S.settings.newsBriefing !== false, v => { S.settings.newsBriefing = v; toast(v ? 'Briefing mein news on' : 'Briefing mein news off'); }),
-      swItem('send', 'Briefing ki copy Telegram par', '', () => S.settings.briefingTelegram !== false, v => { S.settings.briefingTelegram = v; toast(v ? 'Telegram copy on' : 'Telegram copy off'); }),
-      navItem('bars', 'News AI budget', '', () => News.budgetSheet(redraw))));
+      navItem('globe', 'News dashboard', News.summary(), () => show('news'))));
     st.append(label('System'), h('div', { class: 'grp' },
       navItem('refresh', 'App updates', '', () => MobileUpdates.open())));
     st.append(label('Alerts'), h('div', { class: 'grp' },
@@ -204,7 +203,6 @@ const App = (() => {
     st.append(label('Security'), h('div', { class: 'grp' },
       navItem('lock', 'App lock (PIN)', S.lock ? 'On' : 'Off', () => Lock.manage(redraw)),
       S.lock ? swItem('shield', 'App chhupne par lock', '30 s', () => S.settings.lockOnHide, v => { S.settings.lockOnHide = v; }) : null,
-      window.AdarshKeys ? navItem('lock', 'API keys', keysSummary(), keysSheet) : null,
       window.AdarshNative && window.ADARSH_BACKEND && window.ADARSH_BACKEND.controllerStatus
         ? navItem('server', 'ADARSH Control Center', controllerSummary(), controllerSheet) : null,
       navItem('server', 'Connection', Backend.isNative() ? 'On-device' : Backend.isDemo() ? 'Demo' : (S.conn.url || 'Server'), connSheet)));
@@ -218,6 +216,12 @@ const App = (() => {
     if (build) st.append(h('div', { class: 'buildline' }, 'ADARSH v' + build));
 
   };
+  function wakeWordSummary() {
+    const s = WakeWord.status();
+    if (s.state === 'unsupported' || s.supported === false) return 'Is device par on-device wake recognition available nahi';
+    if (s.active) return 'On · phone par sun raha hai';
+    return s.enabled ? (s.message || 'On · permission/setup check') : 'Off';
+  }
   function nameSheet() {
     sheet({ title: 'Your name', build(b, close) {
       const i = h('input', { type: 'text', value: S.settings.name || '', 'aria-label': 'Name' });
@@ -421,76 +425,6 @@ const App = (() => {
       group('Depth', 'depth', 'normal', [['simple', 'Simple'], ['normal', 'Normal'], ['detailed', 'Detailed']],
         '');
     } });
-  }
-  function keysSummary() {
-    const K = window.AdarshKeys, st = K.status(); const ok = id => !!(st[id] && st[id].set);
-    /* a Cloudflare slot counts when it has a token and an Account ID (its own, or slot 1's) */
-    const slotOk = (g, n) => ok(K.slotId(g.base, n)) && (!g.idBase || ok(K.slotId(g.idBase, n)) || ok(g.idBase));
-    let providers = 0, keys = 0;
-    (K.groups || []).forEach(g => { const c = [1, 2, 3].filter(n => slotOk(g, n)).length; keys += c; if (c) providers++; });
-    return providers ? providers + '/5 providers · ' + keys + ' keys' : 'No keys';
-  }
-  function keysSheet() {
-    // Save / Delete keep the sheet open: it redraws in place (same open groups, same scroll), so several keys can be
-    // saved one after another without going back each time.
-    sheet({ title: 'API keys', tall: true, build(b) { render(true); function render(first) {
-      const K = window.AdarshKeys, st = K.status();
-      if (first && st._notice) toast(st._notice);
-      const keepOpen = new Set([...b.querySelectorAll('details.keygrp')].filter(d => d.open).map(d => d.getAttribute('data-g')));
-      const scrollers = [b, b.parentElement].filter(Boolean).map(el => [el, el.scrollTop]);
-      b.textContent = '';
-      b.append(h('p', { class: 'muted' }, 'Encrypted on this phone · 3 keys per provider, 1 → 2 → 3'));
-      const done = (r, msg) => { if (r && r.ok) { toast(msg); render(false); if (view === 'settings') build('settings'); } else toast((r && r.error) || 'Failed'); };
-      const field = (id, label, plain) => {
-        const cur = st[id] || {};
-        return h('input', { type: plain ? 'text' : 'password', placeholder: cur.set ? label + ': saved (' + cur.hint + '). Paste to replace' : 'Paste ' + label, 'aria-label': label, autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
-      };
-      (K.groups || []).forEach(g => {
-        const anySet = [1, 2, 3].some(n => (st[K.slotId(g.base, n)] || {}).set);
-        const open = first ? (anySet || g.name === 'Groq') : keepOpen.has(g.name);
-        const box = h('details', { class: 'keygrp', 'data-g': g.name, open: open ? '' : null },
-          h('summary', { class: 'l' }, g.name + ' · ' + [1, 2, 3].filter(n => (st[K.slotId(g.base, n)] || {}).set).length + '/3'));
-        [1, 2, 3].forEach(n => {
-          const keyId = K.slotId(g.base, n), idId = g.idBase ? K.slotId(g.idBase, n) : null;
-          const keyIn = field(keyId, g.name + (g.idBase ? ' token ' : ' key ') + n, false);
-          const idIn = idId ? field(idId, g.name + ' Account ID ' + n, true) : null;
-          const isSet = (st[keyId] || {}).set || (idId && (st[idId] || {}).set);
-          const kids = [h('label', { class: 'l' }, 'Key ' + n), keyIn];
-          if (idIn) kids.push(idIn);
-          kids.push(h('div', { class: 'frow' },
-              h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => {
-                const v = keyIn.value.trim(), acc = idIn ? idIn.value.trim() : '';
-                if (!v && !acc) return toast('Key paste karo');
-                let r = { ok: true };
-                if (acc) r = K.save(idId, acc);
-                if (r && r.ok && v) r = K.save(keyId, v);
-                done(r, g.name + ' key ' + n + ' saved');
-              } } }, 'Save'),
-              isSet ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => {
-                let r = (st[keyId] || {}).set ? K.remove(keyId) : { ok: true };
-                if (r && r.ok && idId && (st[idId] || {}).set) r = K.remove(idId);
-                done(r, g.name + ' key ' + n + ' deleted');
-              } } }, 'Delete') : null));
-          box.append(...kids);
-        });
-        b.append(box);
-      });
-      K.providers.filter(p => !p.group).forEach(p => {
-        const cur = st[p.id] || {};
-        const inp = field(p.id, p.name, p.plain);
-        b.append(h('label', { class: 'l' }, p.name + ' · ' + p.url), inp,
-          h('div', { class: 'frow' },
-            h('button', { class: 'btn pri', style: 'flex:1', on: { click: () => { const v = inp.value.trim(); if (!v) return toast('Paste a key first'); done(K.save(p.id, v), p.name + ' key saved'); } } }, 'Save'),
-            cur.set ? h('button', { class: 'btn ghost', style: 'flex:1', on: { click: () => done(K.remove(p.id), p.name + ' key deleted') } }, 'Delete') : null));
-      });
-      const res = h('p', { style: 'white-space:pre-wrap;user-select:text' });
-      b.append(h('button', { class: 'btn ghost', on: { click: async () => {
-        res.textContent = 'Testing…';
-        try { const r = await window.ADARSH_BACKEND.send({ diagnose: true }, {}); res.textContent = diagnosticText(r); }
-        catch (e) { res.textContent = 'Test failed: ' + e.message; }
-      } } }, 'Test connection'), res);
-      scrollers.forEach(([el, y]) => { el.scrollTop = y; });
-    } } });
   }
   /* Android: there is no server to point at. Show what the on-device engine is really doing. */
   const diagnosticText = (r) => {

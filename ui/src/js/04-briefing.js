@@ -12,7 +12,21 @@ const Briefing = (() => {
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const clean = (v, n) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, n) : '');
   const okTime = (t) => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
-  const time = () => (okTime(S.settings.briefingTime) ? S.settings.briefingTime : '21:30');
+  function applyRemoteSettings() {
+    try {
+      const B = window.ADARSH_BACKEND;
+      const remote = B && typeof B.controllerStatus === 'function' ? B.controllerStatus().device_settings : null;
+      if (!remote || typeof remote !== 'object') return false;
+      let changed = false;
+      for (const key of ['briefingOn', 'newsBriefing', 'briefingTelegram']) {
+        if (typeof remote[key] === 'boolean' && S.settings[key] !== remote[key]) { S.settings[key] = remote[key]; changed = true; }
+      }
+      if (okTime(remote.briefingTime) && S.settings.briefingTime !== remote.briefingTime) { S.settings.briefingTime = remote.briefingTime; changed = true; }
+      if (changed) save();
+      return changed;
+    } catch (e) { return false; }
+  }
+  const time = () => { applyRemoteSettings(); return okTime(S.settings.briefingTime) ? S.settings.briefingTime : '21:30'; };
   const N = () => window.AdarshNative;
   /* Before 4 am the night still belongs to the previous day. */
   function base(now = Date.now()) { const d = new Date(now); if (d.getHours() < 4) d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0); return d; }
@@ -175,11 +189,13 @@ const Briefing = (() => {
 
   /* ---------- schedule (Android alarm) + in-app due banner ---------- */
   function sync(ask = false) {
+    applyRemoteSettings();
     const n = N();
     if (!n || !n.briefingSet) return null;
     try { return JSON.parse(n.briefingSet(JSON.stringify({ on: S.settings.briefingOn !== false, time: time(), ask: !!ask }))); } catch (e) { return null; }
   }
   function status() {
+    applyRemoteSettings();
     const on = S.settings.briefingOn !== false;
     if (!on) return 'Band hai';
     const n = N(); let j = null;
@@ -187,20 +203,9 @@ const Briefing = (() => {
     if (!j) return 'Roz ' + time() + ' · app khula ho tab banner';
     return 'Roz ' + time() + ' · notification' + (j.notify === false ? ' (permission off)' : '') + (j.exact === false ? ' · approx time' : '');
   }
-  function timeSheet(onDone) {
-    sheet({ title: 'Briefing ka time', build(b, close) {
-      const inp = h('input', { class: 'pv-input', type: 'time', value: time(), 'aria-label': 'Briefing time' });
-      b.append(h('div', { class: 'pv-form' },
-        h('label', { class: 'pv-field' }, h('span', { class: 'pv-label' }, 'Roz is time par'), inp, h('span', { class: 'pv-hint' }, 'Phone sirf notification dikhata hai (battery bachti hai). Groq call tab hoti hai jab aap briefing kholte ho.')),
-        h('button', { class: 'btn pri', on: { click: () => {
-          if (!okTime(inp.value)) return toast('Time HH:MM chahiye');
-          S.settings.briefingTime = inp.value; S.settings.briefingOn = true; save(); sync(true); close(); toast('Briefing roz ' + inp.value + ' par'); try { News.syncTime(true); } catch (e) {} if (onDone) onDone();
-        } } }, 'Save')));
-    } });
-  }
-  function setOn(v) { S.settings.briefingOn = !!v; save(); sync(!!v); toast(v ? 'Raat ki briefing on · ' + time() : 'Raat ki briefing band'); }
   function locked() { const l = document.getElementById('lock'); return !!(l && !l.hidden); }
   function dueCheck(now = Date.now()) {
+    applyRemoteSettings();
     if (S.settings.briefingOn === false || document.hidden || locked()) return false;
     const [hh, mm] = time().split(':').map(Number), at = new Date(now);
     at.setHours(hh, mm, 0, 0); if (at.getTime() > now) at.setDate(at.getDate() - 1);
@@ -234,5 +239,5 @@ const Briefing = (() => {
     return { briefings: d.briefings.filter(x => x && typeof x === 'object' && Mission.validDate(x.date)).slice(0, 60)
       .map(x => ({ date: x.date, chatId: clean(x.chatId, 200), ts: +x.ts || 0, saved: Math.max(0, Math.min(20, Math.round(+x.saved) || 0)) })) };
   }
-  return { context, request, start, absorb, extras, sync, status, timeSheet, privacySheet, setOn, dueCheck, init, cleanImport, doneToday, time, base, ymd };
+  return { context, request, start, absorb, extras, sync, status, privacySheet, applyRemoteSettings, dueCheck, init, cleanImport, doneToday, time, base, ymd };
 })();

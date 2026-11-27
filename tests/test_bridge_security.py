@@ -52,6 +52,8 @@ def test_page_trust_tracks_the_main_frame_origin_and_page_blocks_frames():
     assert "frame-src 'none'" in dist
 
 
-def test_key_store_reset_is_reported_to_the_page():
+def test_provider_key_entry_bridge_is_removed_from_the_page():
     b = src("AdarshBridge.kt")
-    assert 'keys.takeResetNotice()?.let { o.put("_notice", it) }' in b
+    for method in ("keyStatus", "saveKey", "deleteKey", "newsSet", "fcmSet"):
+        assert f"fun {method}" not in b
+    assert "keys.takeResetNotice" not in b

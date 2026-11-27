@@ -4,6 +4,11 @@ import {
   sanitizeReport, secureRandomBase64Url, sha256Hex, validateConfig, validateName, validateReason,
 } from '../_shared/controller.ts';
 import { newsSettingsSet, newsState } from '../_shared/newsadmin.ts';
+import {
+  credentialsState, deleteCredential, deleteSetup, updateManagedSettings, validateCredentialDelete,
+  validateCredentialWrite, validateDeviceSettings, validateResetTime, validateSetupDelete,
+  validateSetupWrite, writeCredential, writeSetup,
+} from '../_shared/credentials.ts';
 
 function corsHeaders(request: Request): HeadersInit {
   const configured = (Deno.env.get('ALLOWED_ORIGINS') || 'https://adarshctl-pc68aukk.manus.space,http://localhost:5173').split(',').map(x=>x.trim()).filter(Boolean);
@@ -81,6 +86,32 @@ function utcStartDay(): string {
   return date.toISOString().slice(0, 10);
 }
 
+async function forwardNewsOperation(operation: unknown): Promise<Response> {
+  if (typeof operation !== 'string' || !['telegram_link', 'telegram_test', 'fcm_test', 'digest_now'].includes(operation)) fault(400, 'invalid_request');
+  const base = Deno.env.get('SUPABASE_URL')?.trim();
+  const secret = Deno.env.get('APP_SECRET')?.trim();
+  if (!base || !secret || secret.length < 16) fault(503, 'unavailable');
+  let endpoint: URL;
+  try { endpoint = new URL('/functions/v1/news-api', base); } catch { fault(503, 'unavailable'); }
+  if (endpoint.protocol !== 'https:' || endpoint.hostname !== 'yepupldfjtikalfzehvl.supabase.co') fault(503, 'unavailable');
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-app-secret': secret, 'Cache-Control': 'no-store' },
+      body: JSON.stringify({ action: operation }),
+      signal: AbortSignal.timeout(12_000), cache: 'no-store',
+    });
+  } catch { fault(503, 'unavailable'); }
+  const raw = await response.text().catch(() => '');
+  if (raw.length > 1_000_000) fault(503, 'unavailable');
+  let result: unknown;
+  try { result = JSON.parse(raw); } catch { fault(503, 'unavailable'); }
+  if (!isObject(result)) fault(503, 'unavailable');
+  if (!response.ok) fault(response.status === 429 ? 429 : 503, response.status === 429 ? 'rate_limited' : 'unavailable');
+  return jsonResponse(result, 200);
+}
+
 async function getState(service: SupabaseClient, cursorValue: unknown): Promise<Response> {
   const offsets = cursorOffsets(cursorValue);
   const [configResult, devicesResult, usageResult, historyResult] = await Promise.all([
@@ -138,6 +169,44 @@ async function handleAction(request: Request): Promise<Response> {
   if (body.action === 'news_settings') {
     exactKeys(body, ['action', 'settings']);
     return jsonResponse(await newsSettingsSet(service, body.settings), 200);
+  }
+  if (body.action === 'credentials_state') {
+    exactKeys(body, ['action']);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'credentials_set') {
+    const credential = validateCredentialWrite(body);
+    await writeCredential(service, actorId, credential);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'credentials_delete') {
+    const credential = validateCredentialDelete(body);
+    await deleteCredential(service, actorId, credential);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'device_settings_set') {
+    const settings = validateDeviceSettings(body);
+    await updateManagedSettings(service, actorId, settings, null);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'news_key_reset') {
+    const time = validateResetTime(body);
+    await updateManagedSettings(service, actorId, null, time);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'setup_set') {
+    const setup = validateSetupWrite(body);
+    for (const value of setup) await writeSetup(service, actorId, value);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'setup_delete') {
+    const provider = validateSetupDelete(body);
+    await deleteSetup(service, actorId, provider);
+    return jsonResponse(await credentialsState(service), 200);
+  }
+  if (body.action === 'news_operation') {
+    exactKeys(body, ['action', 'operation']);
+    return await forwardNewsOperation(body.operation);
   }
   if (body.action === 'save') {
     exactKeys(body, ['action', 'expected_revision', 'config', 'reason']);

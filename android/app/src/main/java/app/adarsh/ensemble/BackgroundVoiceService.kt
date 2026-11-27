@@ -110,6 +110,7 @@ class BackgroundVoiceService : Service() {
     /** Starts listening. From standby the service is already in the foreground (no background-start limits apply). */
     private fun beginSession(raw: String, requestedEpoch: Long) {
         if (active) return
+        WakeWordService.pause(this, "background_voice")
         live = this
         sessionEpoch = requestedEpoch
         try {
@@ -680,6 +681,7 @@ class BackgroundVoiceService : Service() {
         wakeLock?.let { try { if (it.isHeld) it.release() } catch (_: Exception) {} }
         wakeLock = null
         emitStatus()
+        WakeWordService.resume(this, "background_voice")
         try { ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE) } catch (_: Exception) { try { stopForeground(true) } catch (_: Exception) {} }
         live = null
         standby = false

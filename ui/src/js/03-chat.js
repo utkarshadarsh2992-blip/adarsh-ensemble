@@ -453,8 +453,6 @@ const Chat = (() => {
   }
   function mediaPrompt(kind) {
     if (!Backend.isNative()) return toast('NVIDIA media generation abhi Android app mein available hai.');
-    const keys = window.AdarshKeys && window.AdarshKeys.status ? window.AdarshKeys.status() : {};
-    if (!['NVIDIA_API_KEY', 'NVIDIA_API_KEY_2', 'NVIDIA_API_KEY_3'].some(k => keys[k] && keys[k].set)) return toast('Pehle Settings > API keys mein NVIDIA key save karo.');
     sheet({ title: kind === 'image' ? 'Generate image' : 'Generate video', tall: true, build(b, close) {
       const prompt = h('textarea', { rows: '4', maxlength: '2000', placeholder: kind === 'image' ? 'Describe the image…' : 'Describe the video…', 'aria-label': 'Generation prompt', style: 'width:100%;min-height:110px;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit;resize:vertical' });
       const frames = kind === 'video' ? h('select', { 'aria-label': 'Video duration', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit' },

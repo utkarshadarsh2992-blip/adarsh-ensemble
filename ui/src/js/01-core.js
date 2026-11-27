@@ -125,7 +125,7 @@ const Bus = (() => {
 const KEY = 'adarsh.ui.v3';
 const DEFAULTS = () => ({
   chats: [], cur: null, memories: [], tasks: [], work: [], reminders: [], alarms: [], timers: [], notes: [], missions: [], philosophy: '', vocab: [], learnLog: [], goals: [], projects: [], mission: '', briefings: [],
-  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, research: true, bootAnim: true, adarshLive: false, liveModel: 'auto', stdStyle: '2.9', checks: true, briefingOn: true, briefingTime: '21:30', truthLevel: 'balanced', factCheck: 'auto', newsBriefing: true, defaultMitGoalSeeded: false },
+  settings: { source: 'auto', replyLang: 'auto', depth: 'normal', theme: 'system', font: 'serif', ui4: 1, mode: 'standard', name: 'Adarsh', speak: false, voiceReplies: true, voiceEngine: 'auto', voiceName: 'Orus', deviceVoice: '', think: 'fast', lang: 'hi-IN', rate: 1, bnr: false, bnrFunctionId: '', haptics: true, notif: false, lockOnHide: true, lockAfter: 30, calls: 1, adarshActions: true, webSearch: true, research: true, bootAnim: true, adarshLive: false, wakeWordEnabled: false, liveModel: 'auto', stdStyle: '2.9', checks: true, briefingOn: true, briefingTime: '21:30', truthLevel: 'balanced', factCheck: 'auto', newsBriefing: true, defaultMitGoalSeeded: false },
   lock: null, abilities: {}, conn: { url: '', token: '' }
 });
 const S = DEFAULTS();

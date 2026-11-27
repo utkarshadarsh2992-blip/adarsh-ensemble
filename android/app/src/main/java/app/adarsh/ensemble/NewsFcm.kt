@@ -127,6 +127,11 @@ object NewsFcm {
             val oldSenderId = p.getString("fcm_sender_id", "").orEmpty()
             val changed = oldApiKey != values.getValue("apiKey") || oldAppId != values.getValue("appId") ||
                 oldProjectId != values.getValue("projectId") || oldSenderId != values.getValue("senderId")
+            if (!changed) {
+                lastError = ""
+                if (!initialized) pool.execute { runUnitGuarded { ensureInitInternal(ctx.applicationContext) } }
+                return JSONObject().put("ok", true).toString()
+            }
             val oldUrl = p.getString("news_url", "").orEmpty()
             val oldSecret = p.getString("news_secret", "").orEmpty()
             val oldDevice = p.getString("device_id", "").orEmpty()
@@ -135,10 +140,8 @@ object NewsFcm {
                 .putString("fcm_project_id", values.getValue("projectId"))
                 .putString("fcm_sender_id", values.getValue("senderId"))
                 .remove("fcm_token").putBoolean("registered", false).apply()
-            if (changed) {
-                configGeneration++
-                scheduleUnregister(ctx, oldUrl, oldSecret, oldDevice)
-            }
+            configGeneration++
+            scheduleUnregister(ctx, oldUrl, oldSecret, oldDevice)
             lastError = ""
             pool.execute { runUnitGuarded { ensureInitInternal(ctx.applicationContext) } }
             JSONObject().put("ok", true).toString()

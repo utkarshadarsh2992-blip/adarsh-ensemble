@@ -159,14 +159,18 @@ answer's prompt as "held".
 
 ## Providers
 
-**3 API keys per provider, 15 in total** (Settings > API keys, one group per provider): Groq 1-3, OpenRouter 1-3, Gemini 1-3,
-NVIDIA NIM 1-3, Cloudflare 1-3 (each Cloudflare slot = API token + Account ID; an empty Account ID in slot 2/3 uses slot 1's).
-Env names: `GROQ_API_KEY`, `GROQ_API_KEY_2`, `GROQ_API_KEY_3` (same pattern for `OPENROUTER_API_KEY`, `GEMINI_API_KEY`,
-`NVIDIA_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`). A model is tried with key 1; when that key hits its limit (429),
-needs credits (402), is rejected (401/403) or the server is down (5xx / network), the same model is tried with key 2, then key 3,
-and only then the next model in the chain. Every key has its own cooldown and daily counters (`gpt-oss-120b#2` in Model calls).
-Voice (Gemini / Groq TTS) and NVIDIA FLUX / Cosmos media rotate over their provider keys the same way; NVIDIA noise removal uses the first NVIDIA key that is set.
-Keys are stored encrypted on the phone only (Android Keystore); the repo is public, so keys are never put in GitHub Secrets or the APK.
+Provider credentials are managed in the authenticated ADARSH Controller PWA, not entered in Android Settings. The Controller stores
+credentials through Supabase Vault-backed operations; a paired, authorized device receives only the native credential bundle it needs,
+and Android keeps applied credentials in encrypted local storage. Secret values are not exposed to the ordinary WebView or committed
+to this public repository. Cloudflare credentials include the Account ID for each configured token slot.
+
+The regular app-provider slots remain separate from the News provider slots. News has two scoped Groq keys and two scoped Tavily keys;
+on rate/credit exhaustion or provider failure it fails over to the alternate News key and suppresses the exhausted key until the next
+reset. The reset defaults to 05:00 Asia/Kolkata and can be changed in Controller. News Tavily is never a fallback for app answer or
+research Tavily, and app Tavily is never used as a News credential. Do not put provider keys in GitHub source or the APK.
+
+For regular model routing, a model may retry with another configured key before proceeding to the next model in its chain. Voice
+(Gemini / Groq TTS) and NVIDIA FLUX / Cosmos media use their provider credentials; NVIDIA noise removal uses the first NVIDIA key that is set.
 
 Groq, OpenRouter, Gemini (core: har role ki chain me teeno) aur optional Cloudflare Workers AI, NVIDIA NIM (extra fallback; key na ho to skip). Cloudflare ko `CLOUDFLARE_API_TOKEN` aur `CLOUDFLARE_ACCOUNT_ID` dono chahiye. `bge-m3` embedding model hai, chat me use nahi hota. Cloudflare ke neurons token nahi hote, isliye local cap nahi: asli 429 aane par chain aage badhti hai.
 Model IDs jo docs me confirm nahi hue (NVIDIA ke teen, OpenRouter ka inkling, Cloudflare ka gemma) best guess hain. Galat ID par 404 aata hai, model 6 ghante ke liye skip hota hai aur agla model jawab deta hai. Android me Test connection sahi ID suggest karta hai.

@@ -46,6 +46,7 @@ def test_routing_follows_the_question():
     assert plain[:2] == ["arxiv", "openalex"] or set(plain) == {"arxiv", "openalex"}
     # Current news/company claims must not inherit generic OpenAlex/arXiv papers as if they were evidence.
     assert sources.route("Khabar samjhao <news> Alibaba share sale aur AI budget claim </news>") == []
+    assert sources.route("Explain this <pattern>cross-country news pattern</pattern>") == []
     assert sources.route("Fact-check this share sale: Alibaba sold ZTO shares") == []
     assert sources.route("Alibaba sold 25 million ZTO Express shares") == []
     assert "arxiv" in sources.route("Fact-check this quantum entanglement proof")

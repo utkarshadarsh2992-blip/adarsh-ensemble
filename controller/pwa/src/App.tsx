@@ -19,6 +19,7 @@ import {
   Sun,
   Moon,
   LockKeyhole,
+  KeyRound,
   Check,
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
@@ -35,6 +36,7 @@ import Quality from "./components/Quality";
 import Usage from "./components/Usage";
 import Devices from "./components/Devices";
 import News from "./components/News";
+import KeysSettings from "./components/KeysSettings";
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "models", label: "Model registry", icon: Cpu },
@@ -42,6 +44,7 @@ const tabs = [
   { id: "quality", label: "Quality controls", icon: ShieldCheck },
   { id: "usage", label: "Usage", icon: BarChart3 },
   { id: "news", label: "News & alerts", icon: Newspaper },
+  { id: "settings", label: "Keys & settings", icon: KeyRound },
   { id: "devices", label: "Devices & changes", icon: Smartphone },
 ];
 const local = bundled as Config;
@@ -252,9 +255,9 @@ export default function App() {
             <LockKeyhole size={17} />
             <h3>Owner-only control</h3>
             <p>
-              API keys app mein.
+              Owner-managed keys.
               <br />
-              Config cloud mein.
+              Write-only · Vault-backed.
             </p>
             <span className="mono">ENCRYPTED DEVICE LINK</span>
           </div>
@@ -390,6 +393,12 @@ export default function App() {
             ) : (
               <Locked onLogin={() => setLogin(true)} />
             ))}
+          {tab === "settings" &&
+            (session ? (
+              <KeysSettings active online={online} onNotice={setNotice} />
+            ) : (
+              <Locked onLogin={() => setLogin(true)} />
+            ))}
           {tab === "devices" && (
             <Devices
               state={state}
@@ -402,7 +411,7 @@ export default function App() {
             <span>
               ADARSH <span className="orange">/</span> CONTROL CENTER
             </span>
-            <span className="mono">CONFIG V1 · NO PROVIDER KEYS</span>
+            <span className="mono">CONFIG V1 · WRITE-ONLY OWNER KEYS</span>
           </footer>
         </main>
         {dirty && (

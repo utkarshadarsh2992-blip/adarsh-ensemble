@@ -82,6 +82,10 @@
             android:name=".BackgroundVoiceService"
             android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
+        <service
+            android:name=".WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <!-- Periodic public-release check that only posts a notification; never downloads or installs. -->
         <service
             android:name=".UpdateCheckJob"

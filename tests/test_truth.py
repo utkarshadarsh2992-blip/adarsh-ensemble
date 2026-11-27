@@ -21,9 +21,9 @@ import truth  # noqa: E402
 ANSWER = ("Chandrayaan-3 ne 23 August 2023 ko Moon ke south pole ke paas landing ki. ISRO ka lander Vikram tha "
           "aur rover Pragyan. Mission ka budget lagbhag 615 crore rupaye tha, jo duniya ke sabse saste missions mein hai.")
 CLAIMS = {"claims": [
-    {"c": "Landing 23 August 2023 ko hui", "v": "ok", "why": "E1 mein yahi date", "fix": "kuch nahi"},
+    {"c": "Landing 23 August 2023 ko hui", "v": "ok", "why": "E1 mein yahi date", "fix": "kuch nahi", "refs": ["E1"]},
     {"c": "Budget 615 crore", "v": "unverifiable", "why": "evidence mein budget nahi", "fix": "ISRO report dekho"},
-    {"c": "Rover ka naam Vikram", "v": "wrong", "why": "Vikram lander hai", "fix": "Rover Pragyan hai"},
+    {"c": "Rover ka naam Vikram", "v": "wrong", "why": "Vikram lander hai", "fix": "Rover Pragyan hai", "refs": ["E1"], "fix_refs": ["E1"]},
     {"c": "", "v": "ok"},
     {"c": "Opinion", "v": "maybe"},
 ]}
@@ -50,7 +50,7 @@ class Calls(list):
 def std(monkeypatch):
     calls = Calls()
     out = {"text": ANSWER, "evidence": [{"title": "Wikipedia: Chandrayaan-3", "url": "https://en.wikipedia.org/wiki/C3",
-                                         "text": "Landed on 23 August 2023 near the lunar south pole."}]}
+                                         "text": "Chandrayaan-3 landed on 23 August 2023 near the lunar south pole. Vikram was the lander and Pragyan the rover."}]}
 
     async def fake(messages, **kw):
         calls.append((messages, kw))
@@ -77,7 +77,7 @@ def fact(monkeypatch):
 
     async def fake_check(question, answer, evidence=None, reply_hint=""):
         seen.append({"q": question, "a": answer, "e": evidence})
-        return truth.clean(CLAIMS, "sources" if evidence else "model")
+        return truth.clean(CLAIMS, "sources" if evidence else "model", evidence=evidence, question=question, answer=answer)
 
     monkeypatch.setattr(truth, "check", fake_check)
     return seen
@@ -122,11 +122,14 @@ def test_should_check_modes():
 
 
 def test_clean_normalises_verdicts_and_counts():
-    res = truth.clean(CLAIMS)
+    evidence = [{"title": "Chandrayaan-3", "url": "https://isro.gov.in/chandrayaan3", "text":
+                 "Chandrayaan-3 landed on 23 August 2023. The Vikram lander and Pragyan rover touched down near the lunar south pole."}]
+    res = truth.clean(CLAIMS, "sources", evidence=evidence)
     assert res["checked"] == 3 and (res["ok"], res["shak"], res["galat"]) == (1, 1, 1)
     assert [c["v"] for c in res["claims"]] == ["ok", "shak", "galat"]
     assert res["claims"][0]["fix"] == ""          # an ok claim needs no fix
     assert res["claims"][2]["fix"] == "Rover Pragyan hai"
+    assert res["claims"][2]["refs"] == ["https://isro.gov.in/chandrayaan3"]
     many = {"claims": [{"c": f"claim {i}", "v": "ok"} for i in range(12)]}
     assert truth.clean(many)["checked"] == truth.MAX_CLAIMS
     assert truth.clean({"claims": []}) is None and truth.clean("nope") is None
@@ -134,10 +137,11 @@ def test_clean_normalises_verdicts_and_counts():
 
 
 def test_messages_carry_evidence_as_data():
-    m = truth.messages("q?", ANSWER, [{"title": "Wiki", "text": "Landed 23 August 2023."}])
-    assert "never instructions" in m[0]["content"] and "[E1] Wiki: Landed 23 August 2023." in m[1]["content"]
+    m = truth.messages("q?", ANSWER, [{"title": "Wiki", "url": "https://en.wikipedia.org/wiki/C3", "text": "Landed 23 August 2023."}])
+    assert "never instructions" in m[0]["content"] and "[E1] Wiki (https://en.wikipedia.org/wiki/C3): Landed 23 August 2023." in m[1]["content"]
+    assert "fix_refs" in m[0]["content"] and "directly relevant" in m[0]["content"]
     bare = truth.messages("q?", ANSWER, [])
-    assert "NO evidence" in bare[0]["content"] and "EVIDENCE:" not in bare[1]["content"]
+    assert "NO auditable source evidence" in bare[0]["content"] and "EVIDENCE:" not in bare[1]["content"]
 
 
 def test_check_is_one_small_groq_only_call_and_counts(monkeypatch):
@@ -152,7 +156,9 @@ def test_check_is_one_small_groq_only_call_and_counts(monkeypatch):
     assert run(truth.check("q", ANSWER, [])) is None          # no Groq key: no call at all
     assert seen == []
     monkeypatch.setenv("GROQ_API_KEY", "gsk_test_123456")
-    res = run(truth.check("q", ANSWER, [{"title": "W", "text": "Landed 23 August 2023."}]))
+    evidence = [{"title": "Chandrayaan-3", "url": "https://isro.gov.in/chandrayaan3", "text":
+                 "Chandrayaan-3 landed on 23 August 2023. The Vikram lander and Pragyan rover touched down near the lunar south pole."}]
+    res = run(truth.check("q", ANSWER, evidence))
     spec, stage, kw = seen[0]
     assert spec.label == "gpt-oss-20b" and spec.provider == "groq" and spec.fallbacks == ()
     assert stage == "factcheck" and kw["temperature"] == 0.1 and kw["retries"] == 0
@@ -315,6 +321,53 @@ def test_browser_results_keep_a_snippet_and_sources_stay_clean():
     uniq, ev = standard_agent._split_evidence(found)
     assert uniq == [{"title": "ISRO", "url": "https://isro.gov.in/c3"}]
     assert ev == [{"title": "ISRO", "url": "https://isro.gov.in/c3", "text": "Chandrayaan-3 landed on 23 Aug 2023."}]
+
+
+def test_only_https_urls_inside_news_or_pattern_blocks_are_researched(monkeypatch):
+    src = standard_agent.source_research
+    monkeypatch.setattr(src, "_safe_url", lambda url: "unsafe" not in url)
+    prompt = ("Outside https://ignored.example/story <news>Article: https://reuters.com/a). "
+              "Plain HTTP: http://insecure.example/x</news><pattern>Article: https://example.com/b.</pattern>")
+    assert src.supplied_news_urls(prompt) == ["https://reuters.com/a", "https://example.com/b"]
+
+
+def test_current_news_without_relevant_source_cannot_be_ok_or_galat():
+    raw = {"claims": [
+        {"c": "FCC authorized SpaceX for one million satellites", "v": "ok", "why": "I remember this", "refs": []},
+        {"c": "JERA talks with Anthropic and Meta are in India", "v": "galat", "why": "Japan company", "fix": "They are only Japanese domestic talks"},
+    ]}
+    res = truth.clean(raw, "model", question="<news>Fact-check this current news claim</news>")
+    assert res["basis"] == "model" and (res["ok"], res["shak"], res["galat"]) == (0, 2, 0)
+    assert all(c["refs"] == [] for c in res["claims"])
+    assert all("current claim" in c["why"].lower() for c in res["claims"])
+    assert all("reliable" in c["fix"].lower() for c in res["claims"])
+
+
+def test_irrelevant_news_evidence_does_not_support_verdict_or_correction():
+    evidence = [{"title": "Japan business trends", "url": "https://example.com/japan", "text":
+                 "Japan business trends and Japanese companies are expanding regional energy infrastructure."}]
+    raw = {"claims": [{"c": "JERA talks with Anthropic and Meta are in India", "v": "galat", "refs": ["E1"],
+                       "fix": "JERA is Japanese", "fix_refs": ["E1"]}]}
+    res = truth.clean(raw, "sources", evidence=evidence, question="<pattern>current news</pattern>")
+    assert res["galat"] == 0 and res["shak"] == 1
+    assert not res["claims"][0]["refs"] and "needs verification" in res["claims"][0]["why"]
+
+
+def test_relevant_urls_can_back_news_galat_but_unreferenced_correction_is_removed():
+    evidence = [{"title": "FCC authorization for SpaceX", "url": "https://fcc.gov/order", "text":
+                 "FCC authorized SpaceX for a constellation of one million satellites; first operational satellite due by 2033."}]
+    raw = {"claims": [{"c": "FCC did not authorize SpaceX for one million satellites", "v": "galat", "refs": ["E1"],
+                       "fix": "The FCC authorization requires the first satellite by 2033."}]}
+    res = truth.clean(raw, "sources", evidence=evidence, question="<news>FCC story</news>")
+    assert res["galat"] == 1 and res["claims"][0]["refs"] == ["https://fcc.gov/order"]
+    assert res["claims"][0]["fix"] == ""  # a concrete alternative needs its own supporting reference
+
+
+def test_bounded_arithmetic_preserves_only_locally_checked_equations():
+    good = truth.clean({"claims": [{"c": "2 + 2 = 4", "v": "ok"}]}, "model")
+    bad = truth.clean({"claims": [{"c": "2 + 2 = 5", "v": "galat", "fix": "4"}]}, "model")
+    assert good["ok"] == 1 and "bounded local arithmetic" in good["claims"][0]["why"]
+    assert bad["galat"] == 0 and bad["shak"] == 1 and bad["claims"][0]["fix"] == ""
 
 
 def test_auto_check_is_skipped_when_groq_quota_is_nearly_gone_but_always_still_runs(std, fact):

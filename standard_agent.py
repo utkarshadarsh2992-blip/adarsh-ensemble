@@ -26,6 +26,7 @@ import httpx
 import config
 import health
 import research
+import sources as source_research
 from llm import _est_tokens, _json, _rate_info, _sem
 
 MODEL_LABEL = "gpt-oss-120b"
@@ -163,7 +164,7 @@ def _split_evidence(sources: list[dict]) -> tuple[list[dict], list[dict]]:
 
 async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, tools: bool = True, web: bool = True,
                       max_tokens: int = 1500, effort: str = "low", temperature: float = 0.6,
-                      budget: float | None = None) -> dict:
+                      budget: float | None = None, supplied_sources: list[dict] | None = None) -> dict:
     """Run the Groq-only agent. Returns {"text", "used", "searches", "wiki", "sources", "evidence", "secs"};
     evidence = short snippets of what the tools returned (for truth.check);
     raises StandardError when no Groq key could answer. `web=False` keeps Wikipedia but never sends browser_search."""
@@ -177,7 +178,7 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
     deadline = t0 + budget
     msgs = [dict(m) for m in messages]
     reasons: dict[str, str] = {}
-    searches, wiki_queries, sources = 0, [], []
+    searches, wiki_queries, sources = 0, [], list(supplied_sources or [])
     tool_sets = TOOL_SETS if web else TOOL_SETS_NO_WEB
     tool_idx = 0 if tools else len(tool_sets) - 1
     rounds, forced = 0, False
@@ -373,12 +374,24 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
 async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
                  effort: str = "low", temperature: float = 0.6, budget: float | None = None) -> dict:
     """Try the configured Standard chain in order; every member is validated as Groq-only."""
+    turn_messages = [dict(m) for m in messages]
+    user_text = "\n".join(str(m.get("content") or "") for m in turn_messages if m.get("role") == "user")
+    supplied_sources = await source_research.fetch_supplied_news_sources(user_text, limit=3) if tools else []
+    if supplied_sources:
+        block = source_research.block(supplied_sources)
+        for i in range(len(turn_messages) - 1, -1, -1):
+            if turn_messages[i].get("role") == "user":
+                turn_messages[i]["content"] = str(turn_messages[i].get("content") or "") + block
+                break
+        else:
+            turn_messages.append({"role": "user", "content": block})
     failures = []
     labels = _standard_chain_labels() or (MODEL_LABEL,)
     for label in labels:
         try:
-            return await _answer_one(messages, model_label=label, tools=tools, web=web, max_tokens=max_tokens,
-                                     effort=effort, temperature=temperature, budget=budget)
+            return await _answer_one(turn_messages, model_label=label, tools=tools, web=web, max_tokens=max_tokens,
+                                     effort=effort, temperature=temperature, budget=budget,
+                                     supplied_sources=supplied_sources)
         except StandardError as exc:
             failures.append(f"{label}: {str(exc)[:220]}")
     raise StandardError("Standard mode sirf Groq use karta hai. " + "; ".join(failures)[:700])

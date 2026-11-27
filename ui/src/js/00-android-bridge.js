@@ -102,33 +102,10 @@
         const s = JSON.parse(N.status());
         if (!s.ready) return s.error ? { ok: false, label: 'Engine error', error: s.error } : { ok: false, starting: true, label: 'Engine starting…' };
         const p = s.providers || {}, core = ['groq', 'gemini', 'openrouter'].filter(k => p[k]).length;
-        if (!core) return { ok: false, label: 'No API keys', hint: 'Settings > API keys me Groq / Gemini / OpenRouter key daalo.' };
+        if (!core) return { ok: false, label: 'No API keys', hint: 'ADARSH Controller ke Keys & settings mein provider key set karo.' };
         return { ok: true, label: 'On-device engine', providers: p };
       } catch (e) { return { ok: false, starting: true, label: 'Engine starting…' }; }
     }
   };
 
-  /* API keys live in Android Keystore-backed storage. JS only ever sees a short hint, never the key. */
-  /* 3 key slots per provider (15 keys): key 1 is used first; when it hits its limit, needs credits (402), is rejected or
-     the server fails, the engine moves to key 2, then key 3, then the next model. Cloudflare: every slot = token + Account ID. */
-  const slotId = (base, n) => n === 1 ? base : base + '_' + n;
-  const groups = [
-    { name: 'Groq', base: 'GROQ_API_KEY', url: 'console.groq.com/keys' },
-    { name: 'OpenRouter', base: 'OPENROUTER_API_KEY', url: 'openrouter.ai/keys' },
-    { name: 'Gemini', base: 'GEMINI_API_KEY', url: 'aistudio.google.com/apikey' },
-    { name: 'NVIDIA NIM', base: 'NVIDIA_API_KEY', url: 'build.nvidia.com' },
-    { name: 'Cloudflare', base: 'CLOUDFLARE_API_TOKEN', idBase: 'CLOUDFLARE_ACCOUNT_ID', url: 'dash.cloudflare.com/profile/api-tokens (Workers AI) · Account ID: Workers AI page' }
-  ];
-  const providers = [];
-  groups.forEach(g => [1, 2, 3].forEach(n => {
-    providers.push({ id: slotId(g.base, n), name: g.name + ' key ' + n, group: g.name, slot: n, url: g.url });
-    if (g.idBase) providers.push({ id: slotId(g.idBase, n), name: g.name + ' Account ID ' + n, group: g.name, slot: n, url: g.url, plain: true });
-  }));
-  providers.push({ id: 'TAVILY_API_KEY', name: 'Tavily web search (optional)', url: 'app.tavily.com · without it, research uses Wikipedia only' });
-  window.AdarshKeys = {
-    groups, providers, slotId,
-    status() { try { return JSON.parse(N.keyStatus()); } catch (e) { return {}; } },
-    save(id, value) { try { return JSON.parse(N.saveKey(id, value)); } catch (e) { return { ok: false, error: 'Could not save.' }; } },
-    remove(id) { try { return JSON.parse(N.deleteKey(id)); } catch (e) { return { ok: false, error: 'Could not delete.' }; } }
-  };
 })();

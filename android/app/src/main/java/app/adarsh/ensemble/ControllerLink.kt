@@ -34,6 +34,8 @@ class ControllerLink(context: Context) {
     }
     @Volatile private var lastAttemptElapsed = 0L
     @Volatile private var lastAttemptStatus = ""
+    /** Raw Vault values are held in process memory only until Engine applies encrypted native storage. */
+    @Volatile private var pendingCredentialBundle: JSONObject? = null
 
     fun noteConfigApply(resultJson: String) {
         lastAttemptStatus = try {
@@ -66,6 +68,8 @@ class ControllerLink(context: Context) {
     fun status(): String = JSONObject()
         .put("linked", !token().isNullOrBlank())
         .put("revision", meta.getLong("applied_revision", 0L))
+        .put("credentials_revision", meta.getLong("credential_revision", 0L))
+        .put("device_settings", try { JSONObject(meta.getString("device_settings", "{}") ?: "{}") } catch (_: Exception) { JSONObject() })
         .put("staged_revision", meta.getLong("pending_revision", 0L))
         .put("last_sync", meta.getLong("last_sync", 0L))
         .put("last_status", lastAttemptStatus.take(120))
@@ -76,6 +80,19 @@ class ControllerLink(context: Context) {
     fun refreshBeforePython() {
         if (token().isNullOrBlank()) return
         syncInternal(null, force = true)
+    }
+
+    /** Bundle is native-only: callers must not pass it to the WebView or usage reporting. */
+    fun takeCredentialBundle(): JSONObject? {
+        val bundle = pendingCredentialBundle ?: return null
+        val revision = bundle.optJSONObject("credentials")?.optLong("revision", 0L) ?: return null
+        // Equal revisions must also restore a reset native key store. Applying values is idempotent.
+        return if (revision >= meta.getLong("credential_revision", 0L)) JSONObject(bundle.toString()) else null
+    }
+
+    fun noteCredentialsApplied(revision: Long) {
+        if (revision > meta.getLong("credential_revision", 0L)) meta.edit().putLong("credential_revision", revision).commit()
+        pendingCredentialBundle = null
     }
 
     /** Exchange a one-time code. Raw code/token are never persisted in regular preferences or returned to the page. */
@@ -99,6 +116,7 @@ class ControllerLink(context: Context) {
                 try { configPending.delete() } catch (_: Exception) {}
                 return failureJson("Encrypted controller token save nahi hua.")
             }
+            captureCredentialBundle(response)
             meta.edit().putLong("revision", revision).putLong("last_sync", System.currentTimeMillis()).apply()
             lastAttemptStatus = "paired"
             JSONObject().put("ok", true).put("revision", revision).toString()
@@ -144,6 +162,7 @@ class ControllerLink(context: Context) {
             val revision = response.optLong("revision", meta.getLong("revision", 0L))
             val config = response.optJSONObject("config")
             if (revision < 1 || config == null || !stageConfig(config, revision)) return failure("Controller config valid nahi; last good config rakha hai.")
+            captureCredentialBundle(response)
             val editor = meta.edit().putLong("revision", revision).putLong("last_sync", now)
             if (reportsJson != null) editor.putLong("last_report_upload", now)
             editor.apply()
@@ -153,6 +172,20 @@ class ControllerLink(context: Context) {
             lastAttemptStatus = "offline"
             JSONObject().put("ok", false).put("error", "Controller offline hai; cached config use hogi.")
         }
+    }
+
+    private fun captureCredentialBundle(response: JSONObject) {
+        val credentials = response.optJSONObject("credentials") ?: return
+        if (credentials.optJSONObject("values") == null || credentials.optJSONArray("managed") == null || credentials.optLong("revision", 0L) < 1L) return
+        val settings = response.optJSONObject("device_settings") ?: JSONObject()
+        val setup = response.optJSONObject("setup") ?: JSONObject()
+        val setupManaged = response.optJSONArray("setup_managed") ?: org.json.JSONArray()
+        pendingCredentialBundle = JSONObject().put("credentials", JSONObject(credentials.toString()))
+            .put("device_settings", JSONObject(settings.toString())).put("setup", JSONObject(setup.toString()))
+            .put("setup_managed", org.json.JSONArray(setupManaged.toString()))
+        // Ordinary preferences contain only the non-secret device settings and metadata revision.
+        meta.edit().putString("device_settings", settings.toString())
+            .putLong("remote_credentials_revision", credentials.optLong("revision", 0L)).commit()
     }
 
     private fun token(): String? = try { tokenPrefs.getString(TOKEN_KEY, null)?.takeIf { it.isNotBlank() } } catch (_: Exception) { null }

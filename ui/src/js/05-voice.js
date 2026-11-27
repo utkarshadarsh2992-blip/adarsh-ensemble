@@ -145,10 +145,13 @@ const TTS = (() => {
       this.stop();
       const t = speakable(text);
       if (!t) { if (onEnd) onEnd(); return; }
+      WakeWord.pause('tts');
       const job = { waiting: null }; cur = job;
       let started = false;
       const startedOnce = () => { if (started) return; started = true; if (onStart) { try { onStart(); } catch (e) {} } };
-      run(job, t, startedOnce).catch(() => {}).finally(() => { if (cur === job) { cur = null; if (onEnd) onEnd(); } });
+      run(job, t, startedOnce).catch(() => {}).finally(() => {
+        if (cur === job) { cur = null; WakeWord.resume('tts'); if (onEnd) onEnd(); }
+      });
     },
     speaking: () => !!cur,
     pause() { try { if (N && N.neuralPause) N.neuralPause(); if (audio) audio.pause(); } catch (e) {} },
@@ -156,6 +159,7 @@ const TTS = (() => {
     stop() {
       const j = cur; cur = null;
       if (j && j.waiting) { const w = j.waiting; j.waiting = null; w.done(false); }
+      WakeWord.resume('tts');
       try { if (N && N.ttsStop) N.ttsStop(); } catch (e) {}
       try { if (audio) { audio.pause(); audio = null; } } catch (e) {}
       try { if (webDev()) speechSynthesis.cancel(); } catch (e) {}
@@ -215,6 +219,58 @@ const STT = {
   },
   stop() { if (this._stop) this._stop(); }
 };
+
+/* Native opt-in wake switch. Recognition and transcript matching stay inside the Android on-device service. */
+const WakeWord = (() => {
+  const N = () => window.AdarshNative;
+  let cached = { ok: true, enabled: false, active: false, supported: false, onDevice: true, phrase: 'Hey Adarsh', state: 'off', message: 'Wake word is off' };
+  function parse(raw) {
+    try { return raw && typeof raw === 'object' ? raw : JSON.parse(raw || '{}'); }
+    catch (e) { return { ok: false, enabled: false, active: false, state: 'error', message: 'Wake-word status is unavailable' }; }
+  }
+  function remember(value) {
+    cached = { ...cached, ...(value || {}) };
+    if (typeof S !== 'undefined' && S.settings && typeof cached.enabled === 'boolean' && S.settings.wakeWordEnabled !== cached.enabled) {
+      S.settings.wakeWordEnabled = cached.enabled;
+      save();
+    }
+    Bus.emit('wake-word-status', { ...cached });
+    return { ...cached };
+  }
+  function status() {
+    const n = N();
+    if (!n || !n.wakeWordStatus) return { ...cached };
+    try { return remember(parse(n.wakeWordStatus())); }
+    catch (e) { return { ...cached, ok: false, state: 'error', message: 'Wake-word status is unavailable' }; }
+  }
+  function setEnabled(enabled) {
+    const n = N();
+    if (!n || !n.wakeWordSet) return remember({ ok: false, enabled: false, active: false, state: 'unsupported', message: 'Native on-device wake recognition is available only in the Android app' });
+    try { return remember(parse(n.wakeWordSet(enabled === true))); }
+    catch (e) { return remember({ ok: false, enabled: false, active: false, state: 'error', message: 'Could not change wake-word state' }); }
+  }
+  function pause(reason) {
+    const n = N();
+    try { if (n && n.wakeWordPause) return remember(parse(n.wakeWordPause(String(reason || 'voice')))); } catch (e) {}
+    return { ...cached };
+  }
+  function resume(reason) {
+    const n = N();
+    try { if (n && n.wakeWordResume) return remember(parse(n.wakeWordResume(String(reason || 'voice')))); } catch (e) {}
+    return { ...cached };
+  }
+  window.__adarshWakeWord = (event) => {
+    if (!event || typeof event !== 'object') return;
+    if (event.type === 'status') { remember(event); return; }
+    if (event.type !== 'wake') return;
+    /* Voice.open acquires its pause before the wake hold is released; its background-voice fast path stays paused by owner. */
+    if (typeof Voice !== 'undefined') {
+      Voice.open({ wakeWord: true, listen: true });
+      resume('wake');
+    }
+  };
+  return { setEnabled, status, pause, resume, get enabled() { return !!status().enabled; } };
+})();
 
 /* Adarsh Live (Step 5): the Gemini Live API over one WebSocket, spoken both ways. The socket, microphone and
    playback live in Kotlin (AdarshLive.kt) because a WebView has no raw-PCM capture; this file only drives the
@@ -328,7 +384,7 @@ const Voice = (() => {
   let session = 0, releasePrompt = null, releaseAsk = null;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
-  let liveOn = false, liveUser = '', liveModel = '';
+  let liveOn = false, wakeLive = false, liveUser = '', liveModel = '';
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
   /* The caption is the user's line, then the answer typed out one word at a time at speaking pace, so nothing
      runs ahead of the voice; once the voice stops the rest follows quickly. */
@@ -370,10 +426,11 @@ const Voice = (() => {
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
       h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
   }
-  const tagText = () => (S.settings.adarshLive && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output');
+  const tagText = () => ((S.settings.adarshLive || wakeLive) && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output');
   /* Flip between Google Live and the normal listen -> answer -> speak loop without closing the screen.
      Whatever the old mode was doing (listening, speaking, a live socket) stops first. */
   function setGoogleLive(v) {
+    wakeLive = false;
     S.settings.adarshLive = v === true; save();
     if (glBtn) glBtn.setAttribute('aria-pressed', String(S.settings.adarshLive));
     if (tagEl) tagEl.textContent = tagText();
@@ -394,17 +451,25 @@ const Voice = (() => {
   /* opts.listen: coming back from the background session, so start listening right away */
   function open(opts = {}) {
     if (BackgroundVoice.active()) return BackgroundVoice.open();
-    if (openFlag) return; session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.hidden = false; setState('idle');
+    if (openFlag) return; wakeLive = opts.wakeWord === true; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.hidden = false; setState('idle');
     caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
-    if (S.settings.adarshLive && Live.native()) { if (startLive()) return; }   // falls through to the old loop on failure
+    if (opts.wakeWord === true) {
+      if (Live.native() && startLive()) return;
+      wakeLive = false;
+      if (tagEl) tagEl.textContent = tagText();
+      toast('Google Live did not start; tap Talk and try again');
+      return; // never silently switch a wake trigger to generic speech recognition
+    }
+    if (S.settings.adarshLive && Live.native()) { if (startLive()) return; }   // the saved Live switch retains its normal fallback
     if (opts.listen && STT.supported()) listen();
   }
   /* One Live session per screen: audio is only captured while this screen is visible. Any failure returns false so
      the caller can use the proven listen -> answer -> speak loop instead. */
   function startLive() {
     const token = session;
+    const holdOnLiveFailure = wakeLive;
     liveUser = ''; liveModel = '';
     /* Live owns the speaker; a pending device/natural TTS job must not talk over native PCM. */
     TTS.stop();
@@ -442,9 +507,10 @@ const Voice = (() => {
       onError: (m) => {
         if (!active(token)) return;
         liveOn = false;
-        caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
+        caption('', holdOnLiveFailure ? 'Adarsh Live: ' + m + ' — Talk tap karke dobara koshish karo.' : 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
-        setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
+        if (holdOnLiveFailure) setState('idle');
+        else setTimeout(() => { if (active(token)) { setState('idle'); listen(); } }, 900);
       },
       onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
     });
@@ -457,8 +523,8 @@ const Voice = (() => {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
-    liveOn = false; if (capRev) capRev.stop(); capRev = null; Live.stop();
-    STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc);
+    liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop();
+    STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc); WakeWord.resume('voice');
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
   function toggle() {

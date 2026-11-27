@@ -43,6 +43,13 @@ function rpcFault(error: { code?: string } | null | undefined): never {
   fault(503, 'unavailable');
 }
 
+async function credentialBundle(service: SupabaseClient, tokenHash: string): Promise<Record<string, unknown>> {
+  const { data, error } = await service.rpc('controller_credentials_for_device', { p_device_token_hash: tokenHash });
+  if (error) rpcFault(error);
+  if (!isObject(data) || !isObject(data.credentials) || !isObject(data.device_settings) || !isObject(data.setup) || !Array.isArray(data.setup_managed)) fault(503, 'unavailable');
+  return data;
+}
+
 async function handlePair(service: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
   exactKeys(body, ['action', 'code', 'name']);
   if (typeof body.code !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(body.code)) fault(401, 'unauthorized');
@@ -56,7 +63,9 @@ async function handlePair(service: SupabaseClient, body: Record<string, unknown>
   if (!isObject(data) || typeof data.device_id !== 'string' || !Number.isSafeInteger(Number(data.revision))) fault(503, 'unavailable');
   let config;
   try { config = validateConfig(data.config); } catch { fault(503, 'unavailable'); }
-  return jsonResponse({ ok: true, device_id: data.device_id, device_token: token, revision: Number(data.revision), config }, 200);
+  const bundle = await credentialBundle(service, tokenHash);
+  return jsonResponse({ ok: true, device_id: data.device_id, device_token: token, revision: Number(data.revision), config,
+    credentials: bundle.credentials, device_settings: bundle.device_settings, setup: bundle.setup, setup_managed: bundle.setup_managed }, 200);
 }
 
 async function handleSync(request: Request, service: SupabaseClient, body: Record<string, unknown>): Promise<Response> {
@@ -82,7 +91,9 @@ async function handleSync(request: Request, service: SupabaseClient, body: Recor
   if (!isObject(data) || !Number.isSafeInteger(Number(data.revision))) fault(503, 'unavailable');
   let config;
   try { config = validateConfig(data.config); } catch { fault(503, 'unavailable'); }
-  return jsonResponse({ ok: true, revision: Number(data.revision), config }, 200);
+  const bundle = await credentialBundle(service, tokenHash);
+  return jsonResponse({ ok: true, revision: Number(data.revision), config,
+    credentials: bundle.credentials, device_settings: bundle.device_settings, setup: bundle.setup, setup_managed: bundle.setup_managed }, 200);
 }
 
 async function handleAction(request: Request, service: SupabaseClient): Promise<Response> {

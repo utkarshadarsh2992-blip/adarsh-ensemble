@@ -103,7 +103,7 @@ const Usage = (() => {
     const top = (k.models || []).reduce((a, m) => Math.max(a, num(m.frac)), 0);
     const sum = h('summary', { class: 'us-ksum' }, h('span', { class: 'us-kn' }, 'Key ' + k.slot), pill(k.state), h('span', { class: 'sp' }), h('span', { class: 'us-n' }, fmt(k.req) + ' req · ' + fmt(k.tok) + ' tok'));
     const d = h('details', { class: 'us-key', open: ['out', 'cool', 'low'].includes(k.state) ? '' : null }, sum);
-    if (!k.set) { d.append(small('Is slot mein key nahi daali. Settings > API keys.')); return d; }
+    if (!k.set) { d.append(small('Is slot mein key set nahi hai. Keys ADARSH Controller ke Keys & settings mein manage hoti hain.')); return d; }
     if (k.state === 'cool') d.append(small('Is key ko ' + dur(k.cool_s) + ' ke liye rok diya (limit, 402 ya server down). Tab tak agli key chalegi.', 'warn'));
     if (top) d.append(bar(top));
     (k.models || []).forEach(m => d.append(modelRow(m)));
@@ -138,7 +138,7 @@ const Usage = (() => {
     const used = (u.providers || []).filter(p => p.set || p.req);
     used.forEach(p => out.push(providerCard(p)));
     const none = (u.providers || []).filter(p => !p.set && !p.req).map(p => p.name);
-    if (!used.length) out.push(h('div', { class: 'pv-empty' }, icon('lock'), h('b', {}, 'Abhi koi API key nahi'), h('span', {}, 'Settings > API keys mein kam se kam ek key daalo.')));
+    if (!used.length) out.push(h('div', { class: 'pv-empty' }, icon('lock'), h('b', {}, 'Abhi koi API key nahi'), h('span', {}, 'Keys ADARSH Controller ke Keys & settings mein manage hoti hain.')));
     else if (none.length) out.push(small('Key nahi: ' + none.join(', ') + '.', 'us-none'));
     out.push(featuresCard(u), daysCard(u));
     return out;

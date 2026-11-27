@@ -7,9 +7,8 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.security.GeneralSecurityException
 
-/** Provider API keys, encrypted with a key held in Android Keystore. Values are never logged or returned to JS in full. */
+/** Controller-delivered provider API keys, encrypted with Android Keystore and never exposed to JavaScript. */
 class SecureKeys(private val ctx: Context) {
-    @Volatile private var resetNotice: String? = null
     private val prefs: SharedPreferences = open()
 
     private fun create(): SharedPreferences {
@@ -21,9 +20,8 @@ class SecureKeys(private val ctx: Context) {
         )
     }
 
-    /** Audit L5: a busy Keystore right after boot / unlock is retried first. Only when the file still can not be
-     *  opened (Keystore entry lost after a backup restore or lock-screen reset) is it started clean, and the key
-     *  screen then tells the user once that the keys must be entered again. */
+    /** Retry a transient Keystore failure first; if encrypted storage is unrecoverable, reset it and let the next
+     *  authenticated Controller sync restore the values without sending them through the WebView. */
     private fun open(): SharedPreferences {
         var last: Exception? = null
         for (attempt in 0 until OPEN_ATTEMPTS) {
@@ -40,10 +38,6 @@ class SecureKeys(private val ctx: Context) {
         val permanent = last?.let { unreadable(it) } ?: false
         Log.w(TAG, "key store unreadable (${last?.javaClass?.simpleName}, permanent=$permanent): starting clean")
         ctx.deleteSharedPreferences(FILE)
-        resetNotice = if (permanent)
-            "Phone ka secure key store reset ho gaya (backup restore ya screen-lock change). API keys dobara daalo."
-        else
-            "Secure key store abhi khul nahi paya, isliye reset karna pada. API keys dobara daalo."
         return create()
     }
 
@@ -58,16 +52,9 @@ class SecureKeys(private val ctx: Context) {
         return false
     }
 
-    /** One-time message for the key screen after a reset; null normally. */
-    fun takeResetNotice(): String? {
-        val n = resetNotice
-        resetNotice = null
-        return n
-    }
-
     fun get(name: String): String? = if (name in NAMES) prefs.getString(name, null)?.takeIf { it.isNotBlank() } else null
 
-    /** The first saved key of a provider: base name, then _2, then _3 (Settings has 3 slots per provider). */
+    /** The first saved key of a provider: base name, then _2, then _3 (Controller manages three slots). */
     fun first(base: String): String? = slots(base).firstNotNullOfOrNull { get(it) }
 
     fun put(name: String, value: String): Boolean {
@@ -84,12 +71,6 @@ class SecureKeys(private val ctx: Context) {
         prefs.edit().putString(BACKEND_TOKEN, value.trim()).commit()
 
     fun removeBackendToken(): Boolean = prefs.edit().remove(BACKEND_TOKEN).commit()
-
-    /** "…wxyz" for the settings screen, nothing for short keys. */
-    fun hint(name: String): String {
-        val v = get(name) ?: return ""
-        return if (v.length >= 12) "…" + v.takeLast(4) else "saved"
-    }
 
     companion object {
         const val FILE = "adarsh_keys"

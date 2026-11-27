@@ -17,9 +17,14 @@ function errorText(value: unknown): string {
   if (value && typeof value === "object") {
     const item = value as Record<string, unknown>;
     for (const key of ["message", "error_description", "details", "hint"]) {
-      if (typeof item[key] === "string" && item[key]) return item[key] as string;
+      if (typeof item[key] === "string" && item[key])
+        return item[key] as string;
     }
-    try { return JSON.stringify(value); } catch { return "Request failed."; }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Request failed.";
+    }
   }
   return "Request failed.";
 }
@@ -32,24 +37,25 @@ export async function admin<T = State>(
   if (!session) throw new Error("Owner login zaroori hai.");
   let response: Response;
   try {
-    response = await fetch(
-      `${SUPABASE_URL}/functions/v1/controller-admin`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: PUBLISHABLE_KEY,
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify(payload),
-        cache: "no-store",
-        signal: AbortSignal.timeout(15000),
+    response = await fetch(`${SUPABASE_URL}/functions/v1/controller-admin`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: PUBLISHABLE_KEY,
+        Authorization: `Bearer ${session.access_token}`,
       },
-    );
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
+    });
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError")
-      throw new Error("Controller temporarily unavailable hai. Network/timeout ke baad dobara try karo.");
-    throw new Error("Controller temporarily unavailable hai. Network check karke dobara try karo.");
+      throw new Error(
+        "Controller temporarily unavailable hai. Network/timeout ke baad dobara try karo.",
+      );
+    throw new Error(
+      "Controller temporarily unavailable hai. Network check karke dobara try karo.",
+    );
   }
   // A sleeping tab can hold an expired access token despite auto-refresh. Refresh once,
   // then retry the same request; a second 401 is handled below without forcing a re-pair.
@@ -73,7 +79,9 @@ export async function admin<T = State>(
           },
         );
       } catch {
-        throw new Error("Controller temporarily unavailable hai. Network check karke dobara try karo.");
+        throw new Error(
+          "Controller temporarily unavailable hai. Network check karke dobara try karo.",
+        );
       }
     }
   }
@@ -133,4 +141,20 @@ export async function admin<T = State>(
     throw new Error(errorText(body.error).slice(0, 240));
   }
   return body as T;
+}
+
+/**
+ * Send a write-only action without exposing response bodies or backend error
+ * text to the credential form. Secret values stay in the request only.
+ */
+export async function adminWriteOnly(
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await admin<unknown>(payload);
+  } catch {
+    throw new Error(
+      "Secure action failed. No submitted value was shown. Check owner access, connection, or backend availability and retry.",
+    );
+  }
 }

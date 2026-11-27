@@ -9,6 +9,7 @@ Routing is keyword based and local (no extra model call): the question decides w
 from __future__ import annotations
 
 import asyncio
+import html
 import ipaddress
 import re
 import socket
@@ -124,10 +125,93 @@ _STD = re.compile(r"\b(constant|constants|unit|units|si\b|standard|standards|cal
 _SCI = re.compile(r"\b(physics|quantum|thermodynamic|relativity|chemistry|biology|mathemat|theorem|proof|"
                   r"equation|algorithm|complexity|research|paper|study|journal)\b", re.I)
 _NEWS_CONTEXT = re.compile(
-    r"<\s*/?\s*news\b|\b(?:khabar|headline|breaking news|news story|news article|current event|company news)\b|"
+    r"<\s*/?\s*(?:news|pattern)\b|\b(?:khabar|headline|breaking news|news story|news article|current event|company news)\b|"
     r"\b(?:share sale|shares? (?:sold|sell|sells|selling)|(?:sell|sells|selling|sold) (?:its )?shares?|"
     r"(?:sell|sells|selling|sold)\b(?:\s+\S+){0,6}\s+shares?|sell[- ]?off|"
     r"divest(?:ment)?|stake sale|sec filing|earnings release|quarterly results|market update|stock price)\b", re.I)
+
+
+def supplied_news_urls(text: str, limit: int = 6) -> list[str]:
+    """Extract only HTTPS URLs explicitly embedded in untrusted News/Pattern data blocks."""
+    cap = max(0, min(int(limit), 6))
+    if not cap:
+        return []
+    blocks = re.findall(r"<\s*(news|pattern)\b[^>]*>(.*?)<\s*/\s*\1\s*>", str(text or ""), re.I | re.S)
+    out, seen = [], set()
+    for _, block in blocks:
+        for raw in re.findall(r"https://[^\s<>\"']+", block, re.I):
+            url = html.unescape(raw).rstrip(".,;:!?)]}>")
+            if not url or len(url) > 500 or re.search(r"\s", url):
+                continue
+            try:
+                parsed = urlparse(url)
+                if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                    continue
+                # Keep query strings/fragments as supplied; dedupe case-insensitively by full URL.
+                if url.lower() in seen or not _safe_url(url):
+                    continue
+            except (ValueError, OSError):
+                continue
+            seen.add(url.lower())
+            out.append(url[:500])
+            if len(out) >= cap:
+                return out
+    return out
+
+
+def _page_text(raw: str) -> tuple[str, str]:
+    """Extract a short plain-text title and readable page excerpt, ignoring active/document chrome."""
+    source = str(raw or "")[:MAX_RESPONSE_BYTES]
+    title_match = re.search(r"<title\b[^>]*>(.*?)</title\s*>", source, re.I | re.S)
+    title = html.unescape(re.sub(r"<[^>]+>", " ", title_match.group(1))).strip() if title_match else ""
+    text = re.sub(r"<!--.*?-->", " ", source, flags=re.S)
+    text = re.sub(r"<(script|style|noscript|svg|nav|footer|header)\b[^>]*>.*?</\1\s*>", " ", text, flags=re.I | re.S)
+    text = re.sub(r"<(br|/p|/div|/li|/h[1-6]|/article|/section)\b[^>]*>", "\n", text, flags=re.I)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", text))
+    text = " ".join(text.split())[:1800]
+    return _clean(title, 160), text
+
+
+async def _fetch_supplied_page(client: _SafeClient, url: str) -> dict | None:
+    try:
+        response = await client.get(url, headers={"User-Agent": UA, "Accept": "text/html,text/plain;q=0.9,*/*;q=0.1"}, timeout=TIMEOUT)
+        if not 200 <= response.status_code < 300:
+            return None
+        content_type = response.headers.get("content-type", "").lower()
+        if content_type and not any(t in content_type for t in ("text/", "html", "xhtml", "xml")):
+            return None
+        title, text = _page_text(response.text)
+        if len(text) < 80:
+            return None
+        title = title or urlparse(url).hostname or "Supplied source"
+        return {"provider": "supplied", "label": "Supplied source", "title": title, "url": url,
+                "note": _clean(text, 260), "text": text}
+    except Exception:
+        return None
+
+
+async def fetch_supplied_news_sources(text: str, limit: int = 6) -> list[dict]:
+    """Fetch a few user-supplied News/Pattern URLs with SSRF-safe redirects and bounded response/time limits."""
+    urls = supplied_news_urls(text, limit)
+    if not urls:
+        return []
+    try:
+        async with _SafeClient(timeout=TIMEOUT) as client:
+            tasks = [asyncio.create_task(_fetch_supplied_page(client, url)) for url in urls]
+            done, pending = await asyncio.wait(tasks, timeout=BUDGET)
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            rows = []
+            for task in tasks:
+                if task in done and not task.cancelled() and task.exception() is None:
+                    row = task.result()
+                    if row:
+                        rows.append(row)
+            return rows[:limit]
+    except Exception:
+        return []
 
 
 def route(text: str) -> list[str]:

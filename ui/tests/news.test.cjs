@@ -1,5 +1,5 @@
 'use strict';
-/* Change 1.5 (js/04-news.js): cloud news dashboard, setup, budget, debate, briefing lines. */
+/* Change 1.6 (js/04-news.js): Controller-managed config and native-only News reader. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -10,11 +10,14 @@ const { JSDOM } = require('jsdom');
 const UI = path.resolve(__dirname, '..');
 const INDEX = fs.readFileSync(path.join(UI, 'src/index.html'), 'utf8');
 const ORDER = [...INDEX.matchAll(/<script\s+src="([^"]+)"\s*><\/script>/g)].map(m => m[1]);
+const openDoms = new Set();
 const settle = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 const text = el => (el?.textContent || '').replace(/\s+/g, ' ').trim();
 async function until(fn, ms = 4000) { const end = Date.now() + ms; while (!fn()) { if (Date.now() > end) throw new Error('timed out'); await settle(10); } }
+test.after(() => { for (const dom of openDoms) { try { dom.window.close(); } catch (e) {} } openDoms.clear(); });
 function mount({ settings, store, reply, native, fetchImpl, ls } = {}) {
   const dom = new JSDOM(INDEX, { url: 'https://appassets.androidplatform.net/assets/index.html', runScripts: 'outside-only', pretendToBeVisual: true });
+  openDoms.add(dom);
   const w = dom.window;
   w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
   w.scrollTo = () => {};
@@ -29,6 +32,18 @@ function mount({ settings, store, reply, native, fetchImpl, ls } = {}) {
   for (const [k, v] of Object.entries(ls || {})) w.localStorage.setItem(k, v);
   w.Notification = undefined;
   w.console = console;
+  if (!native && fetchImpl) native = {
+    newsStatus: () => JSON.stringify({ configured: true, url: URLN }),
+    newsCall(id, json) {
+      Promise.resolve().then(() => fetchImpl(URLN, { method: 'POST', headers: { 'content-type': 'application/json' }, body: json }))
+        .then(async response => {
+          const result = await response.json();
+          const payload = !response.ok && !(result && result.error) ? { ok: false, error: 'HTTP ' + response.status } : result;
+          w.__adarshNews(id, JSON.stringify(payload));
+        }, () => w.__adarshNews(id, JSON.stringify({ ok: false, error: 'Failed to fetch' })));
+      return '{}';
+    }
+  };
   if (native) w.AdarshNative = native;
   w.localStorage.setItem('adarsh.ui.v3', JSON.stringify({ ...(store || {}), settings: { ui4: 1, bootAnim: false, ...(settings || {}) } }));
   const sent = [];
@@ -38,8 +53,18 @@ function mount({ settings, store, reply, native, fetchImpl, ls } = {}) {
   };
   const ctx = dom.getInternalVMContext();
   for (const file of ORDER) new vm.Script(fs.readFileSync(path.join(UI, 'src', file), 'utf8'), { filename: path.join(UI, 'src', file) }).runInContext(ctx);
+  // 00-android-bridge installs the real Android chat adapter whenever a native
+  // mock is present. Keep its Controller methods, but isolate chat sends so
+  // these UI tests can inspect requests without needing an engine callback.
+  if (native) {
+    const bridge = w.ADARSH_BACKEND || {};
+    w.ADARSH_BACKEND = { ...bridge,
+      async send(req) { sent.push(JSON.parse(JSON.stringify(req))); return typeof reply === 'function' ? reply(req) : (reply || { type: 'text', text: 'ok' }); },
+      async ping() { return { ok: true, label: 'test' }; }
+    };
+  }
   new vm.Script('globalThis.TEST = { S, Chat, App, News, Briefing };').runInContext(ctx);
-  return { dom, window: w, document: w.document, sent, ...w.TEST, close: () => dom.window.close() };
+  return { dom, window: w, document: w.document, sent, ...w.TEST, close: () => { openDoms.delete(dom); dom.window.close(); } };
 }
 const URLN = 'https://abc.supabase.co/functions/v1/news-api';
 const CFG = { 'adarsh.news.cfg': JSON.stringify({ url: URLN, secret: 'SECRET123' }) };
@@ -58,10 +83,12 @@ function api(over = {}) {
 const L = (items, more = false) => ({ ok: true, items, more });
 async function open(m) { m.App.show('news'); await settle(30); }
 
-test('not configured: setup card, no network call', async () => {
-  const a = api(); const m = mount({ fetchImpl: a.f });
+test('not configured: Controller pairing guidance, no phone setup or network call', async () => {
+  const a = api();
+  const m = mount({ native: { newsStatus: () => '{"configured":false,"url":""}', newsCall: () => { throw new Error('must not call'); } }, fetchImpl: a.f });
   await open(m);
-  assert.match(text(m.document.querySelector('#v-news')), /Setup karo/);
+  const view = text(m.document.querySelector('#v-news'));
+  assert.match(view, /Controller/); assert.doesNotMatch(view, /Setup karo|APP_SECRET/);
   assert.equal(a.calls.length, 0);
   assert.equal(m.News.configured(), false);
   m.close();
@@ -140,7 +167,8 @@ test('dashboard lists cards with badges, filter chips and the request body', asy
   assert.equal(v.querySelectorAll('.nw-card').length, 2);
   assert.match(text(v), /BREAKING/); assert.match(text(v), /PAKKA/); assert.match(text(v), /EK SOURCE/); assert.match(text(v), /Debate with AI/);
   assert.equal(v.querySelectorAll('.nw-chip').length, 18);
-  assert.equal(a.calls[0].url, URLN); assert.equal(a.calls[0].headers['x-app-secret'], 'SECRET123');
+  assert.equal(a.calls[0].url, URLN); assert.equal(a.calls[0].headers['x-app-secret'], undefined, 'the phone UI never sends a browser-side News secret');
+  assert.equal(m.window.localStorage.getItem('adarsh.news.cfg'), null, 'legacy browser credential was erased');
   [...v.querySelectorAll('.nw-chip')].find(b => text(b) === 'China').click(); await settle(30);
   assert.equal(a.calls.filter(c => c.body.action === 'list').pop().body.filter, 'CN');
   assert.match(text(v), /SARKARI DAAVA/); assert.match(text(v), /SIRF SARKARI/);
@@ -226,88 +254,46 @@ test('offline: shows the cached list with a note', async () => {
   assert.match(t, /Cache wali khabar/); assert.match(t, /Internet nahi/); assert.match(t, /Purani list/);
   m.close();
 });
-test('error mapping speaks Hinglish', () => {
+test('error mapping directs configuration failures to Controller in Hinglish', () => {
   const m = mount(); const f = m.News.friendly;
-  assert.match(f('HTTP 401'), /APP_SECRET/); assert.match(f('HTTP 404'), /URL galat/); assert.match(f('Failed to fetch'), /Internet/); assert.match(f('timeout'), /der/);
+  assert.match(f('HTTP 401'), /Controller/); assert.match(f('HTTP 404'), /Controller/); assert.match(f('Failed to fetch'), /Internet/); assert.match(f('timeout'), /der/);
   assert.match(f('Pehle bot ko /start bhejo'), /bot ko/);
   m.close();
 });
-test('setup: secret goes only to localStorage cfg in browser, never into app state', async () => {
-  const a = api({ ping: { ok: true, version: 1, telegram: { linked: true }, fcm: { configured: false, devices: 0 }, tavily: true, groq: { keys: 2 } }, settings_set: { ok: true } });
-  const m = mount({ fetchImpl: a.f });
-  m.News.setupSheet(() => {}); await settle(10);
-  const inputs = m.document.querySelectorAll('.sheet input');
-  inputs[0].value = 'http://bad.example.com'; inputs[1].value = 'S3CRET-XYZ';
-  [...m.document.querySelectorAll('.sheet .btn')].find(b => /Save \+ test/.test(text(b))).click(); await settle(20);
-  assert.match(text(m.document.querySelector('.sheet')), /https/); assert.equal(m.window.localStorage.getItem('adarsh.news.cfg'), null);
-  inputs[0].value = URLN;
-  [...m.document.querySelectorAll('.sheet .btn')].find(b => /Save \+ test/.test(text(b))).click(); await until(() => /Connected/.test(text(m.document.querySelector('.sheet'))));
-  assert.match(text(m.document.querySelector('.sheet')), /Groq keys: 2/);
-  assert.equal(JSON.parse(m.window.localStorage.getItem('adarsh.news.cfg')).secret, 'S3CRET-XYZ');
-  assert.ok(!JSON.stringify(m.S).includes('S3CRET-XYZ'));
-  assert.ok(!(m.window.localStorage.getItem('adarsh.ui.v3') || '').includes('S3CRET-XYZ'));
-  assert.ok(a.calls.some(c => c.body.action === 'settings_set' && c.body.digest_time));   // digest time synced after connecting
+test('mobile Settings has no key, News setup, budget, or briefing control; legacy News secret is erased', async () => {
+  const native = { newsStatus: () => '{"configured":false,"url":""}' };
+  const m = mount({ native, ls: CFG });
+  await open(m);
+  const news = text(m.document.querySelector('#v-news'));
+  assert.match(news, /Controller/); assert.doesNotMatch(news, /Setup karo|APP_SECRET|News AI budget/);
+  assert.equal(m.News.setupSheet, undefined); assert.equal(m.News.budgetSheet, undefined);
+  assert.equal(m.window.AdarshKeys, undefined);
+  assert.equal(m.window.localStorage.getItem('adarsh.news.cfg'), null);
+  m.App.show('settings'); await settle(10);
+  const settings = text(m.document.querySelector('#v-settings'));
+  assert.match(settings, /Briefing privacy/); assert.match(settings, /News dashboard/);
+  for (const label of ['API keys', 'News setup', 'News AI budget', 'Briefing mein news', 'Briefing ki copy Telegram par', 'Raat ki briefing', 'Briefing ka time']) assert.doesNotMatch(settings, new RegExp(label));
+  assert.equal(m.document.querySelector('#v-settings input[type=time]'), null);
   m.close();
 });
-test('google-services.json autofill picks the right client and warns on wrong package', () => {
-  const m = mount();
-  const gs = (pkg) => JSON.stringify({ project_info: { project_number: '123456789', project_id: 'my-proj' }, client: [{ client_info: { mobilesdk_app_id: '1:123456789:android:abc', android_client_info: { package_name: 'other.app' } }, api_key: [{ current_key: 'AIzaOTHER' }] }, { client_info: { mobilesdk_app_id: '1:123456789:android:def', android_client_info: { package_name: pkg } }, api_key: [{ current_key: 'AIzaKEY' }] }] });
-  const p = m.News.parseGoogleServices(gs('app.adarsh.ensemble'));
-  assert.deepEqual({ ...p }, { apiKey: 'AIzaKEY', appId: '1:123456789:android:def', projectId: 'my-proj', senderId: '123456789', pkg: 'app.adarsh.ensemble', pkgOk: true });
-  assert.equal(m.News.parseGoogleServices(gs('x.y')).pkgOk, false);
-  assert.equal(m.News.parseGoogleServices('not json'), null);
-  m.close();
-});
-test('Firebase JSON paste accepts BOM/fenced copies and reports syntax location without echoing config', () => {
-  const m = mount();
-  const gs = JSON.stringify({ project_info: { project_number: '123456789', project_id: 'my-proj' }, client: [{ client_info: { mobilesdk_app_id: '1:123456789:android:def', android_client_info: { package_name: 'app.adarsh.ensemble' } }, api_key: [{ current_key: 'AIzaDUMMY' }] }] });
-  const pasted = m.News.parseGoogleServices('\uFEFF```json\n' + gs + '\n```');
-  assert.equal(pasted.projectId, 'my-proj');
-  const broken = '{\n  "project_info": {"project_number":"123","project_id":"p"},\n  "client": [{"api_key":[{"current_key":"AIza-DO-NOT-ECHO"}],}]\n}';
-  const bad = m.News.inspectGoogleServices(broken);
-  assert.equal(bad.config, null);
-  assert.match(bad.error, /JSON syntax galat \(line \d+, column \d+\)/);
-  assert.doesNotMatch(bad.error, /AIza|DO-NOT-ECHO/);
-  const wrongFile = m.News.inspectGoogleServices(JSON.stringify({ type: 'service_account', private_key: 'PRIVATE-DO-NOT-ECHO' }));
-  assert.match(wrongFile.error, /Service-account\/private-key JSON mat paste karo/);
-  assert.doesNotMatch(wrongFile.error, /PRIVATE-DO-NOT-ECHO/);
-  m.close();
-});
-test('News setup displays a safe Firebase JSON syntax hint instead of the pasted contents', () => {
-  const native = { newsStatus: () => JSON.stringify({ configured: true, url: URLN }), newsCall() {}, fcmStatus: () => '{"configured":false}' };
-  const m = mount({ native });
-  try {
-    m.News.setupSheet(() => {});
-    const paste = m.document.querySelector('.nw-paste');
-    paste.value = '{\n  "project_info":{"project_number":"123","project_id":"p"},\n  "client":[{"api_key":[{"current_key":"AIza-DO-NOT-SHOW"}],}]\n}';
-    paste.dispatchEvent(new m.window.Event('input'));
-    const out = paste.closest('.nw-sec').querySelector('.nw-out');
-    assert.match(text(out), /JSON syntax galat \(line \d+, column \d+\)/);
-    assert.doesNotMatch(text(out), /AIza|DO-NOT-SHOW/);
-  } finally { m.close(); }
-});
-test('Android: secret is write-only, calls go through newsCall and the callback', async () => {
+
+test('native News reader uses paired News bridge and disallows setup or budget actions', async () => {
   const log = [];
   const native = {
     newsStatus: () => JSON.stringify({ configured: true, url: URLN }),
-    newsSet: (j) => { log.push(['set', j]); return '{"ok":true}'; },
-    newsCall: (id, j) => { const b = JSON.parse(j); log.push(['call', b.action]); setTimeout(() => m.window.__adarshNews(id, b.action === 'list' ? L([item()]) : { ok: true }), 5); },
-    fcmSet: (j) => { log.push(['fcm', j]); return '{"ok":true}'; }, fcmStatus: () => JSON.stringify({ configured: true, gms: true, token: true, registered: true, error: '' })
+    newsCall: (id, j) => { const b = JSON.parse(j); log.push(b.action); setTimeout(() => m.window.__adarshNews(id, JSON.stringify(b.action === 'list' ? L([item()]) : { ok: true })), 5); return '{}'; }
   };
-  const m = mount({ native });
-  assert.equal(m.News.status().url, URLN);
-  await open(m);
-  assert.equal(m.document.querySelectorAll('#v-news .nw-card').length, 1);
-  assert.ok(log.some(l => l[0] === 'call' && l[1] === 'list'));
-  assert.equal(m.window.localStorage.getItem('adarsh.news.cfg'), null);
-  m.News.setupSheet(() => {}); await settle(10);
-  const ta = m.document.querySelector('.sheet textarea');
-  ta.value = JSON.stringify({ project_info: { project_number: '55', project_id: 'p1' }, client: [{ client_info: { mobilesdk_app_id: '1:55:android:z', android_client_info: { package_name: 'app.adarsh.ensemble' } }, api_key: [{ current_key: 'AIzaK' }] }] });
-  ta.dispatchEvent(new m.window.Event('input')); await settle(5);
-  [...m.document.querySelectorAll('.sheet .btn')].find(b => /Save Firebase/.test(text(b))).click();
-  const f = log.find(l => l[0] === 'fcm'); assert.deepEqual(JSON.parse(f[1]), { apiKey: 'AIzaK', appId: '1:55:android:z', projectId: 'p1', senderId: '55' });
-  assert.equal(m.document.querySelector('.sheet input[type=password]').value, '');
-  m.close();
+  const m = mount({ native, ls: CFG });
+  try {
+    assert.equal(m.News.status().url, URLN);
+    await open(m);
+    assert.equal(m.document.querySelectorAll('#v-news .nw-card').length, 1);
+    assert.ok(log.includes('list'));
+    assert.equal(m.window.localStorage.getItem('adarsh.news.cfg'), null);
+    assert.equal((await m.News.call('settings_set')).ok, false);
+    assert.equal((await m.News.call('budget')).ok, false);
+    assert.equal(m.window.AdarshKeys, undefined);
+  } finally { m.close(); }
 });
 test('Android: unknown action is refused and a native timeout/error is mapped', async () => {
   const native = { newsStatus: () => '{"configured":true,"url":"' + URLN + '"}', newsCall: () => { throw new Error('boom'); } };
@@ -316,18 +302,18 @@ test('Android: unknown action is refused and a native timeout/error is mapped', 
   const r = await m.News.call('ping'); assert.equal(r.ok, false); assert.ok(r.error);
   m.close();
 });
-test('budget sheet shows bars and saves caps via settings_set', async () => {
-  const a = api({ budget: { ok: true, groq: { tokens_used: 120000, tokens_cap: 150000, calls_used: 100, calls_cap: 400, frac: 0.8, state: 'warn' }, tavily: { month_used: 70, month_cap: 700, frac: 0.1 }, alerts: { today: 2, cap: 5 } },
-    settings_get: { ok: true, settings: { groq_tokens_cap: 150000, groq_calls_cap: 400, tavily_month_cap: 700, alerts_per_day: 5, alert_min_score: 8 } }, settings_set: { ok: true } });
-  const m = mount({ fetchImpl: a.f, ls: CFG });
-  m.News.budgetSheet(); await until(() => m.document.querySelector('.sheet input[type=number]'));
-  const t = text(m.document.querySelector('.sheet'));
-  assert.match(t, /120K \/ 150K/); assert.match(t, /80%/); assert.match(t, /2 \/ 5/); assert.match(t, /80% par aur 100%/);
-  const inputs = m.document.querySelectorAll('.sheet input[type=number]'); inputs[0].value = '90000';
-  [...m.document.querySelectorAll('.sheet .seg')][0].querySelectorAll('button')[2].click();   // alerts/day = 3
-  [...m.document.querySelectorAll('.sheet .btn')].find(b => text(b) === 'Save').click(); await settle(20);
-  const s = a.calls.filter(c => c.body.action === 'settings_set').pop().body;
-  assert.equal(s.groq_tokens_cap, 90000); assert.equal(s.alerts_per_day, 3); assert.equal(s.alert_min_score, 8);
+test('mobile News dashboard has no budget sheet or budget controls', async () => {
+  let m;
+  const native = { newsStatus: () => JSON.stringify({ configured: true, url: URLN }), newsCall: (id, j) => {
+    const body = JSON.parse(j);
+    setTimeout(() => m.window.__adarshNews(id, JSON.stringify(body.action === 'list' ? L([]) : { ok: true })), 0);
+    return '{}';
+  } };
+  m = mount({ native });
+  await open(m);
+  assert.equal(m.News.budgetSheet, undefined);
+  assert.equal(m.document.querySelector('.nw-bud'), null);
+  assert.doesNotMatch(text(m.document.querySelector('#v-news')), /AI budget dekho|News AI budget/);
   m.close();
 });
 test('briefing: news lines present when connected, empty when not or switched off', async () => {
@@ -355,35 +341,43 @@ test('Briefing.start stays synchronous when news is not configured, waits for ne
   m2.Briefing.start(); assert.ok(m2.S.chats.some(c => c.briefing));   // chat created in the same tick
   await settle(300); m2.close();
 });
-test('__adarshOpen routes news targets: detail by id, budget, and plain news', async () => {
-  const a = api({ get: { ok: true, item: { ...item({ id: 'abc', title: 'Notification wali' }), why: 'Reuters + AP dono', sources: [{ title: 'Reuters story', url: 'https://r.example/x', publisher: 'Reuters', state_media: false }, { title: 'Xinhua', url: 'http://x.cn', publisher: 'Xinhua', state_media: true }] } }, list: L([]), budget: { ok: true, groq: { frac: 0.1 }, tavily: { frac: 0 }, alerts: {} }, settings_get: { ok: true, settings: {} } });
-  const m = mount({ fetchImpl: a.f, ls: CFG });
+test('__adarshOpen routes News notifications to details without a budget-settings route', async () => {
+  const native = { newsStatus: () => JSON.stringify({ configured: true, url: URLN }), newsCall: (id, j) => {
+    const body = JSON.parse(j); setTimeout(() => m.window.__adarshNews(id, JSON.stringify(body.action === 'get' ? { ok: true, item: { ...item({ id: body.id, title: 'Notification wali' }), why: 'Reuters + AP dono', sources: [{ title: 'Reuters story', url: 'https://r.example/x', publisher: 'Reuters', state_media: false }, { title: 'Xinhua', url: 'http://x.cn', publisher: 'Xinhua', state_media: true }] } } : { ok: true, items: [] })), 5); return '{}';
+  } };
+  const m = mount({ native });
   m.window.__adarshOpen('news:abc');
   await until(() => /Reuters \+ AP dono/.test(text(m.document.querySelector('.sheet') || {})));
   const t = text(m.document.querySelector('.sheet'));
   assert.match(t, /Notification wali/); assert.match(t, /SARKARI/); assert.match(t, /Debate with AI/);
-  assert.equal([...m.document.querySelectorAll('.sheet a')].filter(x => /x\.cn/.test(x.href)).length, 0);   // http link dropped
+  assert.equal([...m.document.querySelectorAll('.sheet a')].filter(x => /x\.cn/.test(x.href)).length, 0);
   assert.ok(m.document.querySelector('#v-news.on'));
-  m.window.__adarshOpen('news:budget'); await until(() => /News AI budget/.test(text(m.document.querySelectorAll('.sheet')[1] || m.document.querySelector('.sheet'))));
-  await settle(300); m.close();
-});
-test('Settings has the News group and Briefing time save syncs digest time', async () => {
-  const a = api({ settings_set: { ok: true } });
-  const m = mount({ fetchImpl: a.f, ls: CFG });
-  m.App.show('settings'); await settle(20);
-  const t = text(m.document.querySelector('#v-settings'));
-  assert.match(t, /News dashboard/); assert.match(t, /News setup/); assert.match(t, /Briefing mein news/); assert.match(t, /News AI budget/);
-  m.Briefing.timeSheet(() => {}); await settle(10);
-  m.document.querySelector('.sheet input[type=time]').value = '22:15';
-  [...m.document.querySelectorAll('.sheet .btn')].find(b => text(b) === 'Save').click(); await settle(20);
-  const c = a.calls.filter(x => x.body.action === 'settings_set').pop();
-  assert.equal(c.body.digest_time, '22:15'); assert.ok(c.body.tz);
-  assert.equal(m.S.settings.newsTimeSynced.startsWith('22:15|'), true);
   m.close();
 });
-test('briefing copy goes to Telegram once a day and respects the switch', async () => {
+test('Controller-managed briefing/news settings override only explicit preferences; phone privacy consent stays local', () => {
+  const calls = [];
+  const remote = { briefingOn: false, briefingTime: '22:15', newsBriefing: false, briefingTelegram: false, briefingConsent: true };
+  const native = {
+    controllerStatus: () => JSON.stringify({ linked: true, device_settings: remote }),
+    briefingSet: (j) => { calls.push(JSON.parse(j)); return JSON.stringify({ ok: true, on: JSON.parse(j).on, time: JSON.parse(j).time, notify: true, exact: true }); },
+    briefingStatus: () => JSON.stringify({ ok: true, notify: true, exact: true }), takeOpen: () => ''
+  };
+  const m = mount({ native, settings: { briefingOn: true, briefingTime: '20:00', newsBriefing: true, briefingTelegram: true, briefingConsent: false } });
+  try {
+    assert.equal(m.S.settings.briefingOn, false); assert.equal(m.Briefing.time(), '22:15');
+    assert.equal(m.S.settings.newsBriefing, false); assert.equal(m.S.settings.briefingTelegram, false);
+    assert.equal(m.S.settings.briefingConsent, false, 'remote settings cannot enable phone-local privacy consent');
+    assert.equal(calls[0].time, '22:15'); assert.equal(calls[0].on, false);
+    m.App.show('settings');
+    const v = m.document.querySelector('#v-settings'), t = text(v);
+    assert.match(t, /News dashboard/); assert.match(t, /Briefing privacy/);
+    for (const label of ['News setup', 'News AI budget', 'Briefing mein news', 'Briefing ki copy Telegram par', 'Raat ki briefing', 'Briefing ka time']) assert.doesNotMatch(t, new RegExp(label));
+    assert.equal(v.querySelector('input[type=time]'), null);
+  } finally { m.close(); }
+});
+test('briefing Telegram copy runs only when enabled by Controller and sends once per day', async () => {
   const a = api({ telegram_copy: { ok: true, chunks: 1 } });
-  const m = mount({ fetchImpl: a.f, ls: CFG });
+  const m = mount({ fetchImpl: a.f, ls: CFG, settings: { briefingTelegram: true } });
   m.News.copyBriefing({ text: 'Aaj ka hisaab…' }, '2026-11-25'); await settle(30);
   const c = a.calls.filter(x => x.body.action === 'telegram_copy'); assert.equal(c.length, 1); assert.match(c[0].body.text, /hisaab/);
   m.News.copyBriefing({ text: 'dobara' }, '2026-11-25'); await settle(30);
@@ -392,8 +386,6 @@ test('briefing copy goes to Telegram once a day and respects the switch', async 
   assert.equal(a.calls.filter(x => x.body.action === 'telegram_copy').length, 1);
   m.close();
 });
-
-
 test('Patterns view renders validated cards, region links, cache time and refresh request', async () => {
   const pattern = { title: 'AI buildout wave', pattern: 'India aur China dono compute capacity badha rahe hain.', type: 'compute/datacentre buildout', signal: 'strong', generated_at: '2026-11-27T10:00:00.000Z', regions: [{ region: 'IN', what: 'India mein capacity move', item_ids: ['i1'] }, { region: 'CN', what: 'China mein parallel move', item_ids: ['i2'] }], why_it_matters: 'AGI compute race', watch_next: 'Next data-centre filings', assumption: 'Reported events complete nahi hain.', items: [{ id: 'i1', title: 'India compute news', url: 'https://example.com/in', source: 'Reuters', region: 'IN' }, { id: 'i2', title: 'China compute news', url: 'https://example.com/cn', source: 'FT', region: 'CN' }] };
   const a = api({ list: L([]), patterns: { ok: true, generated_at: pattern.generated_at, cached: true, patterns: [pattern] } });
@@ -429,6 +421,9 @@ test('Pattern chat marks sarkari/unverified items as claims and forbids invented
   assert.match(text(m.document.querySelector('.nw-pattern-card')), /sarkari daava/);
   const p = m.News.patternChatPrompt(m.News.normPattern(pattern));
   assert.match(p, /tass\.com \[SARKARI DAAVA · UNVERIFIED \/ single source\]/);
+  assert.match(p, /Article URL: https:\/\/tass\.com\/a/);
+  assert.match(p, /Article URL: https:\/\/example\.com\/us/);
+  assert.match(p, /title, publisher, region, or verification badge alone is not evidence/);
   assert.doesNotMatch(p, /Reuters \[/);  // confirmed independent item carries no warning
   assert.match(p, /X ka daava/); assert.match(p, /actor.*mat jodo|mat jodo/); assert.match(p, /seedha link nahi/);
   m.close();

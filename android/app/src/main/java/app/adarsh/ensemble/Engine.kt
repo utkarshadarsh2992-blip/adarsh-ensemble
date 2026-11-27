@@ -23,6 +23,7 @@ object Engine {
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
     private lateinit var app: Application
     private lateinit var controller: ControllerLink
+    private lateinit var secureKeys: SecureKeys
     private var entry: PyObject? = null
 
     @Volatile var ready = false
@@ -36,10 +37,12 @@ object Engine {
     fun start(application: Application, keys: SecureKeys, controllerLink: ControllerLink) {
         app = application
         controller = controllerLink
+        secureKeys = keys
         pool.execute {
             try {
                 // Stage secret-free config before Python imports config.py or any routing module.
                 controller.refreshBeforePython()
+                synchronized(controllerGate) { applyControllerBundleLocked() }
                 if (!Python.isStarted()) Python.start(AndroidPlatform(application))
                 val mod = Python.getInstance().getModule("android_entry")
                 val initState = mod.callAttr("init", application.filesDir.resolve("engine").absolutePath,
@@ -126,9 +129,64 @@ object Engine {
         }
     }
 
+    /** Apply a paired response directly into encrypted native stores; credential values never cross into JavaScript. */
+    private fun applyControllerBundleLocked() {
+        val bundle = controller.takeCredentialBundle() ?: return
+        try {
+            val credentials = bundle.optJSONObject("credentials") ?: return
+            val revision = credentials.optLong("revision", 0L)
+            val values = credentials.optJSONObject("values") ?: return
+            val managed = credentials.optJSONArray("managed") ?: return
+            for (index in 0 until managed.length()) {
+                val name = managed.optString(index, "")
+                if (name !in SecureKeys.NAMES) continue
+                val next = values.optString(name, "").trim()
+                val old = secureKeys.get(name).orEmpty()
+                if (next.isBlank()) {
+                    if (old.isNotEmpty()) {
+                        if (!secureKeys.remove(name)) return
+                        entry?.callAttr("set_key", name, "")
+                    }
+                } else if (next != old) {
+                    if (!secureKeys.put(name, next)) return
+                    entry?.callAttr("set_key", name, next)
+                }
+            }
+
+            val setup = bundle.optJSONObject("setup") ?: JSONObject()
+            val setupManaged = bundle.optJSONArray("setup_managed") ?: org.json.JSONArray()
+            val managedSetup = (0 until setupManaged.length()).map { setupManaged.optString(it, "") }.toSet()
+            // Untouched legacy setup stays native. Explicit Controller deletions clear its local copy.
+            if (managedSetup.contains("news")) {
+                val newsConfig = setup.optJSONObject("news") ?: JSONObject().put("url", "").put("secret", "")
+                if (!JSONObject(NewsFcm.configureNews(app, newsConfig.toString())).optBoolean("ok")) return
+            }
+            if (managedSetup.contains("firebase")) {
+                val firebaseConfig = setup.optJSONObject("firebase") ?: JSONObject()
+                if (!JSONObject(NewsFcm.configureFcm(app, firebaseConfig.toString())).optBoolean("ok")) return
+            }
+
+            // Privacy consent is deliberately not remotely controlled. Only schedule fields are applied here.
+            val settings = bundle.optJSONObject("device_settings") ?: JSONObject()
+            if (settings.has("briefingOn") || settings.has("briefingTime")) {
+                val old = BriefingScheduler.status(app)
+                val on = if (settings.has("briefingOn")) settings.optBoolean("briefingOn") else old.optBoolean("on", false)
+                val time = settings.optString("briefingTime", old.optString("time", "21:30"))
+                val schedule = JSONObject().put("on", on).put("time", time)
+                if (!BriefingScheduler.configure(app, schedule.toString()).let { JSONObject(it).optBoolean("ok") }) return
+            }
+            if (revision > 0L) controller.noteCredentialsApplied(revision)
+        } catch (_: Throwable) {
+            // Keep the prior revision so the next authenticated sync can retry without exposing details.
+        }
+    }
+
     private fun applyControllerConfigWhenIdle() {
         synchronized(controllerGate) {
-            if (activeRequests.get() == 0) reloadControllerConfigLocked()
+            if (activeRequests.get() == 0) {
+                reloadControllerConfigLocked()
+                applyControllerBundleLocked()
+            }
             else controllerApplyPending = true
         }
     }
@@ -173,7 +231,10 @@ object Engine {
                 if (foreground && inFlight.decrementAndGet() == 0) setForeground(false)
                 synchronized(controllerGate) {
                     activeRequests.decrementAndGet()
-                    if (activeRequests.get() == 0 && controllerApplyPending) reloadControllerConfigLocked()
+                    if (activeRequests.get() == 0 && controllerApplyPending) {
+                        reloadControllerConfigLocked()
+                        applyControllerBundleLocked()
+                    }
                 }
             }
             if (!cancelled.remove(id)) onDone(result, error)

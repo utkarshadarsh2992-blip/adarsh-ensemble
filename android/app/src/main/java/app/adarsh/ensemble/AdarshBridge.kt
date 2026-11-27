@@ -54,6 +54,16 @@ class AdarshBridge(
     @JavascriptInterface
     fun backgroundVoiceStatus(): String = if (ok()) MainActivity.backgroundVoiceStatus() else denied
 
+    /** On-device Hey Adarsh switch/status; payloads contain no keys and no recognized transcript. */
+    @JavascriptInterface
+    fun wakeWordSet(enabled: Boolean): String = if (ok()) MainActivity.wakeWordSet(enabled) else denied
+    @JavascriptInterface
+    fun wakeWordStatus(): String = if (ok()) MainActivity.wakeWordStatus() else denied
+    @JavascriptInterface
+    fun wakeWordPause(reason: String): String = if (ok()) MainActivity.wakeWordPause(reason) else denied
+    @JavascriptInterface
+    fun wakeWordResume(reason: String): String = if (ok()) MainActivity.wakeWordResume(reason) else denied
+
     // Adarsh Live: the same Gemini key stays on the phone; only the page's UI talks to these.
     @JavascriptInterface
     fun liveStatus(): String = if (ok()) MainActivity.liveStatus() else denied
@@ -149,12 +159,6 @@ class AdarshBridge(
     @JavascriptInterface
     fun takeOpen(): String = if (ok()) MainActivity.takeOpen() else ""
     @JavascriptInterface
-    fun newsSet(json: String): String = if (ok()) MainActivity.newsSet(json) else denied
-    @JavascriptInterface
-    fun fcmSet(json: String): String = if (ok()) MainActivity.fcmSet(json) else denied
-    @JavascriptInterface
-    fun fcmStatus(): String = if (ok()) MainActivity.fcmStatus() else denied
-    @JavascriptInterface
     fun newsStatus(): String = if (ok()) MainActivity.newsStatus() else denied
     @JavascriptInterface
     fun newsCall(id: String, json: String) { if (ok()) MainActivity.newsCall(id, json) }
@@ -194,34 +198,6 @@ class AdarshBridge(
 
     @JavascriptInterface
     fun speechStop() { if (ok()) MainActivity.speechStop() }
-
-    @JavascriptInterface
-    fun keyStatus(): String {
-        if (!ok()) return denied
-        val o = JSONObject()
-        for (n in SecureKeys.NAMES) {
-            o.put(n, JSONObject().put("set", keys.get(n) != null).put("hint", keys.hint(n)))
-        }
-        // L5: if the encrypted key store had to be reset, tell the page once so the user can re-enter keys.
-        keys.takeResetNotice()?.let { o.put("_notice", it) }
-        return o.toString()
-    }
-
-    @JavascriptInterface
-    fun saveKey(name: String, value: String): String {
-        if (!ok()) return denied
-        if (!keys.put(name, value)) return err("That key could not be saved.")
-        Engine.setKey(name, value.trim())
-        return """{"ok":true}"""
-    }
-
-    @JavascriptInterface
-    fun deleteKey(name: String): String {
-        if (!ok()) return denied
-        if (!keys.remove(name)) return err("That key could not be deleted.")
-        Engine.setKey(name, "")
-        return """{"ok":true}"""
-    }
 
     /** The page may migrate its one legacy localStorage value, but never stores the token there again. */
     @JavascriptInterface

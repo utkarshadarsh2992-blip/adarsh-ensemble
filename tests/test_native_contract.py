@@ -117,7 +117,7 @@ def test_night_briefing_alarm_only_notifies_and_stays_private():
     assert "BriefingScheduler.arm(ctx)" in boot
 
 
-def test_news_fcm_service_channels_and_manual_firebase_setup():
+def test_news_fcm_service_channels_and_controller_firebase_setup():
     manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
     gradle = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
     service = source("NewsMessagingService.kt")
@@ -138,12 +138,15 @@ def test_news_fcm_service_channels_and_manual_firebase_setup():
     assert "try { NewsFcm.start(this) } catch (_: Throwable) {}" in app
 
 
-def test_news_bridge_is_guarded_and_never_returns_credentials():
+def test_news_bridge_is_guarded_and_never_returns_credentials_or_accepts_js_setup():
     bridge = source("AdarshBridge.kt")
     activity = source("MainActivity.kt")
-    for method in ("newsSet", "fcmSet", "fcmStatus", "newsStatus"):
+    for method in ("newsStatus",):
         assert f"fun {method}" in bridge
         assert f"if (ok()) MainActivity.{method}" in bridge
+    for method in ("newsSet", "fcmSet", "fcmStatus"):
+        assert f"fun {method}" not in bridge
+        assert f"fun {method}" not in activity
     assert "fun newsCall(id: String, json: String) { if (ok()) MainActivity.newsCall(id, json) }" in bridge
     assert "window.__adarshNews&&window.__adarshNews" in activity
     assert "callback(failure(\"id galat hai\"))" in source("NewsFcm.kt")

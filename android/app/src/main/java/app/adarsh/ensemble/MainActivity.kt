@@ -52,6 +52,15 @@ class MainActivity : AppCompatActivity() {
     private val notifPermission = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { ok ->
+        val wakeToken = pendingWakeWordNotificationToken
+        if (wakeToken >= 0) {
+            pendingWakeWordNotificationToken = -1
+            if (wakeToken == wakeWordGeneration) {
+                if (ok) startWakeWordAfterPermission(wakeToken)
+                else publishWakeWordPermissionError("notification_required", "Enable notifications before turning on wake word")
+                return@registerForActivityResult
+            }
+        }
         val pending = pendingBackground
         if (pending != null && pending.token == backgroundNotificationToken) {
             backgroundPermissionResult(pending.token, ok, "Notification permission is required. Enable app notifications and tap Start again.")
@@ -75,6 +84,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingBackground: PendingBackground? = null
     private var backgroundAwaitingPermission = false
     private var backgroundNotificationToken = -1
+    private var wakeWordGeneration = 0
+    private var pendingWakeWordPermission = -1
+    private var pendingWakeWordNotificationToken = -1
+    private var dictationWakePaused = false
     // Live voice handoff: while the in-app voice screen is open in Standard mode the page keeps a ready
     // session config here. Back/Home starts the 30-minute background session while this screen is still
     // resumed, which Android requires for a microphone foreground service.
@@ -175,8 +188,14 @@ class MainActivity : AppCompatActivity() {
                 waiting
             } else {
                 pendingBackground = null
+                dictationWakePaused = false
+                WakeWordService.resume(this, "dictation")
+                WakeWordService.pause(this, "background_voice")
                 dictation.destroy(); speaker?.stopAll(silent = true); neural?.stop()
-                BackgroundVoiceService.start(this, pending.json).also { backgroundVoiceEvent(it) }
+                BackgroundVoiceService.start(this, pending.json).also {
+                    if (!it.optBoolean("ok")) WakeWordService.resume(this, "background_voice")
+                    backgroundVoiceEvent(it)
+                }
             }
         } catch (_: Exception) {
             pendingBackground = null
@@ -193,6 +212,57 @@ class MainActivity : AppCompatActivity() {
         return granted && nm?.areNotificationsEnabled() == true
     }
 
+    private fun wakeWordError(state: String, message: String) = JSONObject()
+        .put("ok", false).put("enabled", false).put("active", false)
+        .put("supported", WakeWordService.status(this).optBoolean("supported"))
+        .put("onDevice", true).put("phrase", "Hey Adarsh").put("state", state).put("message", message)
+
+    private fun publishWakeWordPermissionError(state: String, message: String) {
+        MainActivity.wakeWordEvent(wakeWordError(state, message).put("type", "status"))
+    }
+
+    /** A wake service may start only from an explicit, resumed-screen switch action after both permissions exist. */
+    private fun continueWakeWordStart(token: Int): JSONObject {
+        if (destroyed || token != wakeWordGeneration) return wakeWordError("off", "Wake word was cancelled")
+        if (!WakeWordService.status(this).optBoolean("supported")) {
+            return wakeWordError("unsupported", "On-device wake recognition is unavailable on this Android version/device; no online fallback was used")
+        }
+        if (!resumed || awaitingResult) return wakeWordError("permission_required", "Keep Adarsh open while wake-word permissions are requested")
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            pendingWakeWordPermission = token
+            askMic { granted ->
+                if (token != wakeWordGeneration) return@askMic
+                pendingWakeWordPermission = -1
+                if (granted) startWakeWordAfterPermission(token)
+                else publishWakeWordPermissionError("permission_required", "Microphone permission was not granted")
+            }
+            return wakeWordError("permission_required", "Microphone permission is required")
+        }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            pendingWakeWordNotificationToken = token
+            askNotifications()
+            return wakeWordError("notification_required", "Notification permission is required for the microphone standby notice")
+        }
+        if (!notificationsReady()) return wakeWordError("notification_required", "Enable Adarsh notifications to show the microphone standby control")
+        if (pendingBackground != null || BackgroundVoiceService.status().optBoolean("active") || live?.active() == true || dictationWakePaused) {
+            return wakeWordError("busy", "Stop the active voice or dictation session before enabling wake word")
+        }
+        return WakeWordService.enable(this)
+    }
+
+    private fun startWakeWordAfterPermission(token: Int) {
+        val result = continueWakeWordStart(token)
+        if (result.optString("state") in setOf("unsupported", "permission_required", "notification_required", "busy", "error")) {
+            MainActivity.wakeWordEvent(result.put("type", "status"))
+        }
+    }
+
+    private fun dispatchPendingWakeWordOpen() {
+        if (!pendingWakeOpen || !resumed || destroyed || !pageTrusted) return
+        pendingWakeOpen = false
+        js("window.__adarshWakeWord&&window.__adarshWakeWord({type:'wake',source:'notification'})")
+    }
+
     /**
      * Called on Back and Home (still resumed) and from onPause for every other way of leaving the screen: power
      * button / screen off, tapping another app's notification, an app the assistant opened. A pause caused by our
@@ -206,7 +276,10 @@ class MainActivity : AppCompatActivity() {
         handoffConfig = null
         backgroundGeneration++
         dictation.destroy(); speaker?.stopAll(silent = true); neural?.stop()
+        WakeWordService.pause(this, "background_voice")
         val out = BackgroundVoiceService.start(this, cfg, handoff = true)
+        if (!out.optBoolean("ok")) WakeWordService.resume(this, "background_voice")
+        else WakeWordService.resume(this, "voice")
         out.put("handoff", true)
         js("window.__adarshVoiceHandoff&&window.__adarshVoiceHandoff($out)")
         return out.optBoolean("ok")
@@ -282,6 +355,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 if (error.visibility != View.VISIBLE) { bootPulse(false); loading.visibility = View.GONE }
+                dispatchPendingWakeWordOpen()
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, e: WebResourceError) {
@@ -309,9 +383,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
         appCtx = applicationContext
-        speaker = Speaker(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
+        speaker = Speaker(this) { type, id ->
+            if (type == "start") WakeWordService.pause(applicationContext, "tts:$id")
+            else if (type in setOf("done", "error", "stopped")) WakeWordService.resume(applicationContext, "tts:$id")
+            runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") }
+        }
         actions = ActionRunner(this)
-        neural = VoiceManager(this) { type, id -> runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") } }
+        neural = VoiceManager(this) { type, id ->
+            if (type == "start") WakeWordService.pause(applicationContext, "tts:$id")
+            else if (type in setOf("done", "error", "stopped")) WakeWordService.resume(applicationContext, "tts:$id")
+            runOnUiThread { js("window.__adarshTts&&window.__adarshTts(${JSONObject.quote(type)},${JSONObject.quote(id)})") }
+        }
         launchTarget = intent?.getStringExtra(UpdateCheckJob.EXTRA_OPEN)
         UpdateCheckJob.schedule(this)
         updater = UpdateManager(this) { value -> runOnUiThread { js("window.__adarshUpdate&&window.__adarshUpdate($value)") } }
@@ -333,6 +415,7 @@ class MainActivity : AppCompatActivity() {
         ) askNotifications()
 
         current = this
+        if (intent?.action == WakeWordService.ACTION_OPEN_WAKE) pendingWakeOpen = true
         if (intent?.action == BriefingScheduler.ACTION_OPEN) BriefingScheduler.pendingOpen = true   // notification tap on a cold start
         NewsFcm.openTarget(intent ?: Intent()).let { target -> if (target != null) BriefingScheduler.pendingNewsOpen = target }
         if (savedInstanceState == null) load() else web.restoreState(savedInstanceState)
@@ -342,6 +425,11 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == WakeWordService.ACTION_OPEN_WAKE) {
+            pendingWakeOpen = true
+            dispatchPendingWakeWordOpen()
+            return
+        }
         if (intent.action == BriefingScheduler.ACTION_OPEN) {
             BriefingScheduler.pendingOpen = true
             if (pageTrusted) js("window.__adarshOpen&&window.__adarshOpen('briefing')")
@@ -389,6 +477,7 @@ class MainActivity : AppCompatActivity() {
         getSystemService(NotificationManager::class.java)?.cancel(REPLY_ID)
         web.onResume()
         flush()   // answers that arrived while the app was in the background
+        web.post { dispatchPendingWakeWordOpen() }
         web.post { if (resumed && !destroyed && pendingBackground != null) backgroundVoiceEvent(resumeBackgroundStart()) }
     }
 
@@ -408,12 +497,23 @@ class MainActivity : AppCompatActivity() {
 
     /** Runs on the UI thread: starts the Live session and pushes its first status to the page. */
     private fun startLiveNow(cfg: JSONObject): JSONObject {
+        WakeWordService.pause(this, "live")
+        dictationWakePaused = false
+        WakeWordService.resume(this, "dictation")
         dictation.destroy()
         speaker?.stopAll(silent = true); neural?.stop()
-        val session = live ?: AdarshLive(this) { ev -> js("window.__adarshLive&&window.__adarshLive($ev)") }.also { live = it }
+        val session = live ?: AdarshLive(this) { ev ->
+            liveEvent(ev)
+        }.also { live = it }
         val out = session.start(cfg)
+        if (!out.optBoolean("ok")) WakeWordService.resume(this, "live")
         js("window.__adarshLive&&window.__adarshLive(${JSONObject().put("type", "state").put("state", out.optString("state", "connecting"))})")
         return out
+    }
+
+    private fun liveEvent(ev: JSONObject) {
+        if (ev.optString("type") in setOf("error", "closed")) WakeWordService.resume(applicationContext, "live")
+        js("window.__adarshLive&&window.__adarshLive($ev)")
     }
 
     override fun onDestroy() {
@@ -439,6 +539,7 @@ class MainActivity : AppCompatActivity() {
         private const val HOST = "appassets.androidplatform.net"
         /** M1: true only while the main frame is https://appassets.androidplatform.net (set on the UI/IO thread). */
         @Volatile private var pageTrusted = false
+        @Volatile private var pendingWakeOpen = false
         private fun isAppOrigin(u: Uri?): Boolean = u != null && u.scheme == "https" && u.host == HOST
         /** Called by AdarshBridge before every method; the page also sets CSP frame-src 'none' so no frame can load. */
         fun pageTrusted(): Boolean = pageTrusted && current?.destroyed == false
@@ -448,6 +549,52 @@ class MainActivity : AppCompatActivity() {
         @Volatile private var appCtx: Context? = null
         private fun prefs(c: Context) = c.getSharedPreferences("adarsh_ui", Context.MODE_PRIVATE)
         private fun ui(f: (MainActivity) -> Unit) { current?.let { a -> a.runOnUiThread { if (!a.destroyed) f(a) } } }
+
+        /** Wake recognition never starts an Activity; background triggers wait for the user to tap its notice. */
+        fun wakeWordEvent(value: JSONObject) {
+            if (value.optString("type") == "wake") {
+                val a = current
+                if (a == null) return
+                a.runOnUiThread {
+                    if (a.destroyed) return@runOnUiThread
+                    if (a.resumed && pageTrusted) {
+                        pendingWakeOpen = false
+                        a.js("window.__adarshWakeWord&&window.__adarshWakeWord({type:'wake',source:'foreground'})")
+                    }
+                }
+            } else {
+                ui { a -> if (a.resumed && pageTrusted) a.js("window.__adarshWakeWord&&window.__adarshWakeWord($value)") }
+            }
+        }
+
+        fun deliverPendingWakeWordOpen() = ui { it.dispatchPendingWakeWordOpen() }
+
+        /** Settings API: asks permissions while visible, then explicitly starts or stops the local detector. */
+        fun wakeWordSet(enabled: Boolean): String = onMain {
+            val a = current!!
+            if (!enabled) {
+                a.wakeWordGeneration++
+                a.pendingWakeWordPermission = -1
+                a.pendingWakeWordNotificationToken = -1
+                WakeWordService.disable(a).toString()
+            } else {
+                if (!a.resumed) return@onMain JSONObject().put("ok", false).put("enabled", false)
+                    .put("active", false).put("state", "permission_required")
+                    .put("message", "Open Adarsh before turning on wake word").toString()
+                val token = ++a.wakeWordGeneration
+                a.pendingWakeWordPermission = token
+                a.continueWakeWordStart(token).toString()
+            }
+        }
+        fun wakeWordStatus(): String = onMain { WakeWordService.status(current!!).toString() }
+        fun wakeWordPause(reason: String): String = onMain {
+            WakeWordService.pause(current!!, reason)
+            WakeWordService.status(current!!).toString()
+        }
+        fun wakeWordResume(reason: String): String = onMain {
+            WakeWordService.resume(current!!, reason)
+            WakeWordService.status(current!!).toString()
+        }
 
         // These are user UI controls, not AI action capabilities. Never included in the action allowlist.
         fun isOnScreen(): Boolean = current?.let { it.resumed && !it.destroyed } == true
@@ -525,16 +672,17 @@ class MainActivity : AppCompatActivity() {
             val cfg = try { JSONObject(json) } catch (_: Exception) { JSONObject() }
             val key = (a.applicationContext as AdarshApp).keys.first("GEMINI_API_KEY")
             if (key.isNullOrBlank()) return@onMain JSONObject().put("ok", false).put("state", "error")
-                .put("message", "Gemini API key nahi mili. Settings > API keys me daalo.").toString()
+                .put("message", "Gemini API key nahi mili. Controller > Keys & settings me daalo.").toString()
+            WakeWordService.pause(a, "live")
             cfg.put("key", key)
-            val session = a.live ?: AdarshLive(a) { ev -> a.js("window.__adarshLive&&window.__adarshLive($ev)") }.also { a.live = it }
+            val session = a.live ?: AdarshLive(a) { ev -> a.liveEvent(ev) }.also { a.live = it }
             if (session.active()) session.stop()
             if (a.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 a.pendingLive = cfg
                 a.askMic { ok ->
                     val pending = a.pendingLive ?: return@askMic
                     a.pendingLive = null
-                    if (!ok) { a.js("window.__adarshLive&&window.__adarshLive(${JSONObject().put("type", "error").put("message", "Microphone permission nahi mili.")})"); return@askMic }
+                    if (!ok) { WakeWordService.resume(a, "live"); a.js("window.__adarshLive&&window.__adarshLive(${JSONObject().put("type", "error").put("message", "Microphone permission nahi mili.")})"); return@askMic }
                     a.startLiveNow(pending)
                 }
                 return@onMain JSONObject().put("ok", true).put("state", "permission_required").toString()
@@ -598,13 +746,14 @@ class MainActivity : AppCompatActivity() {
             val a = current!!
             a.pendingLive = null
             a.live?.stop()
+            WakeWordService.resume(a, "live")
             JSONObject().put("ok", true).toString()
         }
 
         // ---- speech out (Speaker.kt). Results come back as window.__adarshTts(type, id)
         fun ttsAvailable(): Boolean = current?.speaker?.let { !it.failed } ?: false
-        fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.speak(id, text, lang, rate) }
-        fun ttsPlayFile(id: String, path: String, rate: Float) = ui { it.speaker?.playFile(id, path, rate) }
+        fun ttsSpeak(id: String, text: String, lang: String, rate: Float) = ui { WakeWordService.pause(it, "tts:$id"); it.speaker?.speak(id, text, lang, rate) }
+        fun ttsPlayFile(id: String, path: String, rate: Float) = ui { WakeWordService.pause(it, "tts:$id"); it.speaker?.playFile(id, path, rate) }
         fun ttsStop() = ui { it.speaker?.stopAll(silent = true); it.neural?.stop() }
         /** Phone voices the user can choose from (Settings > Voice & language > Phone voice). */
         fun ttsVoices(): String = onMain { current?.speaker?.voiceList() ?: "[]" }
@@ -801,7 +950,7 @@ class MainActivity : AppCompatActivity() {
         fun neuralInstall() = ui { a ->
             a.neural?.install { ok -> a.runOnUiThread { a.js("window.__adarshNeural&&window.__adarshNeural($ok)") } }
         }
-        fun neuralSpeak(id: String, text: String, lang: String, rate: Float) = ui { it.speaker?.stopAll(silent = true); it.neural?.speak(id, text, lang, rate) }
+        fun neuralSpeak(id: String, text: String, lang: String, rate: Float) = ui { WakeWordService.pause(it, "tts:$id"); it.speaker?.stopAll(silent = true); it.neural?.speak(id, text, lang, rate) }
         fun neuralPause() = ui { it.neural?.pause() }
         fun neuralResume() = ui { it.neural?.resume() }
 
@@ -861,12 +1010,6 @@ class MainActivity : AppCompatActivity() {
         }
         fun briefingStatus(): String = appCtx?.let { BriefingScheduler.status(it).toString() } ?: "{\"ok\":false,\"error\":\"not ready\"}"
         fun takeOpen(): String = BriefingScheduler.takeOpen()
-        fun newsSet(json: String): String = appCtx?.let { NewsFcm.configureNews(it, json) }
-            ?: "{\"ok\":false,\"error\":\"not ready\"}"
-        fun fcmSet(json: String): String = appCtx?.let { NewsFcm.configureFcm(it, json) }
-            ?: "{\"ok\":false,\"error\":\"not ready\"}"
-        fun fcmStatus(): String = appCtx?.let { NewsFcm.status(it).toString() }
-            ?: "{\"ok\":false,\"error\":\"not ready\"}"
         fun newsStatus(): String = appCtx?.let { NewsFcm.newsStatus(it).toString() }
             ?: "{\"configured\":false,\"url\":\"\"}"
         fun newsCall(id: String, json: String) {
@@ -920,14 +1063,30 @@ class MainActivity : AppCompatActivity() {
 
         fun bnrSupported(): Boolean = Build.VERSION.SDK_INT >= 33
         fun speechStart(lang: String, useBnr: Boolean = false, functionId: String = "", apiKey: String = "") {
-            current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.start(lang, useBnr, functionId, apiKey) } }
+            current?.let { a -> a.runOnUiThread {
+                if (!a.destroyed) {
+                    a.dictationWakePaused = true
+                    WakeWordService.pause(a, "dictation")
+                    a.dictation.start(lang, useBnr, functionId, apiKey)
+                }
+            } }
         }
-        fun speechStop() { current?.let { a -> a.runOnUiThread { if (!a.destroyed) a.dictation.stop() } } }
+        fun speechStop() { current?.let { a -> a.runOnUiThread {
+            if (!a.destroyed) {
+                a.dictation.stop()
+                a.dictationWakePaused = false
+                WakeWordService.resume(a, "dictation")
+            }
+        } } }
 
         /** Dictation -> page. */
         fun speech(type: String, text: String) {
             current?.let { a ->
                 a.runOnUiThread {
+                    if (type in setOf("final", "state", "error")) {
+                        a.dictationWakePaused = false
+                        WakeWordService.resume(a, "dictation")
+                    }
                     if (!a.destroyed) a.web.evaluateJavascript(
                         "window.__adarshSpeech&&window.__adarshSpeech(${JSONObject.quote(type)},${JSONObject.quote(text)})", null
                     )

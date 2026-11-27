@@ -50,7 +50,6 @@ function mount({ mediaReply, nativeMethods = {} } = {}) {
   delete overrides.speechStart;
   w.AdarshNative = {
     status: () => JSON.stringify({ ready: true, providers: { groq: true } }),
-    keyStatus: () => JSON.stringify({ NVIDIA_API_KEY: { set: true, hint: '…test' } }),
     recordsList: () => JSON.stringify({ ok: true, records: [] }),
     recordsImport: () => JSON.stringify({ ok: true }),
     recordsDelete: () => JSON.stringify({ ok: true }),
@@ -275,31 +274,15 @@ test('Stop during a long answer keeps the parts that already arrived', async t =
   assert.equal(app.Chat.isBusy(), false);
 });
 
-test('API keys: saving one key keeps the sheet open so the next key can be saved', async t => {
-  const saved = {};
-  const app = mount({ nativeMethods: {
-    keyStatus: () => JSON.stringify(Object.fromEntries(Object.keys(saved).map(k => [k, { set: true, hint: '…' + saved[k].slice(-4) }]))),
-    saveKey: (id, v) => { saved[id] = v; return JSON.stringify({ ok: true }); },
-    deleteKey: id => { delete saved[id]; return JSON.stringify({ ok: true }); }
-  } });
+test('provider keys are not editable or exposed through the Android UI bridge', async t => {
+  const app = mount();
   t.after(() => app.close());
   app.App.show('settings');
   await settle(0);
-  [...app.document.querySelectorAll('button')].find(b => text(b).includes('API keys')).click();
-  await settle(0);
-  const sheetEl = () => app.document.querySelector('.sheet[aria-label="API keys"]');
-  assert.ok(sheetEl());
-  for (const n of [1, 2]) {
-    const input = sheetEl().querySelector(`input[aria-label="Groq key ${n}"]`);
-    assert.ok(input, 'Groq key ' + n + ' field');
-    input.value = 'gsk_test_key_' + n;
-    const grp = input.closest('details');
-    const btns = [...grp.querySelectorAll('button')].filter(b => text(b) === 'Save');
-    btns[n - 1].click();
-    await settle(0);
-    assert.ok(sheetEl(), 'sheet must stay open after saving key ' + n);
-  }
-  assert.deepEqual(Object.keys(saved).length, 2);
-  assert.match(text(sheetEl()), /Groq · 2\/3/);
-  assert.ok(sheetEl().querySelector('details[data-g="Groq"]').open);
+  const settings = text(app.document.querySelector('#v-settings'));
+  assert.doesNotMatch(settings, /API keys/);
+  assert.equal(app.window.AdarshKeys, undefined);
+  assert.equal(typeof app.window.AdarshNative.keyStatus, 'undefined');
+  assert.equal(typeof app.window.AdarshNative.saveKey, 'undefined');
+  assert.equal(typeof app.window.AdarshNative.deleteKey, 'undefined');
 });

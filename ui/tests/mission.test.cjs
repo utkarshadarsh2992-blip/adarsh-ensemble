@@ -278,26 +278,24 @@ test('follow-ups in the briefing chat stay in Standard and carry only goals/proj
   } finally { app.close(); }
 });
 
-test('settings: Goals & briefing group, time sheet syncs the Android schedule', () => {
+test('settings expose local briefing privacy while on/time are Controller managed', () => {
   const calls = [];
-  const native = { briefingSet: (j) => { calls.push(JSON.parse(j)); return JSON.stringify({ ok: true, on: true, time: JSON.parse(j).time, notify: true, exact: true }); },
-    briefingStatus: () => JSON.stringify({ ok: true, notify: true, exact: true }), takeOpen: () => '' };
-  const app = mount({ native });
+  const native = {
+    controllerStatus: () => JSON.stringify({ linked: true, device_settings: { briefingOn: false, briefingTime: '22:15' } }),
+    briefingSet: (j) => { calls.push(JSON.parse(j)); return JSON.stringify({ ok: true, on: JSON.parse(j).on, time: JSON.parse(j).time, notify: true, exact: true }); },
+    briefingStatus: () => JSON.stringify({ ok: true, notify: true, exact: true }), takeOpen: () => ''
+  };
+  const app = mount({ native, settings: { briefingConsent: false } });
   try {
-    assert.ok(calls.length >= 1, 'boot syncs the schedule');
-    assert.equal(calls[0].time, '21:30'); assert.equal(calls[0].on, true); assert.equal(calls[0].ask, false);
+    assert.ok(calls.length >= 1, 'boot syncs the Controller schedule');
+    assert.equal(calls[0].time, '22:15'); assert.equal(calls[0].on, false); assert.equal(calls[0].ask, false);
+    assert.equal(app.S.settings.briefingConsent, false, 'privacy consent stays local');
     app.App.show('settings');
     const v = app.document.querySelector('#v-settings');
-    assert.match(text(v), /Goals & briefing/);
-    assert.doesNotMatch(text(v), /\bMission\b/i);
-    assert.match(text(v), /Briefing ka time.*Roz 21:30 · notification/);
-    [...v.querySelectorAll('.item')].find(b => /Briefing ka time/.test(b.textContent)).click();
-    const inp = app.document.querySelector('.sheet input[type=time]');
-    inp.value = '22:15';
-    [...app.document.querySelectorAll('.sheet button')].find(b => b.textContent === 'Save').click();
-    assert.equal(app.S.settings.briefingTime, '22:15');
-    const last = calls[calls.length - 1];
-    assert.equal(last.time, '22:15'); assert.equal(last.ask, true);
+    assert.match(text(v), /Goals & briefing/); assert.doesNotMatch(text(v), /\bMission\b/i);
+    assert.match(text(v), /Briefing privacy/);
+    assert.doesNotMatch(text(v), /Briefing ka time|Raat ki briefing/);
+    assert.equal(v.querySelector('input[type=time]'), null);
   } finally { app.close(); }
 });
 

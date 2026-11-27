@@ -139,6 +139,32 @@ def test_browser_search_sources_are_collected(monkeypatch):
     assert "isro.gov.in" in standard_agent.sources_block(out["sources"])
 
 
+def test_news_links_are_researched_once_and_carried_as_evidence(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk_one")
+    supplied = [{"provider": "supplied", "label": "Supplied source", "title": "Reuters JERA report",
+                 "url": "https://reuters.com/world/jera", "note": "JERA is in talks with Anthropic and Meta to build data centres near power plants in the Tokyo area.",
+                 "text": "JERA is in talks with Anthropic and Meta to build data centres near power plants in the Tokyo area."}]
+    seen = []
+
+    async def fetch(text, limit=6):
+        seen.append((text, limit))
+        return supplied
+
+    monkeypatch.setattr(standard_agent.source_research, "fetch_supplied_news_sources", fetch)
+    log = fake_net(monkeypatch, [final("JERA talks are reported near Tokyo.")])
+    messages = [{"role": "system", "content": "system"},
+                {"role": "user", "content": "Fact-check this news. <news>Article URL: https://reuters.com/world/jera</news>"}]
+
+    out = run(standard_agent.answer(messages))
+
+    assert len(seen) == 1 and seen[0][1] == 3
+    user_content = log[0]["body"]["messages"][-1]["content"]
+    assert "https://reuters.com/world/jera" in user_content and "near power plants in the Tokyo area" in user_content
+    assert out["sources"] == [{"title": "Reuters JERA report", "url": "https://reuters.com/world/jera"}]
+    assert out["evidence"] == [{"title": "Reuters JERA report", "url": "https://reuters.com/world/jera",
+                                "text": supplied[0]["text"]}]
+
+
 def test_limit_402_and_server_down_switch_to_next_groq_key(monkeypatch):
     for env, v in (("GROQ_API_KEY", "gsk_one"), ("GROQ_API_KEY_2", "gsk_two"), ("GROQ_API_KEY_3", "gsk_three")):
         monkeypatch.setenv(env, v)

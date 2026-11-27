@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS:Settings = { digest_time:'21:30', tz:'Asia/Kolkata
 export interface Usage { day:string; provider:string; model:string; stage:string; calls:number; tokens_in:number; tokens_out:number; }
 export interface AlertLog { id?:number; news_id?:string|null; channel:'telegram'|'fcm'; kind:'alert'|'digest'|'budget'|'test'|'copy'; ok:boolean; error:string; sent_at:string; day_local:string; }
 export interface Device { device_id:string; fcm_token:string; platform:'android'; app_version:string; updated_at:string; }
+export type NewsProvider = 'groq'|'tavily';
+export interface ProviderKey { slot:number; key:string; generation:string; }
 export interface Store {
   listFeeds():Promise<Feed[]>; updateFeed(id:string, patch:Partial<Feed>):Promise<void>; seen(hash:string):Promise<boolean>; markSeen(hash:string):Promise<void>; claimSeen(hash:string):Promise<boolean>;
   insertItem(item:Partial<NewsItem>):Promise<NewsItem>; updateItem(id:string, patch:Partial<NewsItem>):Promise<void>; getItem(id:string):Promise<NewsItem|null>;
@@ -35,6 +37,8 @@ export interface Store {
   getDevices():Promise<Device[]>; upsertDevice(d:Device):Promise<void>; removeDevice(id:string):Promise<void>;
   addAlert(a:AlertLog):Promise<void>; countAlerts(day:string, kind?:AlertLog['kind']):Promise<number>; listAlerts(day:string, kind?:AlertLog['kind']):Promise<AlertLog[]>;
   getKV(key:string):Promise<unknown>; claimDigest(day:string):Promise<boolean>; claimTavily(day:string,month:string,credits:number,dayCap:number,monthCap:number):Promise<boolean>; claimAlert(newsId:string,day:string):Promise<boolean>; releaseAlert(newsId:string,day:string):Promise<void>; setKV(key:string,value:unknown):Promise<void>; deleteKV(key:string):Promise<void>; clean():Promise<number>;
+  /** News-only provider credentials; absent on older Store implementations. */
+  getProviderKeys?(provider:NewsProvider):Promise<ProviderKey[]>;
 }
 export type FetchLike = (input:RequestInfo|URL, init?:RequestInit)=>Promise<Response>;
 export const json = (body:unknown, status=200, headers:Record<string,string>={}) => new Response(JSON.stringify(body), {status, headers:{'content-type':'application/json', ...headers}});
