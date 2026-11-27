@@ -284,6 +284,11 @@ const News = (() => {
       if (r && r.ok !== false) { V.patterns = { generated_at: str(r.generated_at, 40), cached: !!r.cached, reason: str(r.reason, 80), patterns: normPatterns(r.patterns) }; }
       else { note.hidden = false; note.textContent = (r && r.error) || 'Patterns nahi aaye.'; }
       if (r && r.reason === 'throttled') { note.hidden = false; note.textContent = 'Pattern refresh 30 minute mein ek baar. Purana cache dikha raha hoon.'; }
+      // Stale cache: the server answers at once and builds new patterns in the background. Re-check once, ~20 s later.
+      if (r && r.reason === 'refreshing') {
+        note.hidden = false; note.textContent = 'Naye patterns ban rahe hain… thodi der mein khud update hoga.';
+        if (!V.patternRepoll && !V.patternRepolled) { V.patternRepolled = true; V.patternRepoll = setTimeout(() => { V.patternRepoll = 0; if (V.mode === 'patterns') loadPatterns(false); }, 20000); }
+      } else V.patternRepolled = false;
       paint();
     };
     patternRefresh.addEventListener('click', () => loadPatterns(true));

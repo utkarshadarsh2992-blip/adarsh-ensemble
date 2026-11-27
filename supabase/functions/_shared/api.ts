@@ -1,7 +1,7 @@
 import type {Store,FetchLike,NewsItem} from './types.ts';
 import {json,DEFAULT_SETTINGS} from './types.ts';import {budget} from './budget.ts';import {localDay} from './budget.ts';import {sendFcm,fcmPayload} from './fcm.ts';import {telegram,htmlEscape,splitTelegram,logDelivery} from './alerts.ts';
 import {run as runDigest} from '../news-digest/index.ts';
-import {getPatterns} from './patterns.ts';
+import {getPatterns,peekPatterns,inBackground} from './patterns.ts';
 export function constantTime(a:string,b:string):boolean{const aa=new TextEncoder().encode(a),bb=new TextEncoder().encode(b);let d=aa.length^bb.length;for(let i=0;i<Math.max(aa.length,bb.length);i++)d|=(aa[i%Math.max(1,aa.length)]||0)^(bb[i%Math.max(1,bb.length)]||0);return d===0}
 const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type, x-app-secret','Access-Control-Allow-Methods':'POST, OPTIONS','Vary':'Origin'};
 import {safeFunctionError} from './diagnostics.ts';
@@ -16,6 +16,11 @@ if(a==='unregister'){if(typeof body.device_id!=='string'||body.device_id.length>
 	if(a==='patterns'){
 		if(Object.keys(body).some(k=>k!=='action'&&k!=='refresh'))return json({ok:false,error:'unknown patterns field'},400,headers);
 		if(body.refresh!==undefined&&typeof body.refresh!=='boolean')return json({ok:false,error:'invalid refresh'},400,headers);
+		if(!body.refresh){
+			// The phone read timeout is 10 s: answer from cache at once and regenerate a stale cache after the response.
+			const peek=await peekPatterns(store,now);
+			if(peek){const {stale,...cachedOut}=peek;if(!stale)return json({...cachedOut,reason:'fresh-cache'},200,headers);const bg=await inBackground(getPatterns(store,fetcher,now,false));return json({...cachedOut,reason:bg?'refreshing':'stale-cache'},200,headers)}
+		}
 		return json(await getPatterns(store,fetcher,now,Boolean(body.refresh)),200,headers);
 	}
 if(a==='settings_get')return json({ok:true,settings:await store.getSettings()},200,headers);

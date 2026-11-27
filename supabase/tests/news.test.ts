@@ -136,3 +136,28 @@ Deno.test('patterns obey the existing stopped budget and do not call Groq',async
   try { const r=await getPatterns(s,async()=>{calls++;return new Response('{}');},new Date('2026-11-27T12:00:00.000Z'),true);assertEquals(r.ok,false);assertEquals(r.reason,'budget-stopped');assertEquals(calls,0); }
   finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
 });
+import {PATTERN_CACHE_KEY} from '../functions/_shared/patterns.ts';
+import {warmPatterns} from '../functions/news-score/warm.ts';
+Deno.test('patterns API answers from cache at once and regenerates a stale cache (phone 10 s timeout)',async()=>{
+  Deno.env.set('APP_SECRET','test-app-secret-123');
+  const oldKey=Deno.env.get('GROQ_API_KEY_1');Deno.env.set('GROQ_API_KEY_1','test-pattern-key');
+  const now=new Date('2026-11-27T12:00:00.000Z'),s=new MemoryStore();
+  s.items=[patternItem('in','IN',1),patternItem('cn','CN',2)];let calls=0;
+  const good=JSON.stringify({choices:[{message:{content:JSON.stringify({patterns:[{title:'New race',pattern:'Naya link.',type:'ai-race',regions:[{region:'IN',what:'India',item_ids:['in']},{region:'CN',what:'China',item_ids:['cn']}],signal:'medium',why_it_matters:'x',watch_next:'y',assumption:'z'}]})}}],usage:{prompt_tokens:10,completion_tokens:5}});
+  const fetcher=async()=>{calls++;return new Response(good,{status:200});};
+  const mk=(body:any)=>new Request('http://x',{method:'POST',headers:{'content-type':'application/json','x-app-secret':'test-app-secret-123'},body:JSON.stringify(body)});
+  try {
+    await s.setKV(PATTERN_CACHE_KEY,{generated_at:new Date(now.getTime()-3600e3).toISOString(),window_h:72,n_items:2,model:'m',patterns:[{title:'Old'}]});
+    let j=await (await handleApi(mk({action:'patterns'}),s,fetcher,now)).json();
+    assertEquals(j.reason,'fresh-cache');assertEquals(j.patterns[0].title,'Old');assertEquals(calls,0);assertEquals('stale' in j,false);
+    await s.setKV(PATTERN_CACHE_KEY,{generated_at:new Date(now.getTime()-7*3600e3).toISOString(),window_h:72,n_items:2,model:'m',patterns:[{title:'Old'}]});
+    j=await (await handleApi(mk({action:'patterns'}),s,fetcher,now)).json();
+    assertEquals(j.ok,true);assertEquals(j.patterns[0].title,'Old');assertEquals(j.reason,'stale-cache');assertEquals(calls,1);
+    const after:any=await s.getKV(PATTERN_CACHE_KEY);assertEquals(after.patterns[0].title,'New race');
+  } finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
+});
+Deno.test('news-score pattern pre-warm runs only with ?patterns=1',async()=>{
+  const s=new MemoryStore();let calls=0;const fetcher=async()=>{calls++;return new Response('{}',{status:503});};
+  assertEquals(await warmPatterns(new Request('http://x/news-score'),s,fetcher),null);assertEquals(calls,0);
+  assertEquals(await warmPatterns(new Request('http://x/news-score?patterns=1'),s,fetcher),'done');
+});

@@ -203,6 +203,26 @@ function attemptTime(value: unknown): number {
   return 0;
 }
 
+/** Cache-only read for fast callers (the phone has a 10 s read timeout). `stale` = older than PATTERN_CACHE_H. */
+export async function peekPatterns(store: Store, now = new Date()): Promise<(PatternResponse & { stale: boolean }) | null> {
+  const cached = readCache(await store.getKV(PATTERN_CACHE_KEY));
+  if (!cached) return null;
+  const age = now.getTime() - Date.parse(cached.generated_at);
+  return { ok: true, ...cached, cached: true, stale: !(age < PATTERN_CACHE_H * 3600e3) };
+}
+
+/** Finish a task after the HTTP response when the Edge Runtime supports it; otherwise await it. */
+export async function inBackground(task: Promise<unknown>): Promise<boolean> {
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  const safe = task.catch(() => null);
+  if (rt && typeof rt.waitUntil === 'function') {
+    rt.waitUntil(safe);
+    return true;
+  }
+  await safe;
+  return false;
+}
+
 export async function getPatterns(
   store: Store,
   fetcher: FetchLike = fetch,
