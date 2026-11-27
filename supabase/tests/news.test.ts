@@ -188,3 +188,12 @@ Deno.test('patterns: alias leaks are stripped and weak links are dropped, strong
   const out=validatePatterns({patterns:[row('M','medium','in','cn'),row('W','weak','us','eu'),row('S','strong','us','eu')]},items);
   assertEquals(out.map(p=>p.title),['S','M']);assertEquals(out[1].pattern,'Same move');
 });
+import {selectPatternItems} from '../functions/_shared/patterns.ts';
+Deno.test('patterns: item selection is region-balanced so busy regions cannot crowd out others',()=>{
+  const now=new Date('2026-11-27T12:00:00.000Z');
+  const mk=(id:string,region:any,score:number)=>({...patternItem(id,region,5),score,cluster_key:id});
+  const items=[...Array.from({length:10},(_,i)=>mk('us'+i,'US',9)),mk('in0','IN',2),mk('cn0','CN',1),mk('ru0','RU',1)];
+  const out=selectPatternItems(items as any,now,6);
+  assertEquals(out.map(x=>x.region).sort(),['CN','IN','RU','US','US','US']);
+  assertEquals(out[0].id,'us0');
+});

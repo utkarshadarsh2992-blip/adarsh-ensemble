@@ -97,17 +97,34 @@ export function selectPatternItems(items: NewsItem[], now = new Date(), limit = 
       return preferred || score || b.created_at.localeCompare(a.created_at);
     });
   const seen = new Set<string>();
-  const out: NewsItem[] = [];
+  const byRegion = new Map<string, NewsItem[]>();
   for (const item of candidates) {
     const title = item.title.replace(/\s+/g, ' ').trim().toLowerCase();
     const key = item.cluster_key?.trim() || title;
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    out.push(item);
-    if (out.length >= limit) break;
+    const rows = byRegion.get(item.region) || [];
+    rows.push(item);
+    byRegion.set(item.region, rows);
+  }
+  // Round-robin across regions (best-scored first inside each) so one busy region
+  // (usually US/WORLD) cannot crowd out IN/CN/RU/EU — cross-country links need all of them.
+  const order = [...PATTERN_REGION_ORDER.filter((r) => byRegion.has(r)), ...[...byRegion.keys()].filter((r) => !PATTERN_REGION_ORDER.includes(r))];
+  const out: NewsItem[] = [];
+  for (let i = 0; out.length < limit; i++) {
+    let added = false;
+    for (const r of order) {
+      const item = byRegion.get(r)![i];
+      if (!item) continue;
+      out.push(item);
+      added = true;
+      if (out.length >= limit) break;
+    }
+    if (!added) break;
   }
   return out;
 }
+const PATTERN_REGION_ORDER = ['US', 'CN', 'IN', 'RU', 'EU', 'WORLD'];
 
 /** Short prompt alias for an item: n1, n2, ... (UUIDs cost ~20 tokens each and models mangle them). */
 export const patternAlias = (index: number): string => `n${index + 1}`;
@@ -155,7 +172,7 @@ function compactItems(items: NewsItem[]): string {
 }
 
 export function patternPrompt(items: NewsItem[]): string {
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Alag-alag topic ki news ko zabardasti mat jodo; weak/forced link ho to pattern mat banao. Asli pattern na mile to {"patterns":[]} do. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Alag-alag topic ki news ko zabardasti mat jodo; weak/forced link ho to pattern mat banao. Asli pattern na mile to {"patterns":[]} do. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
