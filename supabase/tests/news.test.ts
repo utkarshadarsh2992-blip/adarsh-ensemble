@@ -212,3 +212,11 @@ Deno.test('patterns: an empty model result keeps a recent good cache; an empty c
     assertEquals((await peekPatterns(e,now))!.stale,false);
   } finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
 });
+import {themeHints} from '../functions/_shared/patterns.ts';
+Deno.test('patterns: theme hints list tag/activity seen in 2+ named regions only',()=>{
+  const mk=(id:string,region:any,tag:string,activity:string)=>({...patternItem(id,region,1),tag,activity});
+  const items=[mk('a','US','AI','policy'),mk('b','RU','AI','policy'),mk('c','WORLD','AI','policy'),mk('d','IN','SPACE','launch'),mk('e','CN','ECON','ipo')];
+  const h=themeHints(items as any);
+  assertEquals(h,'AI/policy: US(n1) RU(n2)');
+  assert(patternPrompt(items as any).includes('Candidate themes:\nAI/policy: US(n1) RU(n2)'));
+});
