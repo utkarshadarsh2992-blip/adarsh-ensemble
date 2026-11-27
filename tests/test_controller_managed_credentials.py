@@ -33,6 +33,7 @@ def test_device_credential_rpc_is_service_only_and_has_safe_search_path():
 
 def test_native_applies_only_managed_setup_and_honors_explicit_tombstones():
     engine = (NATIVE / "Engine.kt").read_text()
+    assert "import org.json.JSONObject" in engine
     assert 'if (managedSetup.contains("news")) {' in engine
     assert 'if (managedSetup.contains("firebase")) {' in engine
     assert 'setup.optJSONObject("news") ?: JSONObject().put("url", "").put("secret", "")' in engine
