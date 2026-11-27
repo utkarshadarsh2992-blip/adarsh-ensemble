@@ -298,3 +298,16 @@ Deno.test('patterns: a generic word ("upside") or the company field alone does n
   // "what" names China's space programme only through the company field, not the headline -> region rejected
   assertEquals(validatePatterns({patterns:[{...base,title:'Space',pattern:'p',regions:[{region:'US',what:'Voyager 1 milestone',item_ids:['a1']},{region:'CN',what:'China space programme Shenzhou',item_ids:['h1']}]}]},items).length,0);
 });
+
+import {sharedNameHints} from '../functions/_shared/patterns.ts';
+Deno.test('patterns: shared-name hints list headline words that appear in 2+ named regions, not generic ones or same-region repeats',()=>{
+  const mk=(id:string,region:any,title:string)=>({...patternItem(id,region,1),title,company:''});
+  const items=[mk('a','US','Nvidia hits pause on chip shipments'),mk('b','CN','DeepSeek investors promised Nvidia chips'),mk('c','IN','Sarvam hosts Chinese models'),
+    mk('d','CN','Sarvam Chinese model row: what next'),mk('e','IN','Waaree order win'),mk('f','IN','Waaree EPC order'),mk('g','WORLD','Nvidia global halt')];
+  const h=sharedNameHints(items as any);
+  assert(/nvidia: US\(n1\) CN\(n2\)/i.test(h),h);
+  assert(/sarvam: IN\(n3\) CN\(n4\)/i.test(h),h);
+  assert(!/waaree/.test(h),h);            // same region only
+  assert(!/news|with/.test(h),h);
+  assert(patternPrompt(items as any).includes('Shared names'));
+});

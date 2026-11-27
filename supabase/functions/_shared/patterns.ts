@@ -118,6 +118,16 @@ export function selectPatternItems(items: NewsItem[], now = new Date(), limit = 
     rows.push(item);
     byRegion.set(item.region, rows);
   }
+  // Items whose company/product/person name also appears in another named region come first inside their region:
+  // taking only each region's top scorers threw away the very stories (Nvidia in US and CN) that can link countries.
+  const nameRegions = new Map<string, Set<string>>();
+  const namesOf = (item: NewsItem) => new Set([...properNames(item.title), ...properNames(item.company)].map((w) => w.toLowerCase().slice(0, 5)));
+  for (const [r, rows] of byRegion) {
+    if (r === 'WORLD') continue;
+    for (const item of rows) for (const k of namesOf(item)) nameRegions.set(k, (nameRegions.get(k) || new Set<string>()).add(r));
+  }
+  const crossLinked = (item: NewsItem) => [...namesOf(item)].some((k) => (nameRegions.get(k)?.size || 0) >= 2 && item.region !== 'WORLD');
+  for (const [r, rows] of byRegion) byRegion.set(r, [...rows.filter(crossLinked), ...rows.filter((x) => !crossLinked(x))]);
   // Round-robin across regions (best-scored first inside each) so one busy region
   // (usually US/WORLD) cannot crowd out IN/CN/RU/EU — cross-country links need all of them.
   const order = [...PATTERN_REGION_ORDER.filter((r) => byRegion.has(r)), ...[...byRegion.keys()].filter((r) => !PATTERN_REGION_ORDER.includes(r))];
@@ -205,9 +215,51 @@ export function themeHints(items: NewsItem[], max = 8): string {
     .map(([key, byRegion]) => `${key}: ${[...byRegion.entries()].map(([r, ids]) => `${r}(${ids.slice(0, 4).join(',')})`).join(' ')}`)
     .join('\n');
 }
+const NAME_SKIP = new Set([
+  'china', 'chinese', 'india', 'indian', 'russia', 'russian', 'europe', 'european', 'america', 'american', 'united', 'states', 'union',
+  'beijing', 'delhi', 'moscow', 'washington', 'brussels', 'president', 'minister', 'government', 'ministry', 'times', 'news', 'daily',
+  'street', 'journal', 'group', 'launch', 'technologies', 'technology', 'korea', 'update', 'breaking', 'price', 'office', 'electronics', 'ukrainian', 'ukraine', 'kiev', 'kyiv', 'limited', 'india', 'asia', 'asian', 'global', 'international', 'national', 'monday', 'tuesday', 'wednesday',
+  'thursday', 'friday', 'saturday', 'sunday', 'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october',
+  'november', 'december',
+]);
+/** Capitalised names (companies, people, products) from a headline, without the trailing "- Publisher" part. */
+function properNames(title: unknown): string[] {
+  const head = String(title ?? '').split(/\s[-|\u2013\u2014]\s/)[0];
+  const words = head.match(/[A-Za-z][A-Za-z0-9]+/g) || [];
+  return words.filter((w) => w.length >= 4 && /^[A-Z]/.test(w) && !NAME_SKIP.has(w.toLowerCase()) && !STOP_WORDS.has(w.toLowerCase()));
+}
+/**
+ * Concrete shared names: a company/person/product that shows up in the headlines of 2+ named regions,
+ * e.g. "Nvidia: US(n3) CN(n8)". Much stronger leads than the coarse 9-tag taxonomy; rare names rank first.
+ */
+export function sharedNameHints(items: NewsItem[], max = 8): string {
+  const byStem = new Map<string, { word: string; regions: Map<string, string[]>; count: number }>();
+  for (const [index, item] of items.entries()) {
+    if (item.region === 'WORLD') continue;
+    const seen = new Set<string>();
+    for (const w of [...properNames(item.title), ...properNames(item.company)]) {
+      const key = w.toLowerCase().slice(0, 5);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const e = byStem.get(key) || { word: w, regions: new Map<string, string[]>(), count: 0 };
+      const ids = e.regions.get(item.region) || [];
+      ids.push(patternAlias(index));
+      e.regions.set(item.region, ids);
+      e.count++;
+      byStem.set(key, e);
+    }
+  }
+  return [...byStem.values()]
+    .filter((e) => e.regions.size >= 2 && e.count <= 10)
+    .sort((a, b) => b.regions.size - a.regions.size || a.count - b.count)
+    .slice(0, max)
+    .map((e) => `${e.word}: ${[...e.regions.entries()].map(([r, ids]) => `${r}(${ids.slice(0, 3).join(',')})`).join(' ')}`)
+    .join('\n');
+}
 export function patternPrompt(items: NewsItem[]): string {
   const hints = themeHints(items);
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). 0 se 6 patterns do: real cross-country link na ho to {"patterns":[]} do, zabardasti pattern mat banao (koi minimum target nahi). Neeche "Candidate themes" code ne nikale hain (same tag/activity 2+ countries mein) — inhe headlines padh kar verify karo, aur khud bhi dhoondo. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho aur wahi event likho jo us region ki linked headlines mein hai (headline ke asli shabd/naam use karo, koi aur event ya company nahi). Ek item ko pattern mein tabhi daalo jab uski headline seedha usi move ki baat kare (alag sector ka stock ya roundup mat jodo). Inference ko assumption mein likho, fact ki tarah nahi. Line ke end mein SM = sarkari/state-media daava: use "X ka daava" likho, independent fact nahi; sirf SM lines ya ek hi publisher se pattern mat banao. Text mein koi aisa desh/company/actor mat jodo jo lines mein nahi hai. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. ${hints ? `Candidate themes:\n${hints}\n` : ''}News lines: ${compactItems(items)}`;
+  const names = sharedNameHints(items);
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Sabse real 2-5 patterns do (sach mein kam hon to kam). Real link = alag countries ki headlines EK HI move ki hon (jaise US chip export control aur China ke apne AI chips; India ka Chinese AI models host karna aur China ke open-weight model releases). Nakli link = sirf same sector/tag ya generic shabd (jaise ek solar stock aur ek liquor stock, ya roundup headline) — aise links skip karo, unse pattern mat banao. Neeche "Candidate themes" code ne nikale hain (same tag/activity 2+ countries mein) — inhe headlines padh kar verify karo, aur khud bhi dhoondo. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho aur wahi event likho jo us region ki linked headlines mein hai (headline ke asli shabd/naam use karo, koi aur event ya company nahi). Ek item ko pattern mein tabhi daalo jab uski headline seedha usi move ki baat kare (alag sector ka stock ya roundup mat jodo). Inference ko assumption mein likho, fact ki tarah nahi. Line ke end mein SM = sarkari/state-media daava: use "X ka daava" likho, independent fact nahi; sirf SM lines ya ek hi publisher se pattern mat banao. Text mein koi aisa desh/company/actor mat jodo jo lines mein nahi hai. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. ${hints ? `Candidate themes:\n${hints}\n` : ''}${names ? `Shared names (headline mein 2+ regions mein aaye, verify karo):\n${names}\n` : ''}News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
