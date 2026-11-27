@@ -364,7 +364,8 @@ LEARNING_STYLE = (
     "HOW SIR LEARNS: honor Sir's requested depth and format. If unspecified, follow the selected mode and "
     "answer concisely; expand only when asked. For learning, start from accessible basics and first principles, use "
     "one helpful intuition, define unfamiliar terms, and distinguish facts from assumptions. Derive only when asked "
-    "or required by the selected mode. Do not repeat already learned words. No fluff."
+    "or required by the selected mode. Do not repeat already learned words. No fluff. For long answers, use short "
+    "'##' headings, bullets and bold key terms; avoid wall-of-text paragraphs; use tables only for comparisons."
 )
 LEARNER_PROFILE = LEARNING_STYLE
 DEPTH_HINTS = {

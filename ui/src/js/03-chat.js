@@ -8,6 +8,7 @@ const Chat = (() => {
   const thumbs = new Map(); // attachment id -> object URL (session only)
   const typedReplies = new WeakMap(); // transient UI state only; the complete answer remains in S.chats
   let displayedChatId = null;
+  let copyPill = null, copyAnchor = null, copyValue = '';
   const MAX_REPLY_BYTES = 256 * 1024;
   const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
   function capReply(reply) {
@@ -59,7 +60,7 @@ const Chat = (() => {
     callsBtn = ibtn('search2', 'Model calls dikhao', toggleCalls, 'calls');
     hdrEl = h('header', { class: 'hdr pad' }, ibtn('menu', 'Open menu', () => App.drawer(true)), h('div', { class: 'ttl' }, titleEl, statusEl),
       h('div', { class: 'hdr-r' }, callsBtn, ibtn('globe', 'Open news', () => App.show('news'), 'news-open'), ibtn('edit', 'New chat', () => { newChat(); renderThread(); ta.focus(); })));
-    thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll } }, col = h('div', { class: 'col' }));
+    thread = h('div', { class: 'scroll thread pad', on: { scroll: onScroll, click: onThreadClick } }, col = h('div', { class: 'col' }));
     /* the moment the user takes the scroll, stop following: no fight between the finger and the ease */
     ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(t => thread.addEventListener(t, stopFollowing, { passive: true }));
     ta = h('textarea', { rows: 1, placeholder: Modes.current().placeholder, 'aria-label': 'Message', on: { input: onInput, keydown: onKey, paste: onPaste } });
@@ -97,6 +98,7 @@ const Chat = (() => {
   function onScroll() {
     const away = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
     jump.classList.toggle('show', away > 220); hdrEl.classList.toggle('scrolled', thread.scrollTop > 6);
+    hideCopyPill();
   }
   function stopFollowing() {
     if (!thread) return;
@@ -104,6 +106,50 @@ const Chat = (() => {
     const c = cur(), last = c && c.msgs[c.msgs.length - 1];
     const state = last && typedReplies.get(last);
     if (state) state.follow = false;
+  }
+
+  function hideCopyPill() {
+    if (copyPill) copyPill.hidden = true;
+    copyAnchor = null; copyValue = '';
+  }
+
+  function showCopyPill(anchor, value) {
+    value = String(value || '');
+    if (!anchor || !value.trim()) return hideCopyPill();
+    if (copyAnchor === anchor && copyPill && !copyPill.hidden) return hideCopyPill();
+    if (!copyPill) {
+      copyPill = h('button', { class: 'copy-popover', type: 'button', 'aria-label': 'Copy', on: { click: async () => {
+        const ok = await copyText(copyValue);
+        hideCopyPill();
+        toast(ok ? 'Copied' : 'Copy yahan available nahi');
+        if (ok) vibe();
+      } } }, icon('copy', 's'), h('span', {}, 'Copy'));
+      $('#phone').appendChild(copyPill);
+    }
+    copyAnchor = anchor; copyValue = value; copyPill.hidden = false;
+    const phone = $('#phone'), ar = anchor.getBoundingClientRect(), pr = phone.getBoundingClientRect();
+    const pw = phone.clientWidth || 390, ph = phone.clientHeight || 844;
+    const left = Math.max(8, Math.min(pw - 84, ar.right - pr.left - 78));
+    const below = ar.bottom - pr.top + 7;
+    copyPill.style.left = left + 'px';
+    copyPill.style.top = (below + 42 <= ph ? below : Math.max(8, ar.top - pr.top - 49)) + 'px';
+  }
+
+  function onThreadClick(e) {
+    const selected = window.getSelection && window.getSelection();
+    if (selected && selected.toString()) return hideCopyPill();
+    if (e.target.closest('a, img, video, input, textarea, .cb-copy')) return hideCopyPill();
+    const raw = e.target.closest('[data-copy-kind]');
+    if (!raw || !thread.contains(raw)) return hideCopyPill();
+    const anchor = raw.classList.contains('copy-trigger') ? raw.parentElement.closest('.answer-heading, .mdtable, .copy-list') : raw;
+    if (!anchor || anchor.classList.contains('copy-trigger')) return hideCopyPill();
+    let value = '';
+    if (anchor.dataset.copyKind === 'user') value = anchor.dataset.copyText || '';
+    else if (anchor.classList.contains('answer-heading')) value = sectionText(anchor);
+    else if (anchor.dataset.copyKind === 'table') value = plainText(anchor);
+    else if (anchor.dataset.copyKind === 'list') value = plainText(anchor.querySelector('ul,ol'));
+    if (value) { e.preventDefault(); showCopyPill(anchor, value); }
+    else hideCopyPill();
   }
   function useStarter(st) {
     ta.value = st.p; onInput();
@@ -118,6 +164,7 @@ const Chat = (() => {
 
   /* ---------- thread ---------- */
   function renderThread() {
+    hideCopyPill();
     const c = cur();
     const nextChatId = c ? c.id : null;
     const priorTop = thread.scrollTop;
@@ -198,6 +245,8 @@ const Chat = (() => {
         rest.forEach(a => b.append(h('div', { class: 'fchip' }, icon('file', 's'), a.name), ' '));
         if (m.text) b.append(h('div', { style: 'margin-top:6px' }, m.text));
       } else b.textContent = m.text;
+      b.setAttribute('role', 'button'); b.setAttribute('tabindex', '0'); b.setAttribute('aria-label', 'Copy question');
+      b.setAttribute('data-copy-kind', 'user'); b.setAttribute('data-copy-text', m.text || '');
       return h('div', { class: 'msg user' }, b);
     }
     const wrap = h('div', { class: 'msg', 'data-id': m.id });
