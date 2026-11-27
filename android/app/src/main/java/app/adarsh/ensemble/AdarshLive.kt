@@ -7,10 +7,10 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
-import android.media.AcousticEchoCanceler
-import android.media.AutomaticGainControl
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
 import android.media.MediaRecorder
-import android.media.NoiseSuppressor
+import android.media.audiofx.NoiseSuppressor
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -613,9 +613,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         automaticGainControl = try {
             if (AutomaticGainControl.isAvailable()) AutomaticGainControl.create(r.audioSessionId) else null
         } catch (_: Exception) { null }
-        try { echoCanceler?.enabled = true } catch (_: Exception) { }
-        try { noiseSuppressor?.enabled = true } catch (_: Exception) { }
-        try { automaticGainControl?.enabled = true } catch (_: Exception) { }
+        try { echoCanceler?.setEnabled(true) } catch (_: Exception) { }
+        try { noiseSuppressor?.setEnabled(true) } catch (_: Exception) { }
+        try { automaticGainControl?.setEnabled(true) } catch (_: Exception) { }
         gateMicWithoutAec = echoCanceler == null
         try { r.startRecording() } catch (_: Exception) {
             try { r.release() } catch (_: Exception) { }
