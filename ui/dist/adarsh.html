@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-JcNR+2dcaHttOW/0qvOEv6z7PH9auZdOB1auhJwQJtY='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"><title>ADARSH</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-bXuNkkkfguY2X6pH6dwxEd5mlhqoAFMrCzXR4bqABjU='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"><title>ADARSH</title>
 <link rel="icon" href="data:,">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -6557,6 +6557,8 @@ const Voice = (() => {
   function startLive() {
     const token = session;
     liveUser = ''; liveModel = '';
+    /* Live owns the speaker; a pending device/natural TTS job must not talk over native PCM. */
+    TTS.stop();
     capHold();
     setState('connecting');
     caption('', 'Adarsh Live jud raha hai…');

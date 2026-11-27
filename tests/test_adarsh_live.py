@@ -24,7 +24,8 @@ def test_endpoint_and_audio_format():
     assert 'google.ai.generativelanguage."' in LIVE
     assert 'METHOD = ".GenerativeService.BidiGenerateContent"' in LIVE
     assert "IN_RATE = 16000" in LIVE and "OUT_RATE = 24000" in LIVE   # documented PCM rates
-    assert "MediaRecorder.AudioSource.VOICE_RECOGNITION" in LIVE
+    # Live uses the communication source so Android can attach platform AEC/NS/AGC.
+    assert "MediaRecorder.AudioSource.VOICE_COMMUNICATION" in LIVE
     assert "Base64.NO_WRAP" in LIVE
     assert 'put("mimeType", "audio/pcm;rate=$IN_RATE")' in LIVE
 
