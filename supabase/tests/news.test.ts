@@ -178,3 +178,13 @@ Deno.test('patterns: truncated (finish_reason=length) output is a failure and ke
     const kept:any=await s.getKV(PATTERN_CACHE_KEY);assertEquals(kept.patterns[0].title,'Good old'); }
   finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
 });
+import {stripAliases} from '../functions/_shared/patterns.ts';
+Deno.test('patterns: alias leaks are stripped and weak links are dropped, strong first',()=>{
+  assertEquals(stripAliases('US: Nvidia pause (n2) | RU: Putin plan (n36, n40)'),'US: Nvidia pause | RU: Putin plan');
+  assertEquals(stripAliases('n12: Chip curbs [n3]'),'Chip curbs');
+  assertEquals(stripAliases('N95 masks stay'),'N95 masks stay');
+  const items=[patternItem('in','IN',1),patternItem('cn','CN',2),patternItem('us','US',3),patternItem('eu','EU',4)];
+  const row=(t:string,signal:string,a:string,b:string)=>({title:t,pattern:'Same move (n1)',type:'ai-race',signal,regions:[{region:a==='in'?'IN':'US',what:'x',item_ids:[a]},{region:b==='cn'?'CN':'EU',what:'y',item_ids:[b]}]});
+  const out=validatePatterns({patterns:[row('M','medium','in','cn'),row('W','weak','us','eu'),row('S','strong','us','eu')]},items);
+  assertEquals(out.map(p=>p.title),['S','M']);assertEquals(out[1].pattern,'Same move');
+});

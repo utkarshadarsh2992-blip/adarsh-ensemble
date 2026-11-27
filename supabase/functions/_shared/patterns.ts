@@ -155,10 +155,20 @@ function compactItems(items: NewsItem[]): string {
 }
 
 export function patternPrompt(items: NewsItem[]): string {
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Alag-alag topic ki news ko zabardasti mat jodo; weak/forced link ho to pattern mat banao. Asli pattern na mile to {"patterns":[]} do. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
+/** Removes leaked prompt aliases like "(n2)", "[n3, n7]" or "n12:" from model prose. */
+export function stripAliases(value: string): string {
+  return value
+    .replace(/[([]\s*n\d{1,3}(?:\s*[,/&]\s*n\d{1,3})*\s*[)\]]/gi, '')
+    .replace(/\bn\d{1,3}\s*:\s*/gi, '')
+    .replace(/\s+([,.;])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+const SIGNAL_RANK: Record<string, number> = { strong: 0, medium: 1, weak: 2 };
 export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): NewsPattern[] {
   const rows: unknown[] = Array.isArray(raw)
     ? raw
@@ -170,11 +180,12 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
   for (const value of rows) {
     if (out.length >= max || !value || typeof value !== 'object') continue;
     const row = value as Record<string, unknown>;
-    const title = text(row.title, 180);
-    const pattern = text(row.pattern, 520);
+    const title = stripAliases(text(row.title, 180));
+    const pattern = stripAliases(text(row.pattern, 520));
     const type = TYPES.includes(row.type as PatternType) ? row.type as PatternType : 'other';
     const signal = SIGNALS.includes(row.signal as PatternSignal) ? row.signal as PatternSignal : 'weak';
-    if (!title || !pattern || !Array.isArray(row.regions)) continue;
+    // Weak/forced links are noise for a pattern finder: only strong or medium survive.
+    if (signal === 'weak' || !title || !pattern || !Array.isArray(row.regions)) continue;
     const regions: PatternRegion[] = [];
     const used = new Set<string>();
     for (const rawRegion of row.regions) {
@@ -190,7 +201,7 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
         used.add(id);
         ids.push(id);
       }
-      if (ids.length) regions.push({ region: r, what: text(rr.what, 240), item_ids: ids });
+      if (ids.length) regions.push({ region: r, what: stripAliases(text(rr.what, 240)), item_ids: ids });
     }
     const actualRegions = new Set(regions.map((x) => x.region));
     const namedRegions = [...actualRegions].filter((x) => x !== 'WORLD');
@@ -207,13 +218,13 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
       type,
       regions: regions.slice(0, 8),
       signal,
-      why_it_matters: text(row.why_it_matters, 420),
-      watch_next: text(row.watch_next, 320),
-      assumption: text(row.assumption, 320),
+      why_it_matters: stripAliases(text(row.why_it_matters, 420)),
+      watch_next: stripAliases(text(row.watch_next, 320)),
+      assumption: stripAliases(text(row.assumption, 320)),
       items: attached,
     });
   }
-  return out;
+  return out.sort((a, b) => SIGNAL_RANK[a.signal] - SIGNAL_RANK[b.signal]);
 }
 
 function cachedResponse(cache: PatternCache | null, reason: string): PatternResponse | { ok: false; error: string; reason: string } {
