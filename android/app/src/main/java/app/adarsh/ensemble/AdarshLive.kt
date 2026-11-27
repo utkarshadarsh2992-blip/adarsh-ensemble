@@ -2,10 +2,15 @@ package app.adarsh.ensemble
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.AcousticEchoCanceler
+import android.media.AutomaticGainControl
 import android.media.MediaRecorder
+import android.media.NoiseSuppressor
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -20,6 +25,7 @@ import org.json.JSONObject
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Adarsh Live: one Gemini Live (BidiGenerateContent) WebSocket session, spoken both ways.
@@ -72,6 +78,11 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         private const val IN_RATE = 16000
         private const val OUT_RATE = 24000
         private const val CHUNK_SAMPLES = IN_RATE / 10          // 100 ms
+        private const val PCM_BYTES_PER_SAMPLE = 2
+        private const val JITTER_MS = 200
+        private const val JITTER_BYTES = OUT_RATE * PCM_BYTES_PER_SAMPLE * JITTER_MS / 1000
+        private const val ECHO_TAIL_MS = 300L
+        private const val PLAYBACK_WAIT_MS = 25L
         private const val MAX_PROMPT = 6000
         private const val SETUP_TIMEOUT_MS = 8_000L
         private const val DNS_TIMEOUT_MS = 6_000L
@@ -133,8 +144,28 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     private var micThread: Thread? = null
     private var track: AudioTrack? = null
     private var writerThread: Thread? = null
-    private val queue = LinkedBlockingQueue<ByteArray>()
-    @Volatile private var speaking = false
+    private data class PlaybackChunk(val epoch: Long, val pcm: ByteArray)
+    private val playbackLock = Object()
+    private val queue = LinkedBlockingQueue<PlaybackChunk>()
+    private val queuedBytes = AtomicLong(0L)
+    private val audioEpoch = AtomicLong(0L)
+    @Volatile private var playbackRunning = false
+    @Volatile private var turnCompletePending = false
+    @Volatile private var playbackStarted = false
+    @Volatile private var modelAudioActive = false
+    @Volatile private var micGateUntil = 0L
+    @Volatile private var gateMicWithoutAec = false
+    private var outputOddByte: Byte? = null
+    private var echoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+    private var automaticGainControl: AutomaticGainControl? = null
+    private val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val outputAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+    private var focusRequest: AudioFocusRequest? = null
+    private var previousAudioMode: Int? = null
 
     private val setupTimeout = Runnable {
         if (closed.get() || gotSetup) return@Runnable
@@ -161,6 +192,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     /** cfg: {key, model, voice, prompt}. Returns a status object for the UI; never throws. */
     fun start(cfg: JSONObject): JSONObject {
         if (!closed.get()) stop()
+        stopAudio()
         val k = cfg.optString("key").trim()
         if (k.isEmpty()) return JSONObject().put("ok", false).put("state", "error").put("message", "Gemini API key nahi mili.")
         val asked = cfg.optString("model", "auto").removePrefix("models/")
@@ -184,8 +216,14 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         lastWhy = ""
         trace.clear()
         closed.set(false)
-        speaking = false
-        queue.clear()
+        synchronized(playbackLock) {
+            queue.clear()
+            queuedBytes.set(0L)
+            outputOddByte = null
+            turnCompletePending = false
+            playbackStarted = false
+            modelAudioActive = false
+        }
         client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -399,6 +437,10 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
                 main.post { if (!closed.get()) fail("Internet/DNS theek nahi — " + lastWhy.take(90) + ". Net check karke dobara try karein.") }
                 return
             }
+            if (gotSetup) {
+                main.post { if (!closed.get()) finish("socket: " + lastWhy.take(120)) }
+                return
+            }
             note("fail " + (response?.code?.takeIf { it > 0 }?.toString() ?: lastWhy))
             next()
         }
@@ -443,6 +485,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             val model = plans.getOrNull(step)?.second ?: ""
             say(JSONObject().put("type", "role").put("role", roleOf(model)).put("label", ROLE_LABEL[roleOf(model)] ?: "").put("model", model))
             say(JSONObject().put("type", "state").put("state", "listening").put("model", model).put("role", roleOf(model)))
+            acquireAudioFocus()
             startMic()
             return
         }
@@ -457,7 +500,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             if (up.optBoolean("resumable") && h.isNotBlank()) resumeHandle = h
         }
         val sc = obj.optJSONObject("serverContent") ?: return
-        if (sc.optBoolean("interrupted")) { queue.clear(); try { track?.pause(); track?.flush() } catch (_: Exception) { }; speaking = false }
+        if (sc.optBoolean("interrupted")) flushPlayback()
         sc.optJSONObject("inputTranscription")?.optString("text")?.takeIf { it.isNotBlank() }?.let {
             remember("Sir: " + it)
             say(JSONObject().put("type", "user").put("text", it))
@@ -472,17 +515,14 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
                 val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data")
                 if (!data.isNullOrBlank()) {
                     val pcm = try { Base64.decode(data, Base64.DEFAULT) } catch (_: Exception) { null } ?: continue
-                    if (pcm.isNotEmpty()) {
-                        queue.offer(pcm)
-                        ensureWriter()
-                        if (!speaking) { speaking = true; say(JSONObject().put("type", "state").put("state", "speaking")) }
-                    }
+                    pcmForPlayback(pcm)?.let { enqueuePlayback(it) }
                 }
             }
         }
         if (sc.optBoolean("turnComplete")) {
-            speaking = false
-            say(JSONObject().put("type", "state").put("state", "listening"))
+            turnCompletePending = true
+            synchronized(playbackLock) { playbackLock.notifyAll() }
+            if (!playbackStarted && queuedBytes.get() == 0L) finishPlaybackTurn()
         }
     }
 
@@ -493,72 +533,240 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         if (recent.length > 2000) recent.delete(0, recent.length - 2000)
     }
 
+    /** Joins an odd PCM byte with the next server chunk; PCM16 frames may split at chunk boundaries. */
+    private fun pcmForPlayback(decoded: ByteArray): ByteArray? {
+        if (decoded.isEmpty()) return null
+        val joined = outputOddByte?.let { odd ->
+            outputOddByte = null
+            ByteArray(decoded.size + 1).also {
+                it[0] = odd
+                decoded.copyInto(it, 1)
+            }
+        } ?: decoded
+        if (joined.size % PCM_BYTES_PER_SAMPLE != 0) {
+            outputOddByte = joined.last()
+            return joined.copyOf(joined.size - 1).takeIf { it.isNotEmpty() }
+        }
+        return joined
+    }
+
+    private fun enqueuePlayback(pcm: ByteArray) {
+        if (pcm.isEmpty() || closed.get()) return
+        synchronized(playbackLock) {
+            if (!modelAudioActive) turnCompletePending = false
+            queue.offer(PlaybackChunk(audioEpoch.get(), pcm))
+            queuedBytes.addAndGet(pcm.size.toLong())
+            modelAudioActive = true
+            playbackLock.notifyAll()
+        }
+        ensureWriter()
+    }
+
+    private fun clearPlaybackQueue() {
+        synchronized(playbackLock) {
+            queue.clear()
+            queuedBytes.set(0L)
+            outputOddByte = null
+            playbackLock.notifyAll()
+        }
+    }
+
+    /** Barge-in stops buffered model audio immediately without recreating the track for the next turn. */
+    private fun flushPlayback() {
+        clearPlaybackQueue()
+        turnCompletePending = false
+        playbackStarted = false
+        modelAudioActive = false
+        micGateUntil = System.currentTimeMillis() + ECHO_TAIL_MS
+        try { track?.pause(); track?.flush() } catch (_: Exception) { }
+        say(JSONObject().put("type", "state").put("state", "listening"))
+    }
+
+    private fun finishPlaybackTurn() {
+        if (!turnCompletePending) return
+        turnCompletePending = false
+        modelAudioActive = false
+        if (playbackStarted) {
+            playbackStarted = false
+            micGateUntil = System.currentTimeMillis() + ECHO_TAIL_MS
+        }
+        say(JSONObject().put("type", "state").put("state", "listening"))
+        synchronized(playbackLock) { playbackLock.notifyAll() }
+    }
+
     private fun startMic() {
         if (micThread != null) return
         val min = AudioRecord.getMinBufferSize(IN_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val size = maxOf(min, CHUNK_SAMPLES * 2 * 4)
+        val size = maxOf(min.coerceAtLeast(1), CHUNK_SAMPLES * PCM_BYTES_PER_SAMPLE * 4)
         val r = try {
-            AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, IN_RATE, AudioFormat.CHANNEL_IN_MONO,
+            AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, IN_RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, size)
         } catch (_: Exception) { null } ?: return
         if (r.state != AudioRecord.STATE_INITIALIZED) { try { r.release() } catch (_: Exception) { }; return }
         recorder = r
-        try { r.startRecording() } catch (_: Exception) { return }
+        echoCanceler = try {
+            if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(r.audioSessionId) else null
+        } catch (_: Exception) { null }
+        noiseSuppressor = try {
+            if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(r.audioSessionId) else null
+        } catch (_: Exception) { null }
+        automaticGainControl = try {
+            if (AutomaticGainControl.isAvailable()) AutomaticGainControl.create(r.audioSessionId) else null
+        } catch (_: Exception) { null }
+        try { echoCanceler?.enabled = true } catch (_: Exception) { }
+        try { noiseSuppressor?.enabled = true } catch (_: Exception) { }
+        try { automaticGainControl?.enabled = true } catch (_: Exception) { }
+        gateMicWithoutAec = echoCanceler == null
+        try { r.startRecording() } catch (_: Exception) {
+            try { r.release() } catch (_: Exception) { }
+            recorder = null
+            releaseEffects()
+            return
+        }
+        val epoch = audioEpoch.get()
         val t = Thread {
             val buf = ShortArray(CHUNK_SAMPLES)
-            val bytes = ByteArray(CHUNK_SAMPLES * 2)
-            while (!closed.get()) {
-                val n = try { r.read(buf, 0, buf.size) } catch (_: Exception) { -1 }
-                if (n <= 0) { if (n < 0) break else continue }
-                var j = 0
-                for (i in 0 until n) {
-                    val v = buf[i].toInt()
-                    bytes[j++] = (v and 0xFF).toByte()
-                    bytes[j++] = ((v shr 8) and 0xFF).toByte()
+            val bytes = ByteArray(CHUNK_SAMPLES * PCM_BYTES_PER_SAMPLE)
+            try {
+                while (!closed.get() && epoch == audioEpoch.get()) {
+                    val n = try { r.read(buf, 0, buf.size) } catch (_: Exception) { -1 }
+                    if (n <= 0) { if (n < 0) break else continue }
+                    var j = 0
+                    for (i in 0 until n) {
+                        val v = buf[i].toInt()
+                        bytes[j++] = (v and 0xFF).toByte()
+                        bytes[j++] = ((v shr 8) and 0xFF).toByte()
+                    }
+                    val chunk = if (gateMicWithoutAec && (modelAudioActive || System.currentTimeMillis() < micGateUntil)) {
+                        ByteArray(j)
+                    } else bytes.copyOf(j)
+                    val msg = JSONObject().put("realtimeInput", JSONObject().put("audio", JSONObject()
+                        .put("data", Base64.encodeToString(chunk, Base64.NO_WRAP))
+                        .put("mimeType", "audio/pcm;rate=$IN_RATE")))
+                    if (!closed.get() && epoch == audioEpoch.get()) {
+                        try { ws?.send(msg.toString()) } catch (_: Exception) { break }
+                    }
                 }
-                val chunk = bytes.copyOf(j)
-                val msg = JSONObject().put("realtimeInput", JSONObject().put("audio", JSONObject()
-                    .put("data", Base64.encodeToString(chunk, Base64.NO_WRAP))
-                    .put("mimeType", "audio/pcm;rate=$IN_RATE")))
-                if (!closed.get()) try { ws?.send(msg.toString()) } catch (_: Exception) { break }
+            } finally {
+                try { r.stop() } catch (_: Exception) { }
+                try { r.release() } catch (_: Exception) { }
+                synchronized(this) { if (recorder === r) recorder = null }
             }
-            try { r.stop() } catch (_: Exception) { }
-            try { r.release() } catch (_: Exception) { }
         }
         t.isDaemon = true
-        t.start()
         micThread = t
+        t.start()
     }
 
     private fun ensureWriter() {
-        if (writerThread != null) return
-        val t = Thread {
-            val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
-            val tr = try {
-                AudioTrack.Builder()
-                    .setAudioAttributes(AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                    .setAudioFormat(AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(OUT_RATE)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(maxOf(min, OUT_RATE / 2))
-                    .setTransferMode(AudioTrack.MODE_STREAM)
-                    .build()
-            } catch (_: Exception) { null } ?: return@Thread
-            track = tr
-            try { tr.play() } catch (_: Exception) { }
-            while (!closed.get() || queue.isNotEmpty()) {
-                val pcm = try { queue.poll(200, TimeUnit.MILLISECONDS) } catch (_: Exception) { null } ?: continue
-                try { tr.write(pcm, 0, pcm.size) } catch (_: Exception) { break }
+        synchronized(playbackLock) {
+            if (playbackRunning && writerThread?.isAlive == true) return
+            playbackRunning = true
+            val t = Thread { playbackLoop() }
+            t.isDaemon = true
+            writerThread = t
+            t.start()
+        }
+    }
+
+    private fun playbackLoop() {
+        val epoch = audioEpoch.get()
+        val min = AudioTrack.getMinBufferSize(OUT_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val trackBuffer = maxOf(min.coerceAtLeast(1) * 4, JITTER_BYTES * 2)
+        val tr = try {
+            AudioTrack.Builder()
+                .setAudioAttributes(outputAttributes)
+                .setAudioFormat(AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(OUT_RATE)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+                .setBufferSizeInBytes(trackBuffer)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+        } catch (_: Exception) { null }
+        if (tr == null) {
+            synchronized(playbackLock) { playbackRunning = false; writerThread = null; playbackLock.notifyAll() }
+            return
+        }
+        track = tr
+        try {
+            while (!closed.get() && playbackRunning && epoch == audioEpoch.get()) {
+                val next = synchronized(playbackLock) {
+                    while (!closed.get() && playbackRunning && epoch == audioEpoch.get() &&
+                        (queue.isEmpty() || (!playbackStarted && queuedBytes.get() < JITTER_BYTES)) && !turnCompletePending) {
+                        try { playbackLock.wait(PLAYBACK_WAIT_MS) } catch (_: InterruptedException) { }
+                    }
+                    if (closed.get() || !playbackRunning || epoch != audioEpoch.get()) null
+                    else queue.poll()?.also { queuedBytes.addAndGet(-it.pcm.size.toLong()) }
+                }
+                if (next == null) {
+                    if (turnCompletePending && queue.isEmpty()) finishPlaybackTurn()
+                    continue
+                }
+                if (next.epoch != epoch) continue
+                if (!playbackStarted) {
+                    try { tr.play() } catch (_: Exception) { break }
+                    playbackStarted = true
+                    say(JSONObject().put("type", "state").put("state", "speaking"))
+                }
+                var offset = 0
+                while (offset < next.pcm.size && !closed.get() && playbackRunning &&
+                    epoch == audioEpoch.get() && playbackStarted) {
+                    val n = try {
+                        tr.write(next.pcm, offset, next.pcm.size - offset, AudioTrack.WRITE_BLOCKING)
+                    } catch (_: Exception) { -1 }
+                    if (n <= 0) break
+                    offset += n
+                }
+                if (turnCompletePending && queue.isEmpty() && playbackStarted) finishPlaybackTurn()
             }
+        } finally {
+            try { tr.pause() } catch (_: Exception) { }
+            try { tr.flush() } catch (_: Exception) { }
             try { tr.stop() } catch (_: Exception) { }
             try { tr.release() } catch (_: Exception) { }
+            synchronized(playbackLock) {
+                if (track === tr) track = null
+                playbackRunning = false
+                if (writerThread === Thread.currentThread()) writerThread = null
+                playbackLock.notifyAll()
+            }
         }
-        t.isDaemon = true
-        t.start()
-        writerThread = t
+    }
+
+    private fun acquireAudioFocus() {
+        if (focusRequest != null) return
+        try {
+            if (previousAudioMode == null) previousAudioMode = audioManager.mode
+            // Media/assistant output in normal mode uses the loudspeaker or the connected headset,
+            // rather than the quiet earpiece selected by MODE_IN_COMMUNICATION.
+            audioManager.mode = AudioManager.MODE_NORMAL
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(outputAttributes)
+                .setOnAudioFocusChangeListener { }
+                .setAcceptsDelayedFocusGain(false)
+                .build()
+            if (audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                focusRequest = request
+            }
+        } catch (_: Exception) { }
+    }
+
+    private fun releaseEffects() {
+        try { echoCanceler?.release() } catch (_: Exception) { }
+        try { noiseSuppressor?.release() } catch (_: Exception) { }
+        try { automaticGainControl?.release() } catch (_: Exception) { }
+        echoCanceler = null
+        noiseSuppressor = null
+        automaticGainControl = null
+        gateMicWithoutAec = false
+    }
+
+    private fun releaseAudioFocus() {
+        focusRequest?.let { try { audioManager.abandonAudioFocusRequest(it) } catch (_: Exception) { } }
+        focusRequest = null
+        previousAudioMode?.let { old -> try { audioManager.mode = old } catch (_: Exception) { } }
+        previousAudioMode = null
     }
 
     /** Typed turn on the same live session (no new connection, no mic). */
@@ -573,22 +781,51 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
     }
 
     private fun stopAudio() {
-        queue.clear()
-        try { track?.pause(); track?.flush() } catch (_: Exception) { }
+        audioEpoch.incrementAndGet()
+        playbackRunning = false
+        synchronized(playbackLock) {
+            queue.clear()
+            queuedBytes.set(0L)
+            outputOddByte = null
+            turnCompletePending = false
+            playbackStarted = false
+            modelAudioActive = false
+            playbackLock.notifyAll()
+        }
+        val tr = track
+        try { tr?.pause(); tr?.flush() } catch (_: Exception) { }
+        writerThread?.let { t ->
+            if (t !== Thread.currentThread()) {
+                t.interrupt()
+                try { t.join(800L) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+            }
+        }
+        if (writerThread?.isAlive == true) try { tr?.release() } catch (_: Exception) { }
+        writerThread = null
+        track = null
+        val r = recorder
+        try { r?.stop() } catch (_: Exception) { }
+        micThread?.let { t ->
+            if (t !== Thread.currentThread()) {
+                t.interrupt()
+                try { t.join(800L) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+            }
+        }
+        if (micThread?.isAlive == true) try { r?.release() } catch (_: Exception) { }
+        micThread = null
+        recorder = null
+        releaseEffects()
+        releaseAudioFocus()
     }
 
     fun stop() {
         main.removeCallbacks(setupTimeout)
-        if (closed.getAndSet(true)) return
+        val wasActive = !closed.getAndSet(true)
         try { ws?.close(1000, "bye") } catch (_: Exception) { }
         ws = null
         stopAudio()
-        micThread = null
-        writerThread = null
         try { client?.dispatcher?.executorService?.shutdown() } catch (_: Exception) { }
         client = null
-        track = null
-        recorder = null
-        say(JSONObject().put("type", "closed").put("code", 1000))
+        if (wasActive) say(JSONObject().put("type", "closed").put("code", 1000))
     }
 }

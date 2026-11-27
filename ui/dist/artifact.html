@@ -6560,6 +6560,8 @@ const Voice = (() => {
   function startLive() {
     const token = session;
     liveUser = ''; liveModel = '';
+    /* Live owns the speaker; a pending device/natural TTS job must not talk over native PCM. */
+    TTS.stop();
     capHold();
     setState('connecting');
     caption('', 'Adarsh Live jud raha hai…');
