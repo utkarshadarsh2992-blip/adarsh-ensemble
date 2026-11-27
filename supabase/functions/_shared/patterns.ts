@@ -9,6 +9,8 @@ export const PATTERN_ATTEMPT_KEY = 'patterns:last_attempt';
 export const PATTERN_WINDOW_H = 72;
 export const PATTERN_CACHE_H = 6;
 export const PATTERN_THROTTLE_MS = 30 * 60 * 1000;
+export const PATTERN_MAX_ITEMS = 90;
+export const PATTERN_MAX_TOKENS = 3200;
 
 const TYPES = ['ai-race', 'compute/datacentre buildout', 'capital flow', 'policy wave', 'supply chain', 'space race', 'talent', 'other'] as const;
 const SIGNALS = ['strong', 'medium', 'weak'] as const;
@@ -107,27 +109,53 @@ export function selectPatternItems(items: NewsItem[], now = new Date(), limit = 
   return out;
 }
 
+/** Short prompt alias for an item: n1, n2, ... (UUIDs cost ~20 tokens each and models mangle them). */
+export const patternAlias = (index: number): string => `n${index + 1}`;
+
+/** Map model-written aliases (n12) back to real DB ids; real ids pass through unchanged. */
+export function resolvePatternAliases(raw: unknown, items: NewsItem[]): unknown {
+  const byAlias = new Map(items.map((item, i) => [patternAlias(i), String(item.id)]));
+  const rows: unknown[] = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as Record<string, unknown>).patterns)
+      ? (raw as Record<string, unknown>).patterns as unknown[]
+      : [];
+  return rows.map((row) => {
+    if (!row || typeof row !== 'object' || !Array.isArray((row as Record<string, unknown>).regions)) return row;
+    const r = row as Record<string, unknown>;
+    return {
+      ...r,
+      regions: (r.regions as unknown[]).map((g) => {
+        if (!g || typeof g !== 'object') return g;
+        const gg = g as Record<string, unknown>;
+        const ids = Array.isArray(gg.item_ids) ? gg.item_ids : [];
+        return { ...gg, item_ids: ids.map((v) => { const k = typeof v === 'string' ? v.trim().toLowerCase() : ''; return byAlias.get(k) || v; }) };
+      }),
+    };
+  });
+}
+
 function compactItems(items: NewsItem[]): string {
   const groups = new Map<string, string[]>();
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const line = [
-      item.id,
+      patternAlias(index),
       item.region,
       item.tag,
       item.activity,
-      text(item.company, 30),
-      text(item.title, 92),
-      text(item.points?.[0] || item.raw_summary, 70),
+      text(item.company, 24),
+      text(item.title, 90),
+      text(item.points?.[0] || item.raw_summary, 60),
     ].join('|');
     const rows = groups.get(item.region) || [];
-    rows.push(line.slice(0, 205));
+    rows.push(line.slice(0, 190));
     groups.set(item.region, rows);
   }
-  return [...groups.entries()].map(([r, rows]) => `${r}\n${rows.join('\n')}`).join('\n').slice(0, 21000);
+  return [...groups.entries()].map(([r, rows]) => `${r}\n${rows.join('\n')}`).join('\n').slice(0, 15000);
 }
 
 export function patternPrompt(items: NewsItem[]): string {
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["id"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
@@ -239,17 +267,21 @@ export async function getPatterns(
   const state = await budget(store, now);
   if (state.groq.state === 'stopped') return cachedResponse(cached, 'budget-stopped');
 
-  const items = selectPatternItems(await store.listItems({ status: 'scored', since: new Date(now.getTime() - PATTERN_WINDOW_H * 3600e3).toISOString(), limit: 300 }), now);
+  const items = selectPatternItems(await store.listItems({ status: 'scored', since: new Date(now.getTime() - PATTERN_WINDOW_H * 3600e3).toISOString(), limit: 300 }), now, PATTERN_MAX_ITEMS);
   if (items.length < 2) return cachedResponse(cached, 'not-enough-news');
 
   await store.setKV(PATTERN_ATTEMPT_KEY, { attempted_at: now.getTime(), ok: false });
   try {
     const result = await groq(store, fetcher, patternPrompt(items), 'patterns', now, {
       model: 'openai/gpt-oss-120b',
-      maxTokens: 1400,
+      maxTokens: PATTERN_MAX_TOKENS,
       fallbackModel: 'openai/gpt-oss-20b',
     });
-    const patterns = validatePatterns(extractJson(result.text), items);
+    const raw = extractJson(result.text);
+    const parsed = Array.isArray(raw) || (raw && typeof raw === 'object' && Array.isArray((raw as Record<string, unknown>).patterns));
+    // A cut-off or non-JSON answer is a failed attempt, never an "empty" result that replaces a good cache.
+    if (result.finish === 'length' || !parsed) throw new Error('pattern output truncated or not JSON');
+    const patterns = validatePatterns(resolvePatternAliases(raw, items), items);
     const next: PatternCache = {
       generated_at: now.toISOString(),
       window_h: PATTERN_WINDOW_H,

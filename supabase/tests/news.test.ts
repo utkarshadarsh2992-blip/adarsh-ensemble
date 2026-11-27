@@ -161,3 +161,20 @@ Deno.test('news-score pattern pre-warm runs only with ?patterns=1',async()=>{
   assertEquals(await warmPatterns(new Request('http://x/news-score'),s,fetcher),null);assertEquals(calls,0);
   assertEquals(await warmPatterns(new Request('http://x/news-score?patterns=1'),s,fetcher),'done');
 });
+import {resolvePatternAliases,patternPrompt} from '../functions/_shared/patterns.ts';
+Deno.test('patterns prompt uses short aliases and maps them back to real ids',()=>{
+  const items=[patternItem('uuid-in','IN',1),patternItem('uuid-cn','CN',2)];
+  const p=patternPrompt(items);assert(p.includes('n1|IN'));assert(p.includes('n2|CN'));assertEquals(p.includes('uuid-in|IN'),false);
+  const raw={patterns:[{title:'T',pattern:'P',type:'ai-race',signal:'strong',regions:[{region:'IN',what:'a',item_ids:['n1']},{region:'CN',what:'b',item_ids:['N2']}]}]};
+  const out=validatePatterns(resolvePatternAliases(raw,items),items);
+  assertEquals(out.length,1);assertEquals(out[0].items.map(x=>x.id).sort(),['uuid-cn','uuid-in']);
+});
+Deno.test('patterns: truncated (finish_reason=length) output is a failure and keeps the good cache',async()=>{
+  const oldKey=Deno.env.get('GROQ_API_KEY_1');Deno.env.set('GROQ_API_KEY_1','test-pattern-key');
+  const now=new Date('2026-11-27T12:00:00.000Z'),s=new MemoryStore();s.items=[patternItem('in','IN',1),patternItem('cn','CN',2)];
+  await s.setKV(PATTERN_CACHE_KEY,{generated_at:new Date(now.getTime()-7*3600e3).toISOString(),window_h:72,n_items:2,model:'m',patterns:[{title:'Good old'}]});
+  const cut=JSON.stringify({choices:[{finish_reason:'length',message:{content:'{"patterns":[{"title":"half'}}],usage:{prompt_tokens:10,completion_tokens:3200}});
+  try { const r=await getPatterns(s,async()=>new Response(cut,{status:200}),now,true);assertEquals(r.ok,true);assertEquals(r.reason,'generation-failed');
+    const kept:any=await s.getKV(PATTERN_CACHE_KEY);assertEquals(kept.patterns[0].title,'Good old'); }
+  finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
+});

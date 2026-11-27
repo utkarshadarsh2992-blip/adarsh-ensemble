@@ -11,7 +11,7 @@ export async function groq(
   stage:GroqStage,
   now=new Date(),
   options:GroqOptions = {},
-):Promise<{text:string;usage:any;model:string}>{
+):Promise<{text:string;usage:any;model:string;finish?:string}>{
   const cooldown=Number(await store.getKV('groq:cooldown')||0);
   if(cooldown>Date.now())throw new Error('Groq cooldown');
   const keys=[1,2,3].map(i=>Deno.env.get(`GROQ_API_KEY_${i}`)).filter(Boolean) as string[];
@@ -32,7 +32,7 @@ export async function groq(
         if(!r.ok){last=`HTTP ${r.status}`;retryable=r.status>=500;continue}
         const j=await r.json(),u=j.usage||{};
         await store.bumpUsage({day:now.toISOString().slice(0,10),provider:'groq',model,stage,calls:1,tokens_in:u.prompt_tokens||0,tokens_out:u.completion_tokens||0});
-        return {text:String(j.choices?.[0]?.message?.content||''),usage:u,model};
+        return {text:String(j.choices?.[0]?.message?.content||''),usage:u,model,finish:String(j.choices?.[0]?.finish_reason||'')};
       } catch(error) {
         last='timeout';
         retryable=true;
