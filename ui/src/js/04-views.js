@@ -373,7 +373,7 @@ const App = (() => {
       } } }, 'Test');
       const liveBlock = [
         h('div', { class: 'grp' },
-          swItem('voice', 'Adarsh Live', 'Live voice', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && typeof Live !== 'undefined' && Live) Live.stop(); })),
+          swItem('voice', 'Adarsh Live', 'Google Gemini Live', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && typeof Live !== 'undefined' && Live) Live.stop(); })),
         S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick, h('div', { class: 'inline' }, liveTest, liveOut)) : null
       ];
       const kids = [

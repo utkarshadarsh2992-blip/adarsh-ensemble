@@ -324,7 +324,7 @@ const Live = (() => {
 })();
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn;
+  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, tagEl, glBtn;
   let session = 0, releasePrompt = null, releaseAsk = null;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
@@ -363,9 +363,33 @@ const Voice = (() => {
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
     speakOn = S.settings.voiceReplies !== false;
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
-    el.append(h('div', { class: 'v-top pad' }, h('span', { class: 'tag' }, (S.settings.adarshLive && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output')), ibtn('x', 'Close voice mode', close)),
+    /* Google (Gemini) Live on/off right on the voice screen; only the Android app has the native socket. */
+    glBtn = Live.native() ? h('button', { class: 'chipbtn gl', 'aria-pressed': String(S.settings.adarshLive === true), title: 'Google Gemini Live voice', on: { click: () => setGoogleLive(S.settings.adarshLive !== true) } }, 'Google Live') : null;
+    tagEl = h('span', { class: 'tag' }, tagText());
+    el.append(h('div', { class: 'v-top pad' }, tagEl, ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+  }
+  const tagText = () => (S.settings.adarshLive && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output');
+  /* Flip between Google Live and the normal listen -> answer -> speak loop without closing the screen.
+     Whatever the old mode was doing (listening, speaking, a live socket) stops first. */
+  function setGoogleLive(v) {
+    S.settings.adarshLive = v === true; save();
+    if (glBtn) glBtn.setAttribute('aria-pressed', String(S.settings.adarshLive));
+    if (tagEl) tagEl.textContent = tagText();
+    vibe();
+    if (!openFlag) return;
+    session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
+    STT.stop(); TTS.stop();
+    if (liveOn) { liveOn = false; Live.stop(); }
+    capNow();
+    if (S.settings.adarshLive) {
+      if (startLive()) { toast('Google Live on'); return; }
+      toast('Google Live start nahi hua — normal voice');
+    } else toast('Google Live off — normal voice');
+    setState('idle');
+    caption('', S.settings.adarshLive ? 'Google Live start nahi hua. Orb tap karo aur bolo (normal voice).' : 'Normal voice on. Orb tap karo aur bolo.'); capNow();
+    if (handsfree && STT.supported()) listen();
   }
   /* opts.listen: coming back from the background session, so start listening right away */
   function open(opts = {}) {

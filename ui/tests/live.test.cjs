@@ -157,3 +157,37 @@ test('native TTS start and completion reach the UI as separate callbacks', async
   await settle(10);
   assert.equal(ended, 1, 'completion remains a separate event');
 });
+
+test('the voice screen has a Google Live toggle that switches live <-> normal voice without closing', async (t) => {
+  const calls = [];
+  const app = mount({ settings: { adarshLive: false }, native: bridge(calls) });
+  t.after(() => app.close());
+  app.Voice.open();
+  await settle(20);
+  const chip = [...app.document.querySelectorAll('#voice .chipbtn')].find(b => text(b) === 'Google Live');
+  assert.ok(chip, 'chip is on the voice screen');
+  assert.equal(chip.getAttribute('aria-pressed'), 'false');
+  assert.equal(calls.length, 0, 'live never starts on its own');
+  assert.match(text(app.document.querySelector('#voice .tag')), /^VOICE/);
+  chip.click();
+  await settle(20);
+  assert.equal(app.S.settings.adarshLive, true, 'setting saved');
+  assert.equal(chip.getAttribute('aria-pressed'), 'true');
+  assert.ok(calls.some(c => c.model), 'Google Live socket started');
+  assert.match(text(app.document.querySelector('#voice .tag')), /^ADARSH LIVE/);
+  chip.click();
+  await settle(20);
+  assert.equal(app.S.settings.adarshLive, false);
+  assert.ok(calls.some(c => c.stop), 'live socket closed when switched off');
+  assert.equal(app.document.querySelector('#voice').hidden, false, 'screen stays open in normal voice');
+  assert.match(text(app.document.querySelector('#voice .v-cap')), /Normal voice/);
+  assert.match(text(app.document.querySelector('#voice .tag')), /^VOICE/);
+});
+
+test('no Google Live chip in a browser without the native bridge', async (t) => {
+  const app = mount();
+  t.after(() => app.close());
+  app.Voice.open();
+  await settle(20);
+  assert.equal([...app.document.querySelectorAll('#voice .chipbtn')].some(b => text(b) === 'Google Live'), false);
+});
