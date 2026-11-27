@@ -220,3 +220,15 @@ Deno.test('patterns: theme hints list tag/activity seen in 2+ named regions only
   assertEquals(h,'AI/policy: US(n1) RU(n2)');
   assert(patternPrompt(items as any).includes('Candidate themes:\nAI/policy: US(n1) RU(n2)'));
 });
+import {coherent} from '../functions/_shared/patterns.ts';
+Deno.test('patterns: DB region wins over model label, and forced (incoherent) links are dropped',()=>{
+  const mk=(id:string,region:any,tag:string,activity:string)=>({...patternItem(id,region,1),tag,tags:[tag],activity});
+  const items=[mk('ru','RU','ECON','policy'),mk('eu','WORLD','WORLD','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other')];
+  // Model files the WORLD item under EU: kept, but moved to WORLD; RU+WORLD share "policy".
+  const ok=validatePatterns({patterns:[{title:'Arctic',pattern:'p',type:'policy wave',signal:'medium',regions:[{region:'RU',what:'r',item_ids:['ru']},{region:'EU',what:'e',item_ids:['eu']}]}]},items as any);
+  assertEquals(ok.length,1);assertEquals(ok[0].regions.map(r=>r.region),['RU','WORLD']);
+  // US physics funding vs IN econ "other": no shared tag/activity -> dropped.
+  const bad=validatePatterns({patterns:[{title:'Forced',pattern:'p',type:'other',signal:'medium',regions:[{region:'US',what:'u',item_ids:['us']},{region:'IN',what:'i',item_ids:['in']}]}]},items as any);
+  assertEquals(bad.length,0);
+  assertEquals(coherent([items[0],items[3]] as any),true);
+});

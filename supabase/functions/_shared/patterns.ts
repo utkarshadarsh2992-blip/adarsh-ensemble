@@ -216,6 +216,23 @@ export function stripAliases(value: string): string {
     .trim();
 }
 const SIGNAL_RANK: Record<string, number> = { strong: 0, medium: 1, weak: 2 };
+/**
+ * Guard against forced links: at least two items from different regions must share a
+ * topic tag (not the generic WORLD tag) or a concrete activity (not "other").
+ */
+export function coherent(items: NewsItem[]): boolean {
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const a = items[i], b = items[j];
+      if (a.region === b.region) continue;
+      const tags = (x: NewsItem) => new Set([x.tag, ...(Array.isArray(x.tags) ? x.tags : [])].filter((t) => t && t !== 'WORLD'));
+      const ta = tags(a), tb = tags(b);
+      if ([...ta].some((t) => tb.has(t))) return true;
+      if (a.activity && a.activity !== 'other' && a.activity === b.activity) return true;
+    }
+  }
+  return false;
+}
 export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): NewsPattern[] {
   const rows: unknown[] = Array.isArray(raw)
     ? raw
@@ -233,28 +250,33 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
     const signal = SIGNALS.includes(row.signal as PatternSignal) ? row.signal as PatternSignal : 'weak';
     // Weak/forced links are noise for a pattern finder: only strong or medium survive.
     if (signal === 'weak' || !title || !pattern || !Array.isArray(row.regions)) continue;
-    const regions: PatternRegion[] = [];
+    // The DB region of each item wins over the model's label (it often files a Kyiv/Arctic
+    // story under the "wrong" country); an item is attached once, under its real region.
+    const byRegion = new Map<string, PatternRegion>();
     const used = new Set<string>();
     for (const rawRegion of row.regions) {
       if (!rawRegion || typeof rawRegion !== 'object') continue;
       const rr = rawRegion as Record<string, unknown>;
-      const r = region(rr.region);
-      if (!r) continue;
-      const ids: string[] = [];
+      const label = region(rr.region);
       for (const idValue of Array.isArray(rr.item_ids) ? rr.item_ids : []) {
         const id = itemId(idValue);
         const item = byId.get(id);
-        if (!item || item.region !== r || used.has(id)) continue;
+        if (!item || used.has(id)) continue;
+        const r = item.region;
         used.add(id);
-        ids.push(id);
+        const slot = byRegion.get(r) || { region: r, what: label === r ? stripAliases(text(rr.what, 240)) : '', item_ids: [] };
+        if (!slot.what && label === r) slot.what = stripAliases(text(rr.what, 240));
+        slot.item_ids.push(id);
+        byRegion.set(r, slot);
       }
-      if (ids.length) regions.push({ region: r, what: stripAliases(text(rr.what, 240)), item_ids: ids });
     }
+    const regions: PatternRegion[] = [...byRegion.values()].map((g) => ({ ...g, what: g.what || text(byId.get(g.item_ids[0])?.title, 240) }));
     const actualRegions = new Set(regions.map((x) => x.region));
     const namedRegions = [...actualRegions].filter((x) => x !== 'WORLD');
     // A WORLD row is useful only when another named region is present, and every
     // pattern must still span two distinct actual regions.
     if (actualRegions.size < 2 || !namedRegions.length || used.size < 2) continue;
+    if (!coherent([...used].map((id) => byId.get(id)!))) continue;
     const attached = [...used].map((id) => byId.get(id)!).map((item) => ({
       id: String(item.id), title: text(item.title, 220), url: text(item.url, 700), source: text(item.source, 120), region: item.region,
     }));
