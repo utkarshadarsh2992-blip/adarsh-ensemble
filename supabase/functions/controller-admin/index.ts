@@ -71,6 +71,7 @@ function nextCursor(devices: number, usage: number, history: number, hasMore: bo
 function rpcFault(error: { code?: string } | null | undefined): never {
   if (error?.code === '40001') fault(409, 'revision_conflict');
   if (error?.code === 'P0002') fault(404, 'not_found');
+  if (error?.code === 'P0001') fault(429, 'rate_limited');
   if (error?.code === '22023') fault(400, 'invalid_request');
   fault(503, 'unavailable');
 }

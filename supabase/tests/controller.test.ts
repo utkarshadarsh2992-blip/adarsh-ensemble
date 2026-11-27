@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BUNDLED_ROUTE_CHAINS, DEFAULT_MODELS, DEFAULT_PROVIDERS,
-  sanitizeReport, secureRandomBase64Url, sha256Hex, validateConfig,
+  ControllerFault, sanitizeReport, secureRandomBase64Url, sha256Hex, safeFaultResponse, validateConfig,
 } from '../functions/_shared/controller.ts';
+import { handleControllerDevice } from '../functions/controller-device/index.ts';
 
 function validConfig() {
   return {
@@ -201,4 +202,31 @@ test('complete key ledgers are explicit, timestamped and generation-aware; legac
   assert.throws(() => sanitizeReport({ ...complete, sampled_at: undefined }));
   assert.throws(() => sanitizeReport({ ...complete, providers: [{ ...complete.providers[0], keys: report.providers[0].keys }] }));
   assert.equal('keys_complete' in (sanitizeReport(report).providers as any[])[0], false);
+});
+
+test('device CORS reflects only configured controller origins', async () => {
+  const previous = Deno.env.get('ALLOWED_ORIGINS');
+  Deno.env.set('ALLOWED_ORIGINS', 'https://adarshctl-pc68aukk.manus.space,capacitor://localhost');
+  try {
+    const evil = await handleControllerDevice(new Request('https://example.test', {
+      method: 'OPTIONS', headers: { origin: 'https://evil.example' },
+    }));
+    assert.equal(evil.status, 204);
+    assert.equal(evil.headers.get('access-control-allow-origin'), null);
+    const allowed = await handleControllerDevice(new Request('https://example.test', {
+      method: 'OPTIONS', headers: { origin: 'capacitor://localhost' },
+    }));
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'capacitor://localhost');
+  } finally {
+    if (previous === undefined) Deno.env.delete('ALLOWED_ORIGINS');
+    else Deno.env.set('ALLOWED_ORIGINS', previous);
+  }
+});
+
+test('pairing cooldown has a bounded, non-internal error message', async () => {
+  const response = safeFaultResponse(new ControllerFault(429, 'rate_limited'));
+  assert.equal(response.status, 429);
+  const body = await response.json();
+  assert.equal(body.error.code, 'rate_limited');
+  assert.match(body.error.message, /Pairing code limit/);
 });

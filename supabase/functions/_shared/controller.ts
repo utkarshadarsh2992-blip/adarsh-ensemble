@@ -593,6 +593,7 @@ export function safeFaultResponse(error: unknown, cors: HeadersInit = {}): Respo
       invalid_route: 'Route validation failed.', invalid_report: 'Usage report validation failed.',
       revision_conflict: 'Configuration revision conflict.', not_found: 'Resource not found.',
       body_too_large: 'Request is too large.', unavailable: 'Controller temporarily unavailable.',
+      rate_limited: 'Pairing code limit reached. Thoda wait karke dobara try karo.',
     };
     return jsonResponse({ ok: false, error: { code: error.code, message: messages[error.code] ?? 'Request could not be completed.', ...(error.details ? { details: error.details } : {}) } }, error.status, cors);
   }

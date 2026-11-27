@@ -5,21 +5,17 @@ import {
 } from '../_shared/controller.ts';
 
 function corsHeaders(request: Request): HeadersInit {
-  const origin = request.headers.get('origin');
-  let allowOrigin = '*';
-  if (origin && origin !== 'null') {
-    try {
-      const parsed = new URL(origin);
-      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:') && parsed.origin === origin) allowOrigin = origin;
-    } catch { /* Invalid Origin is not reflected. */ }
-  }
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
+  const configured = (Deno.env.get('ALLOWED_ORIGINS') || 'https://adarshctl-pc68aukk.manus.space,http://localhost:5173,http://localhost:4173,capacitor://localhost')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  const origin = request.headers.get('origin') || '';
+  const headers: Record<string, string> = {
     'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Max-Age': '600',
     'Vary': 'Origin',
   };
+  if (configured.includes(origin)) headers['Access-Control-Allow-Origin'] = origin;
+  return headers;
 }
 
 function serviceClient(): SupabaseClient {
@@ -42,6 +38,7 @@ function deviceToken(request: Request): string {
 
 function rpcFault(error: { code?: string } | null | undefined): never {
   if (error?.code === '28000') fault(401, 'unauthorized');
+  if (error?.code === 'P0001') fault(429, 'rate_limited');
   if (error?.code === '22023') fault(400, 'invalid_request');
   fault(503, 'unavailable');
 }
