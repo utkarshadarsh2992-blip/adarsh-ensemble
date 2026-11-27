@@ -155,12 +155,12 @@ export function endpointError(provider: Provider, raw: string): string | null {
   }
 }
 export function modelError(m: Model): string | null {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,59}$/.test(m.label))
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(m.label))
     return "Label: 1–60 letters, numbers, dots, hyphens.";
   if (
     !m.model.trim() ||
-    m.model.length > 200 ||
-    /[\s\u0000-\u001f]/.test(m.model)
+    m.model.length > 128 ||
+    /[\s\u0000-\u001f]/.test(m.model) || !/^[A-Za-z0-9@][A-Za-z0-9._:/@+-]{0,127}$/.test(m.model)
   )
     return "Valid provider model ID chahiye (max 200).";
   if (!PROVIDERS.includes(m.provider)) return "Unsupported provider.";
@@ -214,4 +214,67 @@ export function aggregate(
     req: reports.reduce((s, r) => s + r.totals.req, 0),
     tok: reports.reduce((s, r) => s + r.totals.tok, 0),
   };
+}
+
+export type DetachResult =
+  | { ok: true; routes: Record<string, string[]>; changed: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Remove (or disable) `label` from every route that uses it, so the model can be
+ * removed in one step. Each touched chain keeps the app's rules (1-10 unique models,
+ * Groq + OpenRouter + Gemini present, first fallback from another provider): when
+ * removing the label breaks a rule, another enabled model of the missing provider is
+ * added to the end of that chain. The result is returned as full route overrides.
+ */
+export function detachModelFromRoutes(
+  config: Config,
+  defaults: Record<string, string[]>,
+  label: string,
+): DetachResult {
+  const after: Config = {
+    ...config,
+    models: config.models.filter((m) => m.label !== label),
+  };
+  const keys = new Set([...Object.keys(defaults), ...Object.keys(config.routes)]);
+  const routes = { ...config.routes };
+  const changed: string[] = [];
+  const providerOf = (l: string) => after.models.find((m) => m.label === l)?.provider;
+  for (const key of keys) {
+    const current = Object.hasOwn(config.routes, key)
+      ? config.routes[key]
+      : defaults[key];
+    if (!current || !current.includes(label)) continue;
+    let chain = current.filter((l) => l !== label);
+    for (let guard = 0; guard < 12; guard++) {
+      const issue = routeError(key, chain, after);
+      if (!issue) break;
+      const have = new Set(chain.map(providerOf));
+      const missing = (["groq", "openrouter", "gemini"] as const).find(
+        (p) => !have.has(p),
+      );
+      if (missing) {
+        const pick = after.models.find(
+          (m) => m.enabled && m.provider === missing && !chain.includes(m.label),
+        );
+        if (!pick || chain.length >= 10)
+          return { ok: false, error: `${key}: ${missing} ka koi enabled model nahi mila.` };
+        chain = [...chain, pick.label];
+        continue;
+      }
+      if (chain.length >= 2 && providerOf(chain[0]) === providerOf(chain[1])) {
+        const j = chain.findIndex((l, i) => i > 1 && providerOf(l) !== providerOf(chain[0]));
+        if (j < 0)
+          return { ok: false, error: `${key}: doosre provider ka fallback nahi mila.` };
+        chain = [chain[0], chain[j], ...chain.filter((_, i) => i !== 0 && i !== j)];
+        continue;
+      }
+      return { ok: false, error: `${key}: ${issue}` };
+    }
+    if (routeError(key, chain, after))
+      return { ok: false, error: `${key}: chain theek nahi ban payi.` };
+    routes[key] = chain;
+    changed.push(key);
+  }
+  return { ok: true, routes, changed };
 }

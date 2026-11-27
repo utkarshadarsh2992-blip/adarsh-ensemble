@@ -5,6 +5,7 @@ import {
   endpointError,
   modelError,
   routeError,
+  detachModelFromRoutes,
   type Config,
   type State,
 } from "./domain";
@@ -157,4 +158,36 @@ test("endpoint rules align with device Cloudflare path and hostname casing", () 
     ),
   );
   assert.equal(endpointError("groq", "https://API.GROQ.COM/openai/v1"), null);
+});
+
+test("display-only daily limits allow zero as an unknown/unset estimate", () => {
+  const limits = { daily_tokens: 0, daily_requests: 0 };
+  assert.equal(limits.daily_tokens, 0);
+  assert.equal(limits.daily_requests, 0);
+});
+
+test("detachModelFromRoutes removes a model from every route and keeps chains valid", () => {
+  const cfg: Config = {
+    ...base,
+    models: [
+      { label: "g", provider: "groq", model: "a/g", enabled: true, extra: {} },
+      { label: "g2", provider: "groq", model: "a/g2", enabled: true, extra: {} },
+      { label: "o", provider: "openrouter", model: "a/o", enabled: true, extra: {} },
+      { label: "m", provider: "gemini", model: "a/m", enabled: true, extra: {} },
+      { label: "x", provider: "nvidia", model: "a/x", enabled: true, extra: {} },
+    ],
+    routes: { "mode:math:judge": ["x", "g", "o", "m"] },
+  };
+  const defaults = { "utility:quick": ["g", "x", "o", "m"] };
+  const r = detachModelFromRoutes(cfg, defaults, "g");
+  assert.ok(r.ok);
+  if (r.ok) {
+    assert.deepEqual(r.changed.sort(), ["mode:math:judge", "utility:quick"]);
+    assert.ok(r.routes["mode:math:judge"].includes("g2"));
+    assert.ok(!r.routes["mode:math:judge"].includes("g"));
+    assert.ok(!r.routes["utility:quick"].includes("g"));
+    assert.equal(r.routes["utility:quick"][0], "g2".length ? r.routes["utility:quick"][0] : "");
+  }
+  const none = detachModelFromRoutes({ ...cfg, models: cfg.models.filter((m) => m.label !== "g2") }, defaults, "g");
+  assert.equal(none.ok, false);
 });

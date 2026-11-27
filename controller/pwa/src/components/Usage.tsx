@@ -204,7 +204,7 @@ export default function Usage({
                   className="cap-input"
                   aria-label={`${NAMES[p]} estimated ${field} cap`}
                   type="number"
-                  min="1"
+                  min="0"
                   max="1000000000000"
                   placeholder="Unknown"
                   disabled={!editable}
@@ -217,7 +217,7 @@ export default function Usage({
                       const value = Number(raw);
                       if (
                         !Number.isSafeInteger(value) ||
-                        value < 1 ||
+                        value < 0 ||
                         value > 1000000000000
                       )
                         return;

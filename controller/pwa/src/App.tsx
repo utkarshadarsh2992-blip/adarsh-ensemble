@@ -6,6 +6,7 @@ import {
   ShieldCheck,
   BarChart3,
   Smartphone,
+  Newspaper,
   RefreshCw,
   LogIn,
   LogOut,
@@ -33,12 +34,14 @@ import Routing from "./components/Routing";
 import Quality from "./components/Quality";
 import Usage from "./components/Usage";
 import Devices from "./components/Devices";
+import News from "./components/News";
 const tabs = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "models", label: "Model registry", icon: Cpu },
   { id: "routing", label: "Routing", icon: GitBranch },
   { id: "quality", label: "Quality controls", icon: ShieldCheck },
   { id: "usage", label: "Usage", icon: BarChart3 },
+  { id: "news", label: "News & alerts", icon: Newspaper },
   { id: "devices", label: "Devices & changes", icon: Smartphone },
 ];
 const local = bundled as Config;
@@ -376,6 +379,17 @@ export default function App() {
               editable={editable}
             />
           )}{" "}
+          {tab === "news" &&
+            (session ? (
+              <News
+                active
+                online={online}
+                onError={setError}
+                onNotice={setNotice}
+              />
+            ) : (
+              <Locked onLogin={() => setLogin(true)} />
+            ))}
           {tab === "devices" && (
             <Devices
               state={state}

@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  detachModelFromRoutes,
   endpointError,
   HOSTS,
   modelError,
@@ -75,6 +76,7 @@ export default function Models({ config, onChange, editable }: Props) {
   const [pendingAction, setPendingAction] = useState<ConfirmAction | null>(
     null,
   );
+  const [detachIssue, setDetachIssue] = useState("");
 
   const visibleModels = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -217,7 +219,7 @@ export default function Models({ config, onChange, editable }: Props) {
     setEndpointConfirm(false);
   }
 
-  function confirmModelAction() {
+  function confirmModelAction(detach = false) {
     if (!editable || !pendingAction) return;
     const { label, action } = pendingAction;
     const model = config.models.find((m) => m.label === label);
@@ -226,7 +228,32 @@ export default function Models({ config, onChange, editable }: Props) {
       return;
     }
     const refs = routeReferences(label);
-    if ((action === "remove" || action === "disable") && refs.length) return;
+    if ((action === "remove" || action === "disable") && refs.length) {
+      if (!detach) return;
+      // One step: take the model out of every route that uses it, then remove/disable it.
+      const result = detachModelFromRoutes(
+        config,
+        defaultRoutes as Record<string, string[]>,
+        label,
+      );
+      if (!result.ok) {
+        setDetachIssue(result.error);
+        return;
+      }
+      onChange({
+        ...config,
+        routes: result.routes,
+        models:
+          action === "remove"
+            ? config.models.filter((m) => m.label !== label)
+            : config.models.map((m) =>
+                m.label === label ? { ...m, enabled: false } : m,
+              ),
+      });
+      setDetachIssue("");
+      setPendingAction(null);
+      return;
+    }
     if (action === "remove")
       onChange({
         ...config,
@@ -388,8 +415,8 @@ export default function Models({ config, onChange, editable }: Props) {
                   {refs.length > 0 && (
                     <p className="warning">
                       Active route references: {refs.join(" · ")}.
-                      Disable/remove se pehle har listed route ko nayi enabled
-                      chain par override karo.
+                      Remove/Disable dabane par ye model in routes se apne aap
+                      hat jayega.
                     </p>
                   )}
                   {editable && (
@@ -701,8 +728,11 @@ export default function Models({ config, onChange, editable }: Props) {
                 {blocked && (
                   <div className="warning">
                     <p>
-                      Blocked: explicit route references ko orphan nahi kar
-                      sakte. Pehle ye route overrides update/remove karo:
+                      Ye model in routes mein use ho raha hai. Neeche wala button
+                      isse har route se hata dega; jahan chain ka koi zaroori
+                      provider (Groq, OpenRouter, Gemini) kam padega wahan
+                      same provider ka dusra enabled model jod dega. Save aap
+                      khud karoge.
                     </p>
                     <ul>
                       {refs.map((ref) => (
@@ -711,20 +741,32 @@ export default function Models({ config, onChange, editable }: Props) {
                     </ul>
                   </div>
                 )}
+                {detachIssue && <p className="error">{detachIssue}</p>}
                 <div className="form-actions">
                   <button
                     className="btn secondary"
-                    onClick={() => setPendingAction(null)}
+                    onClick={() => {
+                      setDetachIssue("");
+                      setPendingAction(null);
+                    }}
                   >
                     Cancel
                   </button>
-                  <button
-                    className="btn primary"
-                    disabled={blocked}
-                    onClick={confirmModelAction}
-                  >
-                    Confirm action
-                  </button>
+                  {blocked ? (
+                    <button
+                      className="btn primary"
+                      onClick={() => confirmModelAction(true)}
+                    >
+                      Routes se hata ke {pendingAction.action} karo
+                    </button>
+                  ) : (
+                    <button
+                      className="btn primary"
+                      onClick={() => confirmModelAction()}
+                    >
+                      Confirm action
+                    </button>
+                  )}
                 </div>
               </>
             );
