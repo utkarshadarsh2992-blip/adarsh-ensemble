@@ -19,6 +19,7 @@ the model is queued or thinking (some phone networks drop silent connections: ht
 events back into one normal response. make_client() adds TCP keep-alive probes for the same reason.
 """
 import asyncio
+from dataclasses import replace
 import json
 import re
 import socket
@@ -549,6 +550,28 @@ def balance(chain: list) -> list:
     return [candidate for group in groups.values() for candidate in group]
 
 
+def _enabled_chain(spec: ModelSpec) -> list[ModelSpec]:
+    """spec + fallbacks without models the owner disabled in ADARSH Controller (or deleted from the registry).
+    Hard-coded config.use() chains (fact-check, learning, ...) also pass here, so a disabled model is never called.
+    If nothing is left, the first enabled substitute on the same provider (then any provider) takes over."""
+    disabled = getattr(config, "DISABLED_LABELS", frozenset()) or frozenset()
+    cands = [spec] + [config.REGISTRY[label] for label in spec.fallbacks if label in config.REGISTRY]
+    if not disabled:
+        return cands
+    kept = [c for c in cands if config.base_label(c.label) not in disabled]
+    if kept:
+        if config.base_label(spec.label) in disabled:  # keep the caller's role/extra on the new primary
+            kept[0] = replace(kept[0], role=spec.role)
+        return kept
+    subs = getattr(config, "DISABLED_SUBSTITUTES", {}) or {}
+    order = [spec.provider] + [p for p in subs if p != spec.provider]
+    for provider in order:
+        for label in subs.get(provider, []):
+            if label in config.REGISTRY and label not in disabled:
+                return [replace(config.REGISTRY[label], role=spec.role)]
+    raise LLMError(f"{spec.role or spec.label}: every model in this chain is disabled in ADARSH Controller")
+
+
 async def chat(
     client: httpx.AsyncClient,
     spec: ModelSpec,
@@ -563,7 +586,7 @@ async def chat(
     """budget = most seconds this whole call may take (all models together). None = no limit.
     timeout = seconds per model attempt for every model of the chain; None = each model's own value
     (config.model_timeout: gemini-3.8-flash 200 s, kimi-k3.1-pro / nemotron-ultra 300 s, others config.LLM_TIMEOUT_S)."""
-    chain = expand_keys(balance([spec] + [config.REGISTRY[label] for label in spec.fallbacks]))
+    chain = expand_keys(balance(_enabled_chain(spec)))
     reasons: dict[str, str] = {}
     dead: set[str] = set()  # failed for a reason waiting will not fix: not tried again in round 2
     boosts: dict[str, tuple] = {}  # model -> bigger/lighter request its next key starts with (_Skip.boost)

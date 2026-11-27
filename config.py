@@ -539,6 +539,10 @@ REMOTE_QUALITY: dict = {}
 REMOTE_LIMITS: dict = {}
 REMOTE_MODEL_EXTRAS: dict = {}
 CONTROLLER_CONFIG_ACTIVE = False
+# Models switched off in ADARSH Controller. llm.chat never calls these, even from a hard-coded config.use() chain.
+DISABLED_LABELS: frozenset = frozenset()
+# provider -> enabled replacement labels (most-routed first); used when a whole direct chain is disabled
+DISABLED_SUBSTITUTES: dict = {}
 RESEARCH_TIMEOUT_S = float(os.getenv("RESEARCH_TIMEOUT_S", "8"))
 RESEARCH_PER_QUERY = int(os.getenv("RESEARCH_PER_QUERY", "2"))
 RESEARCH_CHARS = int(os.getenv("RESEARCH_CHARS", "900"))               # per source

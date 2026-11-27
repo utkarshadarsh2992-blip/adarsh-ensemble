@@ -55,6 +55,8 @@ _lock = threading.RLock()
 _base_config: dict[str, Any] | None = None
 _base_plans: dict[str, Any] | None = None
 _last_revision: int | None = None
+# provider -> enabled substitute labels (most-routed first) for the document being applied
+_substitutes: dict[str, list[str]] = {}
 
 
 class ControllerConfigError(ValueError):
@@ -257,18 +259,79 @@ def _reset_bundled():
     config.REMOTE_LIMITS = {}
     config.REMOTE_MODEL_EXTRAS = {}
     config.CONTROLLER_CONFIG_ACTIVE = False
+    config.DISABLED_LABELS = frozenset()
+    config.DISABLED_SUBSTITUTES = {}
     config.PLAN_PROBLEMS = config.validate_plan()
     mode_plans.PLAN_PROBLEMS = mode_plans.validate()
 
 
-def _resolve_default(spec, disabled: set[str], *, strict: bool, route: str = "bundled"):
+def _build_substitutes(doc: dict, disabled: set[str]) -> dict[str, list[str]]:
+    """Enabled replacement candidates per provider, most-routed first (routes = models the owner trusts)."""
+    import config
+
+    guard_only = {getattr(config, "GUARD").label, *getattr(config, "GUARD").fallbacks}
+    uses: dict[str, int] = {}
+    for labels in doc["routes"].values():
+        for label in labels:
+            uses[label] = uses.get(label, 0) + 1
+    order = {row["label"]: i for i, row in enumerate(doc["models"])}
+    pool: dict[str, list[str]] = {}
+    for label, spec in config.REGISTRY.items():
+        if label in disabled or label in guard_only:
+            continue
+        pool.setdefault(spec.provider, []).append(label)
+    for provider in pool:
+        pool[provider].sort(key=lambda label: (-uses.get(label, 0), order.get(label, 10**6)))
+    return pool
+
+
+def _repair(labels: list[str], disabled: set[str]) -> list[str]:
+    """Drop disabled/deleted labels, then restore the fallback rules with enabled substitutes.
+
+    A disabled model must never be called, and disabling it must not make the phone reject the whole
+    document (that silently kept the old revision, so the disabled model kept running)."""
+    import config
+
+    active: list[str] = []
+    for label in labels:
+        if label not in disabled and label in config.REGISTRY and label not in active:
+            active.append(label)
+    covered = {config.REGISTRY[label].provider for label in active}
+    for provider in sorted(CORE):
+        if provider in covered:
+            continue
+        substitute = next((label for label in _substitutes.get(provider, []) if label not in active), None)
+        if substitute is not None:
+            active.append(substitute)
+            covered.add(provider)
+    if len(active) > 1:
+        first = config.REGISTRY[active[0]].provider
+        if config.REGISTRY[active[1]].provider == first:
+            other = next((i for i in range(2, len(active)) if config.REGISTRY[active[i]].provider != first), None)
+            if other is not None:
+                active.insert(1, active.pop(other))
+    while len(active) > 10:
+        for i in range(len(active) - 1, 1, -1):
+            rest = active[:i] + active[i + 1:]
+            if CORE <= {config.REGISTRY[label].provider for label in rest}:
+                active.pop(i)
+                break
+        else:
+            active = active[:10]
+    return active
+
+
+def _resolve_default(spec, disabled: set[str], *, strict: bool, route: str = "bundled", repair: bool = True):
     import config
 
     labels = [spec.label, *spec.fallbacks]
-    if strict and any(label in disabled or label not in config.REGISTRY for label in labels):
-        bad = [label for label in labels if label in disabled or label not in config.REGISTRY]
-        raise ControllerConfigError(f"{route} references missing/disabled model label(s): {', '.join(bad)}; add an explicit replacement route")
-    active = [label for label in labels if label not in disabled and label in config.REGISTRY]
+    if not repair:
+        # GUARD = prompt-guard classifiers only; never back-fill it with chat models (guard.py has GUARD_LLM for that).
+        active = [label for label in labels if label not in disabled and label in config.REGISTRY]
+    elif strict or any(label in disabled or label not in config.REGISTRY for label in labels):
+        active = _repair(labels, disabled)
+    else:
+        active = labels
     if not active:
         raise ControllerConfigError(f"disabled models leave a bundled route empty: {spec.label}")
     primary = replace(config.REGISTRY[active[0]], role=spec.role,
@@ -279,10 +342,13 @@ def _resolve_default(spec, disabled: set[str], *, strict: bool, route: str = "bu
 def _route_spec(base, labels: list[str], disabled: set[str], route: str):
     import config
 
-    if not labels or any(label in disabled or label not in config.REGISTRY for label in labels):
+    kept = [label for label in labels if label not in disabled and label in config.REGISTRY]
+    if not kept:
+        # Every model the owner picked for this route is off: refuse rather than guess a replacement.
         bad = [label for label in labels if label in disabled or label not in config.REGISTRY]
-        raise ControllerConfigError(f"{route} references missing/disabled model label(s): {', '.join(bad) or '(empty)'}")
-    return replace(config.REGISTRY[labels[0]], role=base.role, fallbacks=tuple(labels[1:]))
+        raise ControllerConfigError(f"{route} has no enabled model left (disabled/missing: {', '.join(bad) or '(empty)'}); pick a replacement")
+    active = _repair(kept, disabled)
+    return replace(config.REGISTRY[active[0]], role=base.role, fallbacks=tuple(active[1:]))
 
 
 def _check_chain(spec, name: str):
@@ -300,6 +366,7 @@ def _check_chain(spec, name: str):
 
 
 def _apply_document(doc: dict):
+    global _substitutes
     import config
     import mode_plans
 
@@ -320,6 +387,9 @@ def _apply_document(doc: dict):
                                                   role=role, extra=dict(row["extra"]))
         if not row["enabled"]:
             disabled.add(label)
+    _substitutes = _build_substitutes(doc, disabled)
+    config.DISABLED_LABELS = frozenset(disabled)
+    config.DISABLED_SUBSTITUTES = {provider: list(labels) for provider, labels in _substitutes.items()}
 
     for provider, row in doc["providers"].items():
         config.PROVIDERS[provider] = replace(config.PROVIDERS[provider], base_url=row["base_url"])
@@ -351,7 +421,8 @@ def _apply_document(doc: dict):
     for name in scalar_names:
         if name in utility_by_target:
             continue
-        setattr(config, name, _resolve_default(getattr(config, name), disabled, strict=False, route=f"legacy:{name}") )
+        setattr(config, name, _resolve_default(getattr(config, name), disabled, strict=False, route=f"legacy:{name}",
+                                               repair=name != "GUARD"))
     config.SPECIALISTS = {mode: _resolve_default(spec, disabled, strict=False, route=f"legacy:specialist:{mode}")
                           for mode, spec in config.SPECIALISTS.items()}
 

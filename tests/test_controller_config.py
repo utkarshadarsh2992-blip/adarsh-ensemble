@@ -162,17 +162,74 @@ def test_remote_route_and_quality_overrides_win_but_missing_fields_keep_phone_va
     assert chat_adapter._effective_web_search(stale) is True
 
 
-def test_disabled_default_models_are_filtered_only_when_invariants_survive(tmp_path):
+def _all_chain_labels():
+    """Every label any runtime chain (config roles + mode plans) could call."""
+    labels = set()
+    specs = list(config.PANEL) + list(config.DEBATERS) + list(config.SPECIALISTS.values())
+    for name in ("CLASSIFIER", "GUARD_LLM", "STRIPPER", "VERIFIER", "JUDGE", "SYNTHESIZER", "QUICK", "AUDITOR",
+                 "MASTER_WRITER", "MASTER_AUDITOR", "ARCHITECT", "THEORIST", "EMPIRICIST", "SKEPTIC", "DEBATER",
+                 "METHOD_REVIEWER", "EVIDENCE_REVIEWER", "REFINER"):
+        specs.append(getattr(config, name))
+    for plan in mode_plans.PLANS.values():
+        specs.extend(plan.chains.values())
+        specs.extend(plan.falsifiers)
+    for spec in specs:
+        labels.add(spec.label)
+        labels.update(spec.fallbacks)
+    labels.update(config.STANDARD_CHAIN_LABELS)
+    return labels
+
+
+def test_disabled_default_model_is_never_called_and_config_still_applies(tmp_path):
     pending = tmp_path / "config.json"
     models = [dict(row, extra=dict(row["extra"])) for row in BUNDLED_MODELS]
     next(row for row in models if row["label"] == "gpt-oss-120b")["enabled"] = False
     doc = document(models=models)
     pending.write_text(json.dumps(doc), encoding="utf-8")
     result = controller.apply_files(str(tmp_path / "cache.json"), str(pending))
-    # The default Standard-only chain would be empty, so no broken runtime config is promoted.
-    assert result["source"] == "bundled"
-    assert config.STANDARD_CHAIN_LABELS == ("gpt-oss-120b",)
+    # Disabling must take effect (old behaviour rejected the doc and silently kept calling the model).
+    assert result["source"] == "remote"
+    assert "gpt-oss-120b" not in _all_chain_labels()
+    assert config.STANDARD_CHAIN_LABELS and all(config.REGISTRY[label].provider == "groq"
+                                                for label in config.STANDARD_CHAIN_LABELS)
+    assert "gpt-oss-120b" in config.DISABLED_LABELS
     assert config.PLAN_PROBLEMS == [] and mode_plans.PLAN_PROBLEMS == []
+
+
+def test_rev8_shape_disabling_gemini_models_with_routes_applies(tmp_path):
+    """Live regression (rev 7/8): gemini-3.8-flash + gemma-4-31b-g disabled with explicit routes was rejected
+    because legacy chains lost their only Gemini model; the phone kept rev 6 and the disabled model kept running."""
+    models = [dict(row, extra=dict(row["extra"])) for row in BUNDLED_MODELS]
+    off = {"gemini-3.8-flash", "gemma-4-31b-g"} & {row["label"] for row in models}
+    assert off, "bundled registry changed: update this regression test"
+    for row in models:
+        if row["label"] in off:
+            row["enabled"] = False
+    routes = {"utility:quick": ["gpt-oss-120b", "gpt-oss-20b"]}
+    path = tmp_path / "rev8.json"
+    path.write_text(json.dumps(document(models=models, routes=routes)), encoding="utf-8")
+    result = controller.apply_files(str(tmp_path / "cache.json"), str(path))
+    assert result["source"] == "remote" and result["active"]
+    assert not (off & _all_chain_labels())
+    assert config.STANDARD_CHAIN_LABELS == ("gpt-oss-120b", "gpt-oss-20b")
+    assert config.PLAN_PROBLEMS == [] and mode_plans.PLAN_PROBLEMS == []
+
+
+def test_llm_chat_skips_disabled_models_even_in_hard_coded_chains(monkeypatch):
+    import llm
+    config.DISABLED_LABELS = frozenset({"gpt-oss-20b"})
+    spec = config.use("gpt-oss-20b", "factcheck", fallbacks=("gemini-3.1-flash-lite",))
+    chain = llm._enabled_chain(spec)
+    assert [c.label for c in chain] == ["gemini-3.1-flash-lite"]
+    assert chain[0].role == "factcheck"
+    # whole chain disabled -> enabled substitute, never the disabled model
+    config.DISABLED_LABELS = frozenset({"gpt-oss-20b", "gemini-3.1-flash-lite"})
+    config.DISABLED_SUBSTITUTES = {"groq": ["gpt-oss-120b"]}
+    chain = llm._enabled_chain(spec)
+    assert [c.label for c in chain] == ["gpt-oss-120b"]
+    config.DISABLED_SUBSTITUTES = {}
+    with pytest.raises(llm.LLMError):
+        llm._enabled_chain(spec)
 
 
 def test_replaced_then_deleted_model_is_not_union_restored(tmp_path):

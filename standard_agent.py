@@ -85,7 +85,9 @@ class StandardError(Exception):
 
 def _standard_chain_labels() -> tuple[str, ...]:
     labels = getattr(config, "STANDARD_CHAIN_LABELS", (MODEL_LABEL,)) or (MODEL_LABEL,)
-    return (labels,) if isinstance(labels, str) else tuple(labels)
+    labels = (labels,) if isinstance(labels, str) else tuple(labels)
+    disabled = getattr(config, "DISABLED_LABELS", frozenset()) or frozenset()
+    return tuple(label for label in labels if config.base_label(str(label)) not in disabled) or labels
 
 
 def _base_spec(label: str | None = None) -> config.ModelSpec:
