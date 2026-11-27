@@ -91,3 +91,48 @@ Deno.test('fetchFeed follows validated redirects only',async()=>{
   }
   r=await fetchFeed(feed,async()=>new Response(null,{status:302,headers:{location:'/again'}}));assertEquals(r.error,'Too many or invalid redirects');
 });
+
+
+import {validatePatterns,getPatterns} from '../functions/_shared/patterns.ts';
+
+const patternItem=(id:string,region:'IN'|'CN'|'US'|'RU'|'EU'|'WORLD',n=0):any=>({
+  id,title:`News ${id}`,points:[`Point ${id}`],tag:'AI',tags:['AI'],region,company:'Company',activity:'model',score:8,
+  breaking:false,verified:'confirmed',n_sources:1,source:`Source ${id}`,url:`https://db.example/${id}`,published_at:null,
+  created_at:`2026-11-27T0${n}:00:00.000Z`,read_at:null,saved:false,upvotes:0,kind:'news',status:'scored',cluster_key:null,
+  title_norm:null,feed_id:null,raw_summary:'',sources:[],why:'',alerted_at:null,state_media:false,claim_tag:'',scored_at:null,tokens:0,
+});
+
+Deno.test('patterns validation drops unknown ids and single-region claims, caps six, and takes URLs from DB',()=>{
+  const items=[patternItem('in','IN',1),patternItem('cn','CN',2),patternItem('us','US',3),patternItem('eu','EU',4)];
+  const valid=(i:number)=>({title:`Pattern ${i}`,pattern:'Events point to one move.',type:'ai-race',signal:'strong',regions:[{region:'IN',what:'India move',item_ids:['in']},{region:'CN',what:'China move',item_ids:['cn']}],why_it_matters:'AI signal',watch_next:'Next launch',assumption:'May be correlation.'});
+  const raw=[{...valid(0),regions:[{region:'IN',what:'bad',item_ids:['in','ghost']},{region:'CN',what:'good',item_ids:['cn']}]},{...valid(1),regions:[{region:'IN',what:'only',item_ids:['in']}]},...Array.from({length:8},(_,i)=>valid(i+2))];
+  const out=validatePatterns(raw,items);
+  assertEquals(out.length,6);assertEquals(out[0].items[0].url,'https://db.example/in');assertEquals(out[0].items.some(x=>x.id==='ghost'),false);assertEquals(out.some(x=>x.title==='Pattern 1'),false);
+});
+
+Deno.test('patterns API rejects unknown fields and invalid refresh without calling Groq',async()=>{
+  Deno.env.set('APP_SECRET','test-app-secret-123');const s=new MemoryStore();
+  const mk=(body:any)=>new Request('http://x',{method:'POST',headers:{'content-type':'application/json','x-app-secret':'test-app-secret-123'},body:JSON.stringify(body)});
+  let r=await handleApi(mk({action:'patterns',oops:true}),s);assertEquals(r.status,400);
+  r=await handleApi(mk({action:'patterns',refresh:'yes'}),s);assertEquals(r.status,400);
+});
+
+Deno.test('patterns throttle and failed regeneration preserve a good cache',async()=>{
+  const oldKey=Deno.env.get('GROQ_API_KEY_1'),oldKey2=Deno.env.get('GROQ_API_KEY_2'),oldKey3=Deno.env.get('GROQ_API_KEY_3');Deno.env.set('GROQ_API_KEY_1','test-pattern-key');Deno.env.delete('GROQ_API_KEY_2');Deno.env.delete('GROQ_API_KEY_3');
+  const now=new Date('2026-11-27T12:00:00.000Z'),s=new MemoryStore();
+  s.items=[patternItem('in','IN',1),patternItem('cn','CN',2)];let calls=0;
+  const good=JSON.stringify({choices:[{message:{content:JSON.stringify({patterns:[{title:'AI race',pattern:'Dono taraf model build kar rahe hain.',type:'ai-race',regions:[{region:'IN',what:'India model',item_ids:['in']},{region:'CN',what:'China model',item_ids:['cn']}],signal:'strong',why_it_matters:'Compute aur AGI race',watch_next:'Next releases',assumption:'Coverage complete nahi ho sakti.'}]})}}],usage:{prompt_tokens:100,completion_tokens:50}});
+  const fetcher=async()=>{calls++;return calls===1?new Response(good,{status:200}):new Response('upstream',{status:503});};
+  try {
+    const first=await getPatterns(s,fetcher,now,true);assertEquals(first.ok,true);if(!first.ok)throw new Error('expected generated patterns');assertEquals(first.patterns.length,1);assertEquals(calls,1);
+    const throttled=await getPatterns(s,fetcher,new Date(now.getTime()+5*60e3),true);assertEquals(throttled.ok,true);assertEquals(throttled.reason,'throttled');assertEquals(calls,1);
+    const failed=await getPatterns(s,fetcher,new Date(now.getTime()+31*60e3),true);assertEquals(failed.ok,true);if(!failed.ok)throw new Error('expected cached patterns');assertEquals(failed.reason,'generation-failed');assertEquals(failed.patterns[0].items[0].url,'https://db.example/in');assertEquals(calls,3);
+  } finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); if(oldKey2===undefined)Deno.env.delete('GROQ_API_KEY_2');else Deno.env.set('GROQ_API_KEY_2',oldKey2); if(oldKey3===undefined)Deno.env.delete('GROQ_API_KEY_3');else Deno.env.set('GROQ_API_KEY_3',oldKey3); }
+});
+
+Deno.test('patterns obey the existing stopped budget and do not call Groq',async()=>{
+  const oldKey=Deno.env.get('GROQ_API_KEY_1');Deno.env.set('GROQ_API_KEY_1','test-pattern-key');
+  const s=new MemoryStore();s.settings.groq_tokens_cap=1;s.items=[patternItem('in','IN',1),patternItem('cn','CN',2)];await s.bumpUsage({day:'2026-11-27',provider:'groq',model:'openai/gpt-oss-20b',stage:'scoring',tokens_out:1,calls:1});let calls=0;
+  try { const r=await getPatterns(s,async()=>{calls++;return new Response('{}');},new Date('2026-11-27T12:00:00.000Z'),true);assertEquals(r.ok,false);assertEquals(r.reason,'budget-stopped');assertEquals(calls,0); }
+  finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
+});

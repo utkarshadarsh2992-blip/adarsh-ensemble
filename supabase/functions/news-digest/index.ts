@@ -7,6 +7,7 @@ import type { Store, FetchLike } from '../_shared/types.ts';
 import { auth, authStatus } from '../news-ingest/index.ts';
 export { auth };
 import { safeFunctionError } from '../_shared/diagnostics.ts';
+import { getPatterns } from '../_shared/patterns.ts';
 
 export async function run(
   store: Store,
@@ -38,9 +39,23 @@ export async function run(
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .slice(0, 8);
 
+  let patternLines: string[] = [];
+  try {
+    const patternResult = await getPatterns(store, fetcher, now, false);
+    if (patternResult.ok && patternResult.patterns.length) {
+      patternLines = patternResult.patterns.slice(0, 3).map((pattern) => {
+        const regions = [...new Set(pattern.regions.map((entry) => entry.region))].join('/');
+        return `• <b>${htmlEscape(pattern.title)}</b> [${htmlEscape(regions)}] — ${htmlEscape(pattern.pattern)}`;
+      });
+    }
+  } catch {
+    // Pattern generation is optional and must never block or duplicate the digest.
+  }
+
+  const patternsText = patternLines.length ? `\n\n<b>Patterns</b>\n${patternLines.join('\n')}` : '';
   const text = `<b>Adarsh News Digest</b>\n${rows.map((item, index) =>
     `${index + 1}. <b>${htmlEscape(item.title)}</b> — ${(item.points || []).map(htmlEscape).join(' ')}`
-  ).join('\n') || 'Aaj top news nahi mili.'}`;
+  ).join('\n') || 'Aaj top news nahi mili.'}${patternsText}`;
   const chat = String((await store.getKV('telegram:chat_id')) || '');
   const telegramResult = await telegram(
     fetcher,
