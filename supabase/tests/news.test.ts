@@ -96,7 +96,7 @@ Deno.test('fetchFeed follows validated redirects only',async()=>{
 import {validatePatterns,getPatterns} from '../functions/_shared/patterns.ts';
 
 const patternItem=(id:string,region:'IN'|'CN'|'US'|'RU'|'EU'|'WORLD',n=0):any=>({
-  id,title:`News ${id}`,points:[`Point ${id}`],tag:'AI',tags:['AI'],region,company:'Company',activity:'model',score:8,
+  id,title:`News ${id} ${({IN:'India',CN:'China',US:'America',RU:'Russia',EU:'Europe',WORLD:'Global'} as any)[region]}`,points:[`Point ${id}`],tag:'AI',tags:['AI'],region,company:`C${id}`,activity:'model',score:8,
   breaking:false,verified:'confirmed',n_sources:1,source:`Source ${id}`,url:`https://db.example/${id}`,published_at:null,
   created_at:`2026-11-27T0${n}:00:00.000Z`,read_at:null,saved:false,upvotes:0,kind:'news',status:'scored',cluster_key:null,
   title_norm:null,feed_id:null,raw_summary:'',sources:[],why:'',alerted_at:null,state_media:false,claim_tag:'',scored_at:null,tokens:0,
@@ -257,12 +257,30 @@ Deno.test('patterns: theme hints list tag/activity seen in 2+ named regions only
 import {coherent} from '../functions/_shared/patterns.ts';
 Deno.test('patterns: DB region wins over model label, and forced (incoherent) links are dropped',()=>{
   const mk=(id:string,region:any,tag:string,activity:string)=>({...patternItem(id,region,1),tag,tags:[tag],activity});
-  const items=[mk('ru','RU','ECON','policy'),mk('eu','WORLD','WORLD','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other')];
-  // Model files the WORLD item under EU: kept, but moved to WORLD; RU+WORLD share "policy".
+  const items=[mk('ru','RU','AI','policy'),mk('eu','WORLD','AI','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other'),mk('cn','CN','ECON','funding')];
+  // Model files the WORLD item under EU: kept, but moved to WORLD; RU+WORLD share the specific tag AI.
   const ok=validatePatterns({patterns:[{title:'Arctic',pattern:'p',type:'policy wave',signal:'medium',regions:[{region:'RU',what:'r',item_ids:['ru']},{region:'EU',what:'e',item_ids:['eu']}]}]},items as any);
   assertEquals(ok.length,1);assertEquals(ok[0].regions.map(r=>r.region),['RU','WORLD']);
   // US physics funding vs IN econ "other": no shared tag/activity -> dropped.
   const bad=validatePatterns({patterns:[{title:'Forced',pattern:'p',type:'other',signal:'medium',regions:[{region:'US',what:'u',item_ids:['us']},{region:'IN',what:'i',item_ids:['in']}]}]},items as any);
   assertEquals(bad.length,0);
-  assertEquals(coherent([items[0],items[3]] as any),true);
+  assertEquals(coherent([items[0],items[1]] as any),true);
+  // ECON is a generic tag and "funding"/"policy" a generic activity: two ECON stories from different countries are NOT a link by themselves.
+  assertEquals(coherent([items[3],items[4]] as any),false);
+  assertEquals(coherent([{...items[3],title:'Alibaba cloud capex'},{...items[4],title:'Alibaba cloud capex plan'}] as any),true); // shared concrete word
+});
+
+Deno.test('patterns: the production forced links (Waaree solar vs Moutai liquor; Shenzhou text under a Huawei trial story) are dropped',()=>{
+  const mk=(id:string,region:any,title:string,tag:string,activity:string,company='')=>({...patternItem(id,region,1),title,tag,tags:[tag],activity,company,source:`Pub ${id}`});
+  const items=[
+    mk('w1','IN','Waaree Renewable Technologies shares surge up to 14% after winning 120 MWp EPC order','ECON','funding','Waaree'),
+    mk('w2','IN','Small-cap, big jump! Waaree Renewable shares rise 14% on this order win','ECON','funding','Waaree'),
+    mk('m1','CN','Spirit of recovery: JPMorgan sees fresh upside in liquor giant Kweichow Moutai','ECON','funding','Kweichow Moutai'),
+    mk('v1','US','NASA Reports Voyager 1 Probe Reaching One Light-Day from Earth','SPACE','research','NASA'),
+    mk('x1','US','Elon Musk will give every American kid a SpaceX share every year','SPACE','other','SpaceX'),
+    mk('h1','CN','Huawei guilty on 10 counts in US trial; Nvidia Jensen Huang returns: SCMP 7 highlights','SPACE','launch','China National Space Administration'),
+  ];
+  const base={type:'capital flow',signal:'strong',why_it_matters:'w',watch_next:'n',assumption:'a'};
+  assertEquals(validatePatterns({patterns:[{...base,title:'Funding booms',pattern:'p',regions:[{region:'IN',what:'Waaree Renewable EPC orders',item_ids:['w1','w2']},{region:'CN',what:'Kweichow Moutai stock uplift',item_ids:['m1']}]}]},items).length,0);
+  assertEquals(validatePatterns({patterns:[{...base,title:'Space missions',pattern:'p',regions:[{region:'US',what:'Voyager 1 milestone and SpaceX share pledge',item_ids:['v1','x1']},{region:'CN',what:'Shenzhou-24 launch',item_ids:['h1']}]}]},items).length,0);
 });

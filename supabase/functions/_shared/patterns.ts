@@ -207,7 +207,7 @@ export function themeHints(items: NewsItem[], max = 8): string {
 }
 export function patternPrompt(items: NewsItem[]): string {
   const hints = themeHints(items);
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Kam se kam 3 aur max 6 patterns do. Neeche "Candidate themes" code ne nikale hain (same tag/activity 2+ countries mein) — inhe headlines padh kar verify karo, aur khud bhi dhoondo. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Line ke end mein SM = sarkari/state-media daava: use "X ka daava" likho, independent fact nahi; sirf SM lines ya ek hi publisher se pattern mat banao. Text mein koi aisa desh/company/actor mat jodo jo lines mein nahi hai. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. ${hints ? `Candidate themes:\n${hints}\n` : ''}News lines: ${compactItems(items)}`;
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Kam se kam 3 aur max 6 patterns do. Neeche "Candidate themes" code ne nikale hain (same tag/activity 2+ countries mein) — inhe headlines padh kar verify karo, aur khud bhi dhoondo. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho aur wahi event likho jo us region ki linked headlines mein hai (headline ke asli shabd/naam use karo, koi aur event ya company nahi). Ek item ko pattern mein tabhi daalo jab uski headline seedha usi move ki baat kare (alag sector ka stock ya roundup mat jodo). Inference ko assumption mein likho, fact ki tarah nahi. Line ke end mein SM = sarkari/state-media daava: use "X ka daava" likho, independent fact nahi; sirf SM lines ya ek hi publisher se pattern mat banao. Text mein koi aisa desh/company/actor mat jodo jo lines mein nahi hai. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. ${hints ? `Candidate themes:\n${hints}\n` : ''}News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
@@ -222,14 +222,30 @@ export function stripAliases(value: string): string {
 }
 const SIGNAL_RANK: Record<string, number> = { strong: 0, medium: 1, weak: 2 };
 /**
- * Guard against forced links: at least two items from different regions must share a
- * topic tag (not the generic WORLD tag) or a concrete activity (not "other").
+ * Guard against forced links. The tag list is coarse (9 tags), so a shared GENERIC tag (ECON, BIG-TECH, WORLD)
+ * proves nothing: a solar-EPC stock and a liquor stock are both "ECON". Two items from different regions are linked
+ * only by a shared SPECIFIC tag (AI, SPACE, PHYSICS...) or by a shared concrete word/company in their headlines.
  */
+const GENERIC_TAGS = new Set(['WORLD', 'ECON', 'BIG-TECH', 'OTHER', 'PAPER']);
+const STOP_WORDS = new Set([
+  'with', 'from', 'that', 'this', 'have', 'will', 'over', 'into', 'after', 'about', 'their', 'while', 'amid', 'says', 'said', 'news',
+  'shares', 'share', 'stock', 'stocks', 'market', 'markets', 'global', 'world', 'report', 'reports', 'growth', 'billion', 'million',
+  'first', 'record', 'sees', 'more', 'than', 'year', 'years', 'could', 'would', 'what', 'when', 'ahead', 'plan', 'plans', 'deal', 'move',
+  'none', 'unknown', 'null', 'other', 'company', 'aur', 'ke', 'ki', 'ka', 'mein', 'par', 'hai', 'dono', 'kuch', 'wala', 'wali', 'jaise', 'taaki',
+]);
+function stems(...parts: unknown[]): Set<string> {
+  const out = new Set<string>();
+  for (const w of String(parts.map((x) => String(x ?? '')).join(' ')).toLowerCase().match(/[a-z0-9]{4,}/g) || []) {
+    if (!STOP_WORDS.has(w)) out.add(w.slice(0, 4));
+  }
+  return out;
+}
 function linkedPair(a: NewsItem, b: NewsItem): boolean {
-  const tags = (x: NewsItem) => new Set([x.tag, ...(Array.isArray(x.tags) ? x.tags : [])].filter((t) => t && t !== 'WORLD'));
+  const tags = (x: NewsItem) => new Set([x.tag, ...(Array.isArray(x.tags) ? x.tags : [])].filter((t) => t && !GENERIC_TAGS.has(t)));
   const ta = tags(a), tb = tags(b);
   if ([...ta].some((t) => tb.has(t))) return true;
-  return !!a.activity && a.activity !== 'other' && a.activity === b.activity;
+  const sa = stems(a.title, a.company), sb = stems(b.title, b.company);
+  return [...sa].some((w) => sb.has(w));
 }
 export function coherent(items: NewsItem[]): boolean {
   for (let i = 0; i < items.length; i++) {
@@ -286,6 +302,13 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
       if (!rawRegion || typeof rawRegion !== 'object') continue;
       const rr = rawRegion as Record<string, unknown>;
       const label = region(rr.region);
+      // The model sometimes describes an event that is not in the linked headline (a "Shenzhou-24 launch" under a
+      // Huawei trial story): the region's text must share a concrete word with at least one of its own items.
+      const said = stems(rr.what);
+      if (said.size) {
+        const own = (Array.isArray(rr.item_ids) ? rr.item_ids : []).map((v) => byId.get(itemId(v))).filter((x): x is NewsItem => !!x);
+        if (own.length && !own.some((it) => { const real = stems(it.title, it.company); return [...said].some((w) => real.has(w)); })) continue;
+      }
       for (const idValue of Array.isArray(rr.item_ids) ? rr.item_ids : []) {
         const id = itemId(idValue);
         const item = byId.get(id);
