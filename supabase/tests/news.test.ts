@@ -197,3 +197,18 @@ Deno.test('patterns: item selection is region-balanced so busy regions cannot cr
   assertEquals(out.map(x=>x.region).sort(),['CN','IN','RU','US','US','US']);
   assertEquals(out[0].id,'us0');
 });
+import {peekPatterns} from '../functions/_shared/patterns.ts';
+Deno.test('patterns: an empty model result keeps a recent good cache; an empty cache goes stale after 1 h',async()=>{
+  const oldKey=Deno.env.get('GROQ_API_KEY_1');Deno.env.set('GROQ_API_KEY_1','test-pattern-key');
+  const now=new Date('2026-11-27T12:00:00.000Z'),s=new MemoryStore();s.items=[patternItem('in','IN',1),patternItem('cn','CN',2)];
+  await s.setKV(PATTERN_CACHE_KEY,{generated_at:new Date(now.getTime()-7*3600e3).toISOString(),window_h:72,n_items:2,model:'m',patterns:[{title:'Good old'}]});
+  const empty=JSON.stringify({choices:[{finish_reason:'stop',message:{content:'{"patterns":[]}'}}],usage:{prompt_tokens:10,completion_tokens:5}});
+  try {
+    const r:any=await getPatterns(s,async()=>new Response(empty,{status:200}),now,true);
+    assertEquals(r.reason,'no-new-patterns');assertEquals(r.patterns[0].title,'Good old');
+    const e=new MemoryStore();await e.setKV(PATTERN_CACHE_KEY,{generated_at:new Date(now.getTime()-61*60e3).toISOString(),window_h:72,n_items:2,model:'m',patterns:[]});
+    assertEquals((await peekPatterns(e,now))!.stale,true);
+    await e.setKV(PATTERN_CACHE_KEY,{generated_at:new Date(now.getTime()-30*60e3).toISOString(),window_h:72,n_items:2,model:'m',patterns:[]});
+    assertEquals((await peekPatterns(e,now))!.stale,false);
+  } finally { if(oldKey===undefined)Deno.env.delete('GROQ_API_KEY_1');else Deno.env.set('GROQ_API_KEY_1',oldKey); }
+});

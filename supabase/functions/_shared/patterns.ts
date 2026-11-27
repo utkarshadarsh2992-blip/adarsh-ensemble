@@ -10,6 +10,10 @@ export const PATTERN_WINDOW_H = 72;
 export const PATTERN_CACHE_H = 6;
 export const PATTERN_THROTTLE_MS = 30 * 60 * 1000;
 export const PATTERN_MAX_ITEMS = 90;
+export const PATTERN_MIN_SCORE = 3;
+/** An empty result is retried sooner than a real one (news changes; don't show "no pattern" for 6 h). */
+export const PATTERN_EMPTY_CACHE_MS = 60 * 60 * 1000;
+const freshFor = (cache: PatternCache): number => cache.patterns.length ? PATTERN_CACHE_H * 3600e3 : PATTERN_EMPTY_CACHE_MS;
 export const PATTERN_MAX_TOKENS = 3200;
 
 const TYPES = ['ai-race', 'compute/datacentre buildout', 'capital flow', 'policy wave', 'supply chain', 'space race', 'talent', 'other'] as const;
@@ -96,9 +100,12 @@ export function selectPatternItems(items: NewsItem[], now = new Date(), limit = 
       const preferred = Number((b.score || 0) >= 5) - Number((a.score || 0) >= 5);
       return preferred || score || b.created_at.localeCompare(a.created_at);
     });
+  // Low-score items (score < 3) are mostly off-mission noise; use them only when the window is thin.
+  const relevant = candidates.filter((item) => Number(item.score || 0) >= PATTERN_MIN_SCORE);
+  const pool = relevant.length >= 30 ? relevant : candidates;
   const seen = new Set<string>();
   const byRegion = new Map<string, NewsItem[]>();
-  for (const item of candidates) {
+  for (const item of pool) {
     const title = item.title.replace(/\s+/g, ' ').trim().toLowerCase();
     const key = item.cluster_key?.trim() || title;
     if (!key || seen.has(key)) continue;
@@ -172,7 +179,7 @@ function compactItems(items: NewsItem[]): string {
 }
 
 export function patternPrompt(items: NewsItem[]): string {
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Alag-alag topic ki news ko zabardasti mat jodo; weak/forced link ho to pattern mat banao. Asli pattern na mile to {"patterns":[]} do. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). 3-6 patterns do. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Khali array sirf tab jab sach mein koi link na mile. Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Sochna kam, jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
@@ -264,7 +271,7 @@ export async function peekPatterns(store: Store, now = new Date()): Promise<(Pat
   const cached = readCache(await store.getKV(PATTERN_CACHE_KEY));
   if (!cached) return null;
   const age = now.getTime() - Date.parse(cached.generated_at);
-  return { ok: true, ...cached, cached: true, stale: !(age < PATTERN_CACHE_H * 3600e3) };
+  return { ok: true, ...cached, cached: true, stale: !(age < freshFor(cached)) };
 }
 
 /** Finish a task after the HTTP response when the Edge Runtime supports it; otherwise await it. */
@@ -287,7 +294,7 @@ export async function getPatterns(
 ): Promise<PatternResponse | { ok: false; error: string; reason: string }> {
   const cached = readCache(await store.getKV(PATTERN_CACHE_KEY));
   const age = cached ? now.getTime() - Date.parse(cached.generated_at) : Infinity;
-  if (!refresh && cached && age < PATTERN_CACHE_H * 3600e3) return { ok: true, ...cached, cached: true, reason: 'fresh-cache' };
+  if (!refresh && cached && age < freshFor(cached)) return { ok: true, ...cached, cached: true, reason: 'fresh-cache' };
 
   const lastAttempt = attemptTime(await store.getKV(PATTERN_ATTEMPT_KEY));
   if (lastAttempt && now.getTime() - lastAttempt < PATTERN_THROTTLE_MS) return cachedResponse(cached, 'throttled');
@@ -310,6 +317,11 @@ export async function getPatterns(
     // A cut-off or non-JSON answer is a failed attempt, never an "empty" result that replaces a good cache.
     if (result.finish === 'length' || !parsed) throw new Error('pattern output truncated or not JSON');
     const patterns = validatePatterns(resolvePatternAliases(raw, items), items);
+    // Nothing usable this round: keep a recent good cache instead of replacing it with "no patterns".
+    if (!patterns.length && cached?.patterns.length && age < 24 * 3600e3) {
+      await store.setKV(PATTERN_ATTEMPT_KEY, { attempted_at: now.getTime(), ok: true, empty: true });
+      return cachedResponse(cached, 'no-new-patterns');
+    }
     const next: PatternCache = {
       generated_at: now.toISOString(),
       window_h: PATTERN_WINDOW_H,
