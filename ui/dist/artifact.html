@@ -1349,6 +1349,16 @@ function safeExternalUrl(u) {
     return parsed.protocol === 'https:' ? parsed.href : null;
   } catch (e) { return null; }
 }
+function externalAnchor(href, label, extra = {}) {
+  const safe = safeExternalUrl(href);
+  if (!safe) return h('span', {}, label);
+  return h('a', { ...extra, href: safe, target: '_blank', rel: 'noopener noreferrer', on: { click: (e) => {
+    try {
+      const native = window.AdarshNative;
+      if (native && typeof native.openExternal === 'function' && native.openExternal(safe) !== false) e.preventDefault();
+    } catch (err) { /* target=_blank remains the browser fallback */ }
+  } } }, label);
+}
 /* Haptics: the Android WebView ignores navigator.vibrate, so the app does it natively when it can */
 let lastVibe = 0;
 function vibe(ms = 8) {
@@ -1486,7 +1496,7 @@ function inline(text) {
     else if (t[0] === '*') out.push(h('em', {}, t.slice(1, -1)));
     else {
       const mm = /\[([^\]]+)\]\((.+)\)/.exec(t), href = mm && safeExternalUrl(mm[2]);
-      out.push(href ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--sel)' }, mm[1]) : t);
+      out.push(href ? externalAnchor(href, mm[1], { style: 'color:var(--sel)' }) : t);
     }
     last = m.index + t.length;
   }
@@ -1518,34 +1528,54 @@ function sourceLine(raw) {
   const num = /^\[(S\d+)\]\s*/i.exec(line);
   const n = num ? num[1].toUpperCase() : '';
   if (num) line = line.slice(num[0].length).trim();
-  const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(line);
+  const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(line);
   if (link) return { n, title: link[1], url: safeExternalUrl(link[2]) };
-  const url = /(https:\/\/[^\s)]+)\s*\)?$/.exec(line);
+  const url = /(https?:\/\/[^\s)]+)\s*\)?$/.exec(line);
   const cleanUrl = url ? safeExternalUrl(url[1].replace(/[.,;]$/, '')) : null;
   const title = url ? line.slice(0, url.index).replace(/[\s(]+$/, '') : line;
   return { n, title: title || (cleanUrl || line), url: cleanUrl };
 }
 
+function isSourcesHeading(line) {
+  return /^(?:#{1,4}\s*)?(?:\*{2}\s*)?sources(?:\s*:\s*|\s*\*{2}\s*:?\s*)$/i.test(String(line || '').trim());
+}
+
+function isSourceLine(line) {
+  const clean = String(line || '').trim();
+  return /^(?:[-*•]\s+)?(?:\[S\d+\]\s+.+|\[[^\]]+\]\([^)]*\)|https?:\/\/\S+)/i.test(clean);
+}
+
+function dedupeSourceRows(rows) {
+  const seen = new Set();
+  return rows.filter(row => {
+    const key = row.url ? 'url:' + row.url : 'text:' + String(row.title || '').trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+}
+
 function trailingSources(lines, at) {
   const head = String(lines[at] || '').trim();
-  const heading = /^(?:#{1,4}\s*)?\*{0,2}sources\s*:?\s*\*{0,2}$/i.test(head);
-  if (!heading) return null;
+  if (!isSourcesHeading(head)) return null;
   const rows = [];
+  let next = at + 1;
   for (let k = at + 1; k < lines.length; k++) {
     const line = String(lines[k] || '').trim();
-    if (!line) continue;
-    if (!/^(?:[-*•]\s+)?(?:\[S\d+\]\s*)?(?:\[[^\]]+\]\(https?:\/\/[^)\s]+\)|.+https:\/\/\S+|\[S\d+\]\s+.+)$/i.test(line)) return null;
+    if (!line) { next = k + 1; continue; }
+    if (!isSourceLine(line)) break;
     rows.push(sourceLine(line));
+    next = k + 1;
   }
-  return rows.length ? rows : null;
+  return rows.length ? { rows, next } : null;
 }
 
 function sourcesCard(rows) {
+  rows = dedupeSourceRows(rows);
   return h('details', { class: 'source-fold' },
     h('summary', {}, icon('link', 's'), 'Sources (' + rows.length + ')', h('span', { class: 'sp' }), icon('chev', 'chev')),
     h('div', { class: 'source-list' }, rows.map((s, i) => h('div', { class: 'source-row' },
       h('b', {}, s.n || '[S' + (i + 1) + ']'), s.url
-        ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer' }, s.title || s.url)
+        ? externalAnchor(s.url, s.title || s.url)
         : h('span', {}, s.title)))));
 }
 
@@ -1591,11 +1621,12 @@ function sectionText(heading) {
 function md(src) {
   const root = h('div', { class: 'prose' }); const lines = String(src || '').replace(/\r/g, '').split('\n');
   const tableAt = (k) => TBL_ROW.test(lines[k] || '') && TBL_SEP.test(lines[k + 1] || '');
+  const sourceRows = [];
   let i = 0;
   while (i < lines.length) {
     const ln = lines[i];
     const sources = trailingSources(lines, i);
-    if (sources) { root.appendChild(sourcesCard(sources)); i = lines.length; continue; }
+    if (sources) { sourceRows.push(...sources.rows); i = sources.next; continue; }
     const fence = /^```(\S*)/.exec(ln);
     if (fence) {
       const buf = []; i++;
@@ -1644,6 +1675,7 @@ function md(src) {
     const p = h('p'); buf.forEach((b, k) => { if (k) p.appendChild(document.createElement('br')); const parts = inline(b); if (k === 0 && parts[0] && parts[0].nodeType === 1 && parts[0].matches('strong') && /:$/.test(parts[0].textContent.trim())) parts[0].classList.add('lead-label'); parts.forEach(n => p.append(n)); });
     root.appendChild(p);
   }
+  if (sourceRows.length) root.appendChild(sourcesCard(sourceRows));
   return root;
 }
 const stripMd = (s) => String(s || '')
@@ -1957,7 +1989,7 @@ const RENDER = {
       h('div', { class: 'in' }, d.sources.map(s => {
         const href = safeExternalUrl(s && s.url), raw = s && typeof s.url === 'string' ? s.url : '';
         return h('div', { class: 'src' }, h('b', {}, '[' + (s && s.n != null ? s.n : '?') + ']'), href
-          ? h('a', { href, target: '_blank', rel: 'noopener noreferrer', style: 'color:var(--fg)' }, s.title || hostOf(href))
+          ? externalAnchor(href, s.title || hostOf(href), { style: 'color:var(--fg)' })
           : h('span', {}, s && s.title ? s.title + (raw ? ' (' + raw + ')' : '') : raw), href ? h('small', {}, hostOf(href)) : null);
       }))));
     if (d.caveat) card.append(sec('', h('div', { class: 'note' }, icon('warn', 's'), d.caveat)));
@@ -2287,7 +2319,7 @@ const Council = (() => {
     /* ---- roles (11-role engine) */
     if (rec.roles) {
       const R = rec.roles, src = R.sources || [];
-      const linkEl = (x) => { const href = safeExternalUrl(x && x.url), raw = x && typeof x.url === 'string' ? x.url : ''; return href ? h('a', { href, target: '_blank', rel: 'noopener' }, x.title || href) : h('span', {}, x && x.title ? x.title + (raw ? ' (' + raw + ')' : '') : raw); };
+      const linkEl = (x) => { const href = safeExternalUrl(x && x.url), raw = x && typeof x.url === 'string' ? x.url : ''; return href ? externalAnchor(href, x.title || href) : h('span', {}, x && x.title ? x.title + (raw ? ' (' + raw + ')' : '') : raw); };
       const deb = R.debate || [], rf = R.refiner || {}, rv = R.reviews || {};
       const revLine = (k, n) => { const r = rv[k]; return r ? row(n, r.ran ? (r.issues || []).length + ' galti/shak' : 'output padha nahi gaya') : row(n, 'is mode me nahi chala'); };
       stack.append(sec('roles', '11-role council', 'Architect ne plan banaya, web se sources padhe, drafters ne likha, Skeptic/Falsifier/Debater ne todne ki koshish ki, Judge ne likha, Reviewers ne jaancha, Refiner ne sudhara.',

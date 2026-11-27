@@ -13,6 +13,7 @@ import ipaddress
 import re
 import socket
 import time
+import unicodedata
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -336,6 +337,71 @@ _STOP = re.compile(
     r"was|were|what|how|why|when|which|who|and|or|in|on|for|with|about|latest|abhi|aaj|kuch|koi|ek)\b", re.I)
 
 
+_RELEVANCE_STOPWORDS = frozenset(
+    "a an and are about agar abhi baat bata batao btao bhi by do de dena dijiye ek for from hai hain how in is ka ke ki ko kya kyun kyu latest me mein mai mujhe mera mere meri of on or please se the this to what when which who with why ya ye yeh aur kaise kaisa kaisi karo kar kro kardo hota hoti hote".split()
+)
+_RELEVANCE_GENERIC = frozenset(
+    "analysis approach article based case data distribution effect evidence field method model paper research result results study system using law review".split()
+)
+_RELEVANCE_UNITS = frozenset(
+    "g kg mg meter meters m cm km second seconds sec s minute minutes min hour hours h joule joules j newton newtons n pascal pascals pa watt watts w".split()
+)
+
+
+def _term_stem(token: str) -> str:
+    """Small, deterministic normalization for common inflections, not a full stemmer."""
+    if token.endswith("ies") and len(token) > 4:
+        return token[:-3] + "y"
+    if token.endswith("ing") and len(token) > 5:
+        return token[:-3]
+    if token.endswith("ed") and len(token) > 4:
+        return token[:-2]
+    if token.endswith("es") and len(token) > 4 and not token.endswith(("ses", "zes")):
+        return token[:-2]
+    if token.endswith("s") and len(token) > 3 and not token.endswith(("ss", "us", "is")):
+        return token[:-1]
+    return token
+
+
+def _meaningful_terms(text: str) -> set[str]:
+    """Return lowercase, diacritic-free content terms; digits, units, filler and generic terms are removed."""
+    normalized = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode("ascii").lower()
+    terms = set()
+    for raw in re.findall(r"[a-z]+", normalized):
+        token = _term_stem(raw)
+        if len(token) < 3 or token in _RELEVANCE_STOPWORDS or token in _RELEVANCE_GENERIC or token in _RELEVANCE_UNITS:
+            continue
+        terms.add(token)
+    return terms
+
+
+def relevance_score(question: str, row: dict) -> int:
+    """Score a candidate by title overlap (weighted) plus abstract/snippet overlap.
+
+    One meaningful title term scores 2; if the title has no overlap, two body/snippet terms are needed.
+    """
+    question_terms = _meaningful_terms(question)
+    title_terms = _meaningful_terms((row or {}).get("title", ""))
+    body = " ".join(str((row or {}).get(k) or "") for k in ("abstract", "snippet", "text", "note"))
+    body_terms = _meaningful_terms(body)
+    title_overlap = question_terms & title_terms
+    body_overlap = question_terms & body_terms
+    return 2 * len(title_overlap) + len(body_overlap - title_overlap)
+
+
+def is_relevant_source(question: str, row: dict) -> bool:
+    """Keep only candidates with meaningful topical overlap, never generic-word overlap alone."""
+    candidate_terms = _meaningful_terms(
+        " ".join(str((row or {}).get(k) or "") for k in ("title", "abstract", "snippet", "text", "note"))
+    )
+    return bool(_meaningful_terms(question) & candidate_terms) and relevance_score(question, row) >= 2
+
+
+def filter_relevant_sources(question: str, rows: list[dict]) -> list[dict]:
+    """Filter provider rows without changing their wire shape or issuing any additional requests."""
+    return [row for row in rows if isinstance(row, dict) and is_relevant_source(question, row)]
+
+
 def forms(q: str) -> list[str]:
     """Query shapes to try, widest first. Public APIs AND their terms, so a full sentence usually matches nothing:
     "Starship launch humanoid robot SLAM" is 0 hits everywhere while "Starship launch" and "SLAM" both work."""
@@ -408,6 +474,7 @@ async def collect(text: str, *, limit: int = MAX_TOTAL) -> list[dict]:
     for g in groups:
         if isinstance(g, list):
             out += g[:MAX_PER_PROVIDER]
+    out = filter_relevant_sources(q, out)
     seen, uniq = set(), []
     for row in out:
         if not row.get("url") or row["url"] in seen:

@@ -77,6 +77,13 @@ test('Sources blocks collapse into a counted card with clickable links', t => {
   assert.deepEqual([...card.querySelectorAll('a')].map(a => a.href), ['https://one.example/a', 'https://two.example/b']);
   const plain = app.md('Answer.\n\nSources:\n[S1] [One](https://one.example/a)\n[S2] Two https://two.example/b');
   assert.match(text(plain.querySelector('.source-fold summary')), /Sources \(2\)/);
+  const mixed = app.md('Answer.\n\nSources:\n[S1] Provider: One — https://one.example/a\n[S2] Provider: Two — https://two.example/b\n\n**Sources**\n- [One again](https://one.example/a)\n- [Unsafe](javascript:alert(1))');
+  const mixedCard = mixed.querySelector('.source-fold');
+  assert.match(text(mixedCard.querySelector('summary')), /Sources \(3\)/);
+  assert.deepEqual([...mixedCard.querySelectorAll('a')].map(a => a.getAttribute('href')), ['https://one.example/a', 'https://two.example/b']);
+  assert.equal(mixedCard.querySelectorAll('a[href^="javascript:"]').length, 0);
+  assert.match(text(mixedCard), /javascript:alert\(1\)/);
+  assert.equal([...mixed.querySelectorAll('p')].some(p => /Provider: One/.test(text(p))), false);
 });
 
 test('normal paragraph taps do nothing, while code copy uses copyText', async t => {

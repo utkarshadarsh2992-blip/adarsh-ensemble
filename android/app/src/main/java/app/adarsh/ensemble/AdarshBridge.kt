@@ -67,6 +67,9 @@ class AdarshBridge(
     fun liveSendText(text: String): String = if (ok()) MainActivity.liveSendText(text) else denied
     @JavascriptInterface
     fun savePdf(name: String, base64: String): String = if (ok()) MainActivity.savePdf(name, base64) else denied
+    /** Source links leave the bundled WebView only through a validated Android ACTION_VIEW intent. */
+    @JavascriptInterface
+    fun openExternal(url: String): Boolean = ok() && MainActivity.openExternal(url)
     @JavascriptInterface
     fun liveStop(): String = if (ok()) MainActivity.liveStop() else denied
     @JavascriptInterface

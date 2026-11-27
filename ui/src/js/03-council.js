@@ -185,7 +185,7 @@ const Council = (() => {
     /* ---- roles (11-role engine) */
     if (rec.roles) {
       const R = rec.roles, src = R.sources || [];
-      const linkEl = (x) => { const href = safeExternalUrl(x && x.url), raw = x && typeof x.url === 'string' ? x.url : ''; return href ? h('a', { href, target: '_blank', rel: 'noopener' }, x.title || href) : h('span', {}, x && x.title ? x.title + (raw ? ' (' + raw + ')' : '') : raw); };
+      const linkEl = (x) => { const href = safeExternalUrl(x && x.url), raw = x && typeof x.url === 'string' ? x.url : ''; return href ? externalAnchor(href, x.title || href) : h('span', {}, x && x.title ? x.title + (raw ? ' (' + raw + ')' : '') : raw); };
       const deb = R.debate || [], rf = R.refiner || {}, rv = R.reviews || {};
       const revLine = (k, n) => { const r = rv[k]; return r ? row(n, r.ran ? (r.issues || []).length + ' galti/shak' : 'output padha nahi gaya') : row(n, 'is mode me nahi chala'); };
       stack.append(sec('roles', '11-role council', 'Architect ne plan banaya, web se sources padhe, drafters ne likha, Skeptic/Falsifier/Debater ne todne ki koshish ki, Judge ne likha, Reviewers ne jaancha, Refiner ne sudhara.',
