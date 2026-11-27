@@ -284,3 +284,17 @@ Deno.test('patterns: the production forced links (Waaree solar vs Moutai liquor;
   assertEquals(validatePatterns({patterns:[{...base,title:'Funding booms',pattern:'p',regions:[{region:'IN',what:'Waaree Renewable EPC orders',item_ids:['w1','w2']},{region:'CN',what:'Kweichow Moutai stock uplift',item_ids:['m1']}]}]},items).length,0);
   assertEquals(validatePatterns({patterns:[{...base,title:'Space missions',pattern:'p',regions:[{region:'US',what:'Voyager 1 milestone and SpaceX share pledge',item_ids:['v1','x1']},{region:'CN',what:'Shenzhou-24 launch',item_ids:['h1']}]}]},items).length,0);
 });
+
+Deno.test('patterns: a generic word ("upside") or the company field alone does not link or justify a region',()=>{
+  const mk=(id:string,region:any,title:string,tag:string,company:string)=>({...patternItem(id,region,1),title,tag,tags:[tag],activity:'funding',company,source:`Pub ${id}`});
+  const items=[
+    mk('p1','IN','Piramal Pharma raises FY27 growth guidance; analysts see 15-23% upside','ECON','Piramal Pharma'),
+    mk('m1','CN','Spirit of recovery: JPMorgan sees fresh upside in liquor giant Kweichow Moutai','ECON','Kweichow Moutai'),
+    mk('a1','US','Voyager 1 reaches one light-day from Earth','SPACE','NASA'),
+    mk('h1','CN','Huawei guilty on 10 counts in US trial; Nvidia Jensen Huang returns','SPACE','China National Space Administration'),
+  ];
+  const base={type:'capital flow',signal:'medium',why_it_matters:'w',watch_next:'n',assumption:'a'};
+  assertEquals(validatePatterns({patterns:[{...base,title:'Capital flow',pattern:'p',regions:[{region:'IN',what:'Piramal Pharma guidance',item_ids:['p1']},{region:'CN',what:'Moutai uplift',item_ids:['m1']}]}]},items).length,0);
+  // "what" names China's space programme only through the company field, not the headline -> region rejected
+  assertEquals(validatePatterns({patterns:[{...base,title:'Space',pattern:'p',regions:[{region:'US',what:'Voyager 1 milestone',item_ids:['a1']},{region:'CN',what:'China space programme Shenzhou',item_ids:['h1']}]}]},items).length,0);
+});
