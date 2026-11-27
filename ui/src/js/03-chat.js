@@ -222,6 +222,9 @@ const Chat = (() => {
     body.replaceWith(renderReply({ ...m.reply, text: state.visible }, { msg: m, redraw: () => {} }));
     if (state.visible === state.full && current.dataset.afterAnswer !== '1') {
       appendAfterAnswer(m, current, { msg: m, redraw: () => renderThread() });
+      // Actions stay usable during typing; once the answer is complete, restore the usual cards-then-actions order.
+      const actions = [...current.children].find(el => el.classList.contains('actions'));
+      if (actions) current.append(actions);
       current.dataset.afterAnswer = '1';
     }
     if (state.follow) scroll();

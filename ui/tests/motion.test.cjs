@@ -149,17 +149,21 @@ test('automatic reveal follows the answer boundary and supplemental cards wait u
   let captured;
   app.Motion.glide = (_el, options) => { captured = options; };
   app.Chat.push({ type: 'text', text: 'Sir, read this answer before the optional check questions below.',
-    learn: { concept: 'GPU', words: [], checks: [{ kind: 'fill', q: 'What is VRAM?', answer: 'video memory' }] },
+    learn: { concept: 'GPU', words: [{ w: 'GPU', m: 'graphics processor' }], checks: [{ kind: 'fill', q: 'What is VRAM?', answer: 'video memory' }] },
     truth: { claims: [{ c: 'g = 9.8', v: 'ok', why: '' }], basis: 'model', ok: 1, shak: 0, galat: 0 } });
   let body = app.document.querySelector('#v-chat .msg[data-id] > .prose');
   body.getBoundingClientRect = () => ({ top: 200, bottom: 500, height: 300 });
   assert.equal(app.document.querySelector('.lcheck'), null, 'CHECK card stays hidden while answer is being typed');
+  assert.equal(app.document.querySelector('.lwords'), null, 'NAYE SHABD card stays hidden while answer is being typed');
   assert.equal(app.document.querySelector('.fcheck'), null, 'FACT-CHECK card stays hidden while answer is being typed');
   assert.equal(typeof captured?.to, 'function');
   assert.equal(captured.to(), 120, 'target stops at the answer boundary, not thread bottom (1200)');
   await settle(900);
-  assert.ok(app.document.querySelector('.lcheck'), 'learning card appears after the final answer word');
-  assert.ok(app.document.querySelector('.fcheck'), 'fact-check card appears after the final answer word');
+  assert.ok(app.document.querySelector('.lcheck'), 'CHECK card appears after the final answer word');
+  assert.ok(app.document.querySelector('.lwords'), 'NAYE SHABD card appears after the final answer word');
+  assert.ok(app.document.querySelector('.fcheck'), 'FACT-CHECK card appears after the final answer word');
+  const msg = app.document.querySelector('#v-chat .msg[data-id]');
+  assert.ok([...msg.children].indexOf(msg.querySelector('.fcheck')) < [...msg.children].indexOf(msg.querySelector('.actions')), 'actions remain below the cards when reveal finishes');
 });
 
 test('glide can follow a bounded answer target even when supplemental cards extend the thread', async (t) => {
