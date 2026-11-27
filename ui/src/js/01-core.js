@@ -224,8 +224,9 @@ function inline(text) {
 /* fenced code: language label + copy button */
 function codeBlock(lang, code) {
   const btn = h('button', { class: 'cb-copy', 'aria-label': 'Copy code', on: { click: async () => {
-    try { await navigator.clipboard.writeText(code); btn.lastChild.textContent = 'Copied'; setTimeout(() => { btn.lastChild.textContent = 'Copy'; }, 1600); }
-    catch (e) { toast('Copy not available here'); }
+    const ok = await copyText(code);
+    if (ok) { btn.lastChild.textContent = 'Copied'; vibe(); setTimeout(() => { if (btn.isConnected) btn.lastChild.textContent = 'Copy'; }, 1600); }
+    else toast('Copy not available here');
   } } }, icon('copy', 's'), h('span', {}, 'Copy'));
   return h('div', { class: 'codeblock' }, h('div', { class: 'cb-head' }, h('span', { class: 'cb-lang' }, lang || 'code'), btn), h('pre', {}, h('code', {}, code)));
 }
@@ -235,12 +236,93 @@ const TBL_SEP = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 const tblCells = (s) => s.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
 const BLOCK_START = /^(```|#{1,4}\s|\s*([-*•]|\d+[.)])\s+|\s*>|\s*\$\$|\s*\\\[|\s*(-{3,}|\*{3,}|_{3,})\s*$)/;
 
+function copyTrigger(label) {
+  return h('button', { class: 'copy-trigger', type: 'button', 'aria-label': 'Copy ' + label, 'data-copy-kind': label }, icon('copy', 's'));
+}
+
+function sourceLine(raw) {
+  let line = String(raw || '').trim().replace(/^[-*•]\s+/, '');
+  const num = /^\[(S\d+)\]\s*/i.exec(line);
+  const n = num ? num[1].toUpperCase() : '';
+  if (num) line = line.slice(num[0].length).trim();
+  const link = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(line);
+  if (link) return { n, title: link[1], url: safeExternalUrl(link[2]) };
+  const url = /(https:\/\/[^\s)]+)\s*\)?$/.exec(line);
+  const cleanUrl = url ? safeExternalUrl(url[1].replace(/[.,;]$/, '')) : null;
+  const title = url ? line.slice(0, url.index).replace(/[\s(]+$/, '') : line;
+  return { n, title: title || (cleanUrl || line), url: cleanUrl };
+}
+
+function trailingSources(lines, at) {
+  const head = String(lines[at] || '').trim();
+  const heading = /^(?:#{1,4}\s*)?\*{0,2}sources\s*:?\s*\*{0,2}$/i.test(head);
+  if (!heading) return null;
+  const rows = [];
+  for (let k = at + 1; k < lines.length; k++) {
+    const line = String(lines[k] || '').trim();
+    if (!line) continue;
+    if (!/^(?:[-*•]\s+)?(?:\[S\d+\]\s*)?(?:\[[^\]]+\]\(https?:\/\/[^)\s]+\)|.+https:\/\/\S+|\[S\d+\]\s+.+)$/i.test(line)) return null;
+    rows.push(sourceLine(line));
+  }
+  return rows.length ? rows : null;
+}
+
+function sourcesCard(rows) {
+  return h('details', { class: 'source-fold' },
+    h('summary', {}, icon('link', 's'), 'Sources (' + rows.length + ')', h('span', { class: 'sp' }), icon('chev', 'chev')),
+    h('div', { class: 'source-list' }, rows.map((s, i) => h('div', { class: 'source-row' },
+      h('b', {}, s.n || '[S' + (i + 1) + ']'), s.url
+        ? h('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer' }, s.title || s.url)
+        : h('span', {}, s.title)))));
+}
+
+function textWithoutControls(node) {
+  const copy = node.cloneNode(true);
+  copy.querySelectorAll('button, .copy-trigger').forEach(x => x.remove());
+  return copy.textContent.replace(/\s+/g, ' ').trim();
+}
+
+function plainText(node) {
+  if (!node) return '';
+  if (node.matches && node.matches('.codeblock')) return node.querySelector('pre')?.textContent.trim() || '';
+  if (node.matches && node.matches('.copy-list')) return plainText(node.querySelector('ul,ol'));
+  if (node.matches && node.matches('.mdtable, table')) {
+    const table = node.matches('table') ? node : node.querySelector('table');
+    return [...table.rows].map(row => [...row.cells].map(cell => textWithoutControls(cell)).join('\t')).join('\n').trim();
+  }
+  if (node.matches && node.matches('ul, ol')) {
+    return [...node.children].map((li, i) => {
+      const nested = [...li.children].find(x => x.matches && x.matches('ul, ol'));
+      const clone = li.cloneNode(true); clone.querySelectorAll('ul,ol').forEach(x => x.remove());
+      const mark = node.matches('ol') ? (i + 1) + '. ' : '- ';
+      return mark + textWithoutControls(clone) + (nested ? '\n' + plainText(nested) : '');
+    }).join('\n').trim();
+  }
+  return textWithoutControls(node);
+}
+
+function sectionText(heading) {
+  if (!heading) return '';
+  const level = Number(heading.dataset.level || 4);
+  const out = [textWithoutControls(heading)];
+  let n = heading.nextElementSibling;
+  while (n) {
+    if (n.classList.contains('answer-heading') && Number(n.dataset.level || 4) <= level) break;
+    const value = plainText(n);
+    if (value) out.push(value);
+    n = n.nextElementSibling;
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function md(src) {
   const root = h('div', { class: 'prose' }); const lines = String(src || '').replace(/\r/g, '').split('\n');
   const tableAt = (k) => TBL_ROW.test(lines[k] || '') && TBL_SEP.test(lines[k + 1] || '');
   let i = 0;
   while (i < lines.length) {
     const ln = lines[i];
+    const sources = trailingSources(lines, i);
+    if (sources) { root.appendChild(sourcesCard(sources)); i = lines.length; continue; }
     const fence = /^```(\S*)/.exec(ln);
     if (fence) {
       const buf = []; i++;
@@ -259,7 +341,11 @@ function md(src) {
       }
     }
     const hm = /^(#{1,4})\s+(.*)$/.exec(ln);
-    if (hm) { root.appendChild(h(hm[1].length <= 2 ? 'h3' : 'h4', {}, inline(hm[2]))); i++; continue; }
+    if (hm) {
+      const level = hm[1].length;
+      const heading = h(level <= 2 ? 'h3' : 'h4', { class: 'answer-heading', 'data-level': String(level), 'data-copy-kind': 'section', role: 'button', tabindex: '0', 'aria-label': 'Copy section' }, inline(hm[2]), copyTrigger('section'));
+      root.appendChild(heading); i++; continue;
+    }
     if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) { root.appendChild(h('hr')); i++; continue; }
     if (/^\s*>/.test(ln)) {
       const buf = [];
@@ -270,19 +356,19 @@ function md(src) {
       const head = tblCells(ln), al = tblCells(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? 'center' : /-:$/.test(c) ? 'right' : 'left')); i += 2;
       const rows = []; while (i < lines.length && TBL_ROW.test(lines[i])) rows.push(tblCells(lines[i++]));
       const cell = (tag, c, k) => h(tag, { style: al[k] && al[k] !== 'left' ? 'text-align:' + al[k] : null }, inline(c || ''));
-      root.appendChild(h('div', { class: 'mdtable' }, h('table', { class: 'md' },
+      root.appendChild(h('div', { class: 'mdtable', 'data-copy-kind': 'table' }, copyTrigger('table'), h('table', { class: 'md' },
         h('thead', {}, h('tr', {}, head.map((c, k) => cell('th', c, k)))), h('tbody', {}, rows.map(r => h('tr', {}, head.map((_, k) => cell('td', r[k], k))))))));
       continue;
     }
     if (/^\s*([-*•]|\d+[.)])\s+/.test(ln)) {
       const ord = /^\s*\d+[.)]/.test(ln); const list = h(ord ? 'ol' : 'ul');
       while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) { list.appendChild(h('li', {}, inline(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, '')))); i++; }
-      root.appendChild(list); continue;
+      root.appendChild(h('div', { class: 'copy-list', 'data-copy-kind': 'list' }, copyTrigger('list'), list)); continue;
     }
     if (!ln.trim()) { i++; continue; }
     const buf = [lines[i++]];                              /* first line is always taken, so the loop can never stall */
     while (i < lines.length && lines[i].trim() && !BLOCK_START.test(lines[i]) && !tableAt(i)) buf.push(lines[i++]);
-    const p = h('p'); buf.forEach((b, k) => { if (k) p.appendChild(document.createElement('br')); inline(b).forEach(n => p.append(n)); });
+    const p = h('p'); buf.forEach((b, k) => { if (k) p.appendChild(document.createElement('br')); const parts = inline(b); if (k === 0 && parts[0] && parts[0].nodeType === 1 && parts[0].matches('strong') && /:$/.test(parts[0].textContent.trim())) parts[0].classList.add('lead-label'); parts.forEach(n => p.append(n)); });
     root.appendChild(p);
   }
   return root;
