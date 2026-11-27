@@ -383,7 +383,8 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6, why: 
     const namedRegions = [...actualRegions].filter((x) => x !== 'WORLD');
     // A WORLD row is useful only when another named region is present, and every
     // pattern must still span two distinct actual regions.
-    if (actualRegions.size < 2 || !namedRegions.length || used.size < 2) { why.push(`${title.slice(0, 40)}: <2 regions after pruning (listed ${listed.size}, kept ${used.size})`); continue; }
+    // WORLD is only support: one country's event re-reported by wire/aggregator sites is not a cross-country pattern.
+    if (actualRegions.size < 2 || namedRegions.length < 2 || used.size < 2) { why.push(`${title.slice(0, 40)}: <2 regions after pruning (listed ${listed.size}, kept ${used.size})`); continue; }
     if (!coherent([...used].map((id) => byId.get(id)!))) { why.push(`${title.slice(0, 40)}: incoherent`); continue; }
     const linked = [...used].map((id) => byId.get(id)!);
     const attached = linked.map((item) => ({

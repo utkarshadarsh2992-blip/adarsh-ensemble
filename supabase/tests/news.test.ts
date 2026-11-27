@@ -257,10 +257,12 @@ Deno.test('patterns: theme hints list tag/activity seen in 2+ named regions only
 import {coherent} from '../functions/_shared/patterns.ts';
 Deno.test('patterns: DB region wins over model label, and forced (incoherent) links are dropped',()=>{
   const mk=(id:string,region:any,tag:string,activity:string)=>({...patternItem(id,region,1),tag,tags:[tag],activity});
-  const items=[mk('ru','RU','AI','policy'),mk('eu','WORLD','AI','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other'),mk('cn','CN','ECON','funding')].map((x,i)=>({...x,title:['Gazprom Arctic policy shift','Gazprom Arctic policy talks','Quantum lattice funding','Textile orders slump','Lithium refinery stake'][i]}));
-  // Model files the WORLD item under EU: kept, but moved to WORLD; RU+WORLD share the specific tag AI.
+  const items=[mk('ru','RU','AI','policy'),mk('eu','US','AI','policy'),mk('us','US','PHYSICS','funding'),mk('in','IN','ECON','other'),mk('cn','CN','ECON','funding')].map((x,i)=>({...x,title:['Gazprom Arctic policy shift','Gazprom Arctic policy talks','Quantum lattice funding','Textile orders slump','Lithium refinery stake'][i]}));
+  // Model files the US item under EU: kept, but moved to US (DB region wins); RU+US share a name.
   const ok=validatePatterns({patterns:[{title:'Arctic',pattern:'p',type:'policy wave',signal:'medium',regions:[{region:'RU',what:'r',item_ids:['ru']},{region:'EU',what:'e',item_ids:['eu']}]}]},items as any);
-  assertEquals(ok.length,1);assertEquals(ok[0].regions.map(r=>r.region),['RU','WORLD']);
+  assertEquals(ok.length,1);assertEquals(ok[0].regions.map(r=>r.region),['RU','US']);
+  // one named country + WORLD re-reporting is a single event, not a cross-country pattern
+  assertEquals(validatePatterns({patterns:[{title:'One event',pattern:'p',type:'other',signal:'medium',regions:[{region:'RU',what:'Gazprom Arctic policy shift',item_ids:['ru']},{region:'WORLD',what:'Gazprom talks',item_ids:['wd']}]}]},[...items,{...items[1],id:'wd',region:'WORLD',source:'Other pub'}] as any).length,0);
   // US physics funding vs IN econ "other": no shared tag/activity -> dropped.
   const bad=validatePatterns({patterns:[{title:'Forced',pattern:'p',type:'other',signal:'medium',regions:[{region:'US',what:'u',item_ids:['us']},{region:'IN',what:'i',item_ids:['in']}]}]},items as any);
   assertEquals(bad.length,0);
