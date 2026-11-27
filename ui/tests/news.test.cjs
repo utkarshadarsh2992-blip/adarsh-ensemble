@@ -421,3 +421,15 @@ test('Patterns error state is visible and pattern Chat carries the linked eviden
   const err = api({ list: L([]), patterns: { ok: false, error: 'Pattern server down', __status: 500 } });
   const e = mount({ fetchImpl: err.f, ls: CFG }); await open(e); [...e.document.querySelectorAll('.nw-mode')].find(b => text(b) === 'Patterns').click(); await until(() => /Pattern server down/.test(text(e.document.querySelector('#v-news')))); e.close();
 });
+test('Pattern chat marks sarkari/unverified items as claims and forbids invented actors or forced mission links', async () => {
+  const pattern = { title: 'Arctic strategy', pattern: 'Russia aur West Arctic par.', type: 'policy wave', signal: 'medium', regions: [{ region: 'RU', what: 'Strategy', item_ids: ['i1'] }, { region: 'US', what: 'Reaction', item_ids: ['i2'] }], why_it_matters: 'x', watch_next: 'y', assumption: 'z', items: [{ id: 'i1', title: 'Arctic share of GRP to reach 8.4% by 2035', url: 'https://tass.com/a', source: 'tass.com', region: 'RU', state_media: true, verified: 'none', n_sources: 1 }, { id: 'i2', title: 'US Arctic exercise', url: 'https://example.com/us', source: 'Reuters', region: 'US', state_media: false, verified: 'confirmed', n_sources: 3 }] };
+  const a = api({ list: L([]), patterns: { ok: true, generated_at: new Date().toISOString(), patterns: [pattern] } });
+  const m = mount({ fetchImpl: a.f, ls: CFG, settings: { mode: 'standard' } }); await open(m);
+  [...m.document.querySelectorAll('.nw-mode')].find(b => text(b) === 'Patterns').click(); await until(() => m.document.querySelector('.nw-pattern-card'));
+  assert.match(text(m.document.querySelector('.nw-pattern-card')), /sarkari daava/);
+  const p = m.News.patternChatPrompt(m.News.normPattern(pattern));
+  assert.match(p, /tass\.com \[SARKARI DAAVA · UNVERIFIED \/ single source\]/);
+  assert.doesNotMatch(p, /Reuters \[/);  // confirmed independent item carries no warning
+  assert.match(p, /X ka daava/); assert.match(p, /actor.*mat jodo|mat jodo/); assert.match(p, /seedha link nahi/);
+  m.close();
+});

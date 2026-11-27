@@ -34,6 +34,10 @@ export interface PatternItem {
   url: string;
   source: string;
   region: Region;
+  /** Government/state-media publisher: its text is a claim, not independent evidence. */
+  state_media?: boolean;
+  verified?: string;
+  n_sources?: number;
 }
 
 export interface NewsPattern {
@@ -170,6 +174,7 @@ function compactItems(items: NewsItem[]): string {
       text(item.company, 24),
       text(item.title, 90),
       text(item.points?.[0] || item.raw_summary, 60),
+      item.state_media || item.claim_tag === 'sarkari daava' ? 'SM' : '',
     ].join('|');
     const rows = groups.get(item.region) || [];
     rows.push(line.slice(0, 190));
@@ -202,7 +207,7 @@ export function themeHints(items: NewsItem[], max = 8): string {
 }
 export function patternPrompt(items: NewsItem[]): string {
   const hints = themeHints(items);
-  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Kam se kam 3 aur max 6 patterns do. Neeche "Candidate themes" code ne nikale hain (same tag/activity 2+ countries mein) — inhe headlines padh kar verify karo, aur khud bhi dhoondo. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. ${hints ? `Candidate themes:\n${hints}\n` : ''}News lines: ${compactItems(items)}`;
+  return `Tum cross-country news pattern finder ho. Roman Hinglish mein strict JSON only do, markdown nahi. Input ki scored news lines region groups mein hain; URLs invent mat karo. Har line ka pehla field item id hai (n1, n2, ...); item_ids mein wahi short ids likho, lekin title/pattern/what/why text mein ids mat likho. Pattern ka matlab: alag countries mein EK HI TARAH ka move (jaise chip export control, datacentre/compute buildout, national AI strategy, launch/space push, funding/IPO wave, policy crackdown). "pattern" field mein headlines ki list nahi, balki common underlying trend/mechanism 1-2 lines mein likho (kya ho raha hai aur kyun saath ho raha hai). Kam se kam 3 aur max 6 patterns do. Neeche "Candidate themes" code ne nikale hain (same tag/activity 2+ countries mein) — inhe headlines padh kar verify karo, aur khud bhi dhoondo. Alag-alag topic ki news ko zabardasti mat jodo; har pattern ka signal imaandari se do (strong = dono jagah seedha same move, medium = same direction ka move, weak = sirf loose link). Sirf tab pattern banao jab kam se kam 2 alag regions aur 2 alag item ids ka real link ho. Jawab chhota: har text field 1 line. Alag countries (IN/CN/US/RU/EU) ke beech link sabse pehle dhoondo; WORLD sirf support ke liye. Saare text fields Roman Hinglish mein likho (Hindi Latin script mein, technical words English mein; pure English sentences nahi). WORLD akela region nahi count hota; WORLD ko named region (IN/CN/US/RU/EU) ke saath hi use karo. Har region ka what short rakho. Inference ko assumption mein likho, fact ki tarah nahi. Line ke end mein SM = sarkari/state-media daava: use "X ka daava" likho, independent fact nahi; sirf SM lines ya ek hi publisher se pattern mat banao. Text mein koi aisa desh/company/actor mat jodo jo lines mein nahi hai. Max 6 patterns. JSON shape: {"patterns":[{"title":"...","pattern":"1-2 lines","type":"ai-race|compute/datacentre buildout|capital flow|policy wave|supply chain|space race|talent|other","regions":[{"region":"IN|CN|US|RU|EU|WORLD","what":"...","item_ids":["n1"]}],"signal":"strong|medium|weak","why_it_matters":"...","watch_next":"...","assumption":"..."}]}. ${hints ? `Candidate themes:\n${hints}\n` : ''}News lines: ${compactItems(items)}`;
 }
 
 /** Strictly validates model output and reattaches all item metadata from the database. */
@@ -233,6 +238,7 @@ export function coherent(items: NewsItem[]): boolean {
   }
   return false;
 }
+const isStateClaim = (item: NewsItem): boolean => !!item.state_media || item.claim_tag === 'sarkari daava';
 export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): NewsPattern[] {
   const rows: unknown[] = Array.isArray(raw)
     ? raw
@@ -277,16 +283,23 @@ export function validatePatterns(raw: unknown, items: NewsItem[], max = 6): News
     // pattern must still span two distinct actual regions.
     if (actualRegions.size < 2 || !namedRegions.length || used.size < 2) continue;
     if (!coherent([...used].map((id) => byId.get(id)!))) continue;
-    const attached = [...used].map((id) => byId.get(id)!).map((item) => ({
+    const linked = [...used].map((id) => byId.get(id)!);
+    const attached = linked.map((item) => ({
       id: String(item.id), title: text(item.title, 220), url: text(item.url, 700), source: text(item.source, 120), region: item.region,
+      state_media: isStateClaim(item), verified: text(item.verified, 16), n_sources: Math.max(0, Number(item.n_sources) || 0),
     }));
     if (attached.length < 2) continue;
+    // One government's own claims (or one publisher under two region labels) is a narrative, not a cross-country pattern.
+    const publishers = new Set(linked.map((item) => text(item.source, 120).toLowerCase() || String(item.id)));
+    const stateShare = attached.filter((i) => i.state_media).length / attached.length;
+    if (stateShare === 1 || publishers.size < 2) continue;
+    const trusted: PatternSignal = stateShare >= 0.5 && signal === 'strong' ? 'medium' : signal;
     out.push({
       title,
       pattern,
       type,
       regions: regions.slice(0, 8),
-      signal,
+      signal: trusted,
       why_it_matters: stripAliases(text(row.why_it_matters, 420)),
       watch_next: stripAliases(text(row.watch_next, 320)),
       assumption: stripAliases(text(row.assumption, 320)),

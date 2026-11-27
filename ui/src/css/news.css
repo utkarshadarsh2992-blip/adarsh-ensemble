@@ -20,6 +20,7 @@
 .nw-region-chip{flex:none;border:1px solid var(--accent);border-radius:5px;padding:2px 5px;color:var(--accent);font:600 10px var(--mono);letter-spacing:.04em}
 .nw-p-what{font-size:13px;color:var(--fg2)}
 .nw-p-links{display:flex;flex-direction:column;gap:3px;margin:4px 0 0 31px}
+.nw-p-sm{color:var(--warn,#e0a030);font-size:10.5px;text-decoration:none;display:inline-block}
 .nw-p-link{padding:2px 0;border:0;background:none;color:var(--accent);font:inherit;font-size:12.5px;text-align:left;text-decoration:underline;cursor:pointer;overflow-wrap:anywhere}
 .nw-p-copy{margin:0;color:var(--fg2);font-size:13px;line-height:1.5}
 .nw-assumption{color:var(--muted);font-style:italic}

@@ -110,6 +110,27 @@ Deno.test('patterns validation drops unknown ids and single-region claims, caps 
   assertEquals(out.length,6);assertEquals(out[0].items[0].url,'https://db.example/in');assertEquals(out[0].items.some(x=>x.id==='ghost'),false);assertEquals(out.some(x=>x.title==='Pattern 1'),false);
 });
 
+Deno.test('patterns: a state-media-only or single-publisher link is dropped; mixed ones keep flags and cap strong at medium',()=>{
+  const tass=(id:string,region:any)=>({...patternItem(id,region,1),source:'tass.com',state_media:true,claim_tag:'sarkari daava',verified:'none'});
+  const row=(ids:[string,string],regions:[string,string])=>({title:'Arctic',pattern:'Strategy claims line up.',type:'policy wave',signal:'strong',regions:[{region:regions[0],what:'a',item_ids:[ids[0]]},{region:regions[1],what:'b',item_ids:[ids[1]]}],why_it_matters:'w',watch_next:'n',assumption:'a'});
+  // Arctic case from production: every linked item is TASS (Russian state media) -> not a cross-country pattern.
+  const only=[tass('ru','RU'),tass('wd','WORLD')];
+  assertEquals(validatePatterns({patterns:[row(['ru','wd'],['RU','WORLD'])]},only).length,0);
+  // one publisher under two region labels (not state media) is also dropped
+  const same=[{...patternItem('a','IN',1),source:'Same'},{...patternItem('b','CN',2),source:'Same'}];
+  assertEquals(validatePatterns({patterns:[row(['a','b'],['IN','CN'])]},same).length,0);
+  // state + independent: kept, flags re-attached from DB, strong capped to medium because >= half is state media
+  const mixed=[tass('ru','RU'),patternItem('us','US',2)];
+  const out=validatePatterns({patterns:[row(['ru','us'],['RU','US'])]},mixed);
+  assertEquals(out.length,1);assertEquals(out[0].signal,'medium');
+  assertEquals(out[0].items.find(i=>i.id==='ru')?.state_media,true);assertEquals(out[0].items.find(i=>i.id==='us')?.state_media,false);
+  assertEquals(out[0].items.find(i=>i.id==='ru')?.verified,'none');
+});
+Deno.test('patterns prompt marks state-media lines with SM and tells the model not to invent actors',()=>{
+  const items=[{...patternItem('ru','RU',1),source:'tass.com',state_media:true,claim_tag:'sarkari daava'},patternItem('us','US',2)];
+  const prompt=patternPrompt(items);
+  assertEquals(/\|SM\n|\|SM$/m.test(prompt),true);assertEquals(prompt.includes('state-media daava'),true);assertEquals(prompt.includes('actor mat jodo'),true);
+});
 Deno.test('patterns API rejects unknown fields and invalid refresh without calling Groq',async()=>{
   Deno.env.set('APP_SECRET','test-app-secret-123');const s=new MemoryStore();
   const mk=(body:any)=>new Request('http://x',{method:'POST',headers:{'content-type':'application/json','x-app-secret':'test-app-secret-123'},body:JSON.stringify(body)});
