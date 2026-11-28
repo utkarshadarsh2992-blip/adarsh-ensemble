@@ -31,12 +31,16 @@ const App = (() => {
     drawer(false); if (name !== 'chat') build(name); else Chat.renderThread();
     drawerList();
   }
-  function build(name) {
-    const el = $('#v-' + name); el.textContent = '';
+  /* keep: a redraw of the screen already open keeps its scroll position (no jump to the top and back) */
+  function build(name, keep = false) {
+    const el = $('#v-' + name);
+    const prior = keep ? (($('#v-' + name + ' .scroll') || {}).scrollTop || 0) : 0;
+    el.textContent = '';
     const body = h('div', { class: 'scroll pad' }, h('div', { class: 'stack' }));
     const stack = body.firstChild;
     el.append(h('header', { class: 'hdr pad' }, ibtn('back', 'Back to chat', () => show('chat')), h('h1', {}, TITLES[name]), name === 'settings' ? h('span') : ibtn('sliders', 'Settings', () => show('settings'))), body);
-    BUILD[name](stack, () => build(name));
+    BUILD[name](stack, () => build(name, true));
+    if (prior) body.scrollTop = prior;
   }
   function drawer(open) {
     root().classList.toggle('open', open);
@@ -111,19 +115,18 @@ const App = (() => {
 
   /* ================= Tasks ================= */
   ['tasks', 'work', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
-  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
+  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view, true); });
   /* ================= Mission, retained local usage history, and news views ================= */
   BUILD.goals = (st, redraw) => Mission.view(st, redraw);
   BUILD.usage = (st, redraw) => Usage.view(st, redraw);
   BUILD.news = (st, redraw) => News.view(st, redraw);
   Bus.on('mission:changed', () => {
-    if (view === 'today') build('today');
+    if (view === 'today') build('today', true);
     if (view !== 'goals') return;
-    const y = ($('#v-goals .scroll') || {}).scrollTop || 0;
-    build('goals'); const sc = $('#v-goals .scroll'); if (sc) sc.scrollTop = y;
+    build('goals', true);
   });
 
-  Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks'); });
+  Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks', true); });
 
   /* ================= Memory ================= */
   BUILD.library = (st, redraw) => {

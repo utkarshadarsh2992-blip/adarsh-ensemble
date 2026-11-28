@@ -526,8 +526,9 @@ const Voice = (() => {
     sourceBox = h('div', { class: 'live-sources' }, sourceBtn, sourceList);
     showLiveSources([]);
     tagEl = h('span', { class: 'tag' }, tagText());
+    const endBtn = h('button', { class: 'v-end', type: 'button', 'aria-label': 'End call', on: { click: () => { vibe(); close(); } } }, icon('x', 's'), 'End');
     el.append(h('div', { class: 'v-top pad' }, tagEl, ibtn('x', 'Close voice mode', close)),
-      h('div', { class: 'v-mid' }, orb, stateEl, cap),
+      h('div', { class: 'v-mid' }, orb, stateEl, cap, endBtn),
       h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn, cameraBtn), cameraStatus, sourceBox,
         h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
     refreshCameraControls();

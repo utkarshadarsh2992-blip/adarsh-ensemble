@@ -25,4 +25,16 @@
   try { Briefing.init(); } catch (e) { console.warn('briefing init', e); }   /* change 1.3 */
   try { News.init(); } catch (e) { console.warn('news init', e); }   /* change 1.5 */
   BackgroundVoice.init();
+  /* Android Back: step back inside the app first; only an idle chat screen leaves the app. */
+  const councilBack = window.__adarshBack;
+  window.__adarshBack = () => {
+    const lock = $('#lock'); if (lock && !lock.hidden) return false;
+    const shades = $$('#phone > .shade'); const top = shades[shades.length - 1];
+    if (top) { if (top._close) top._close(); else top.remove(); return true; }
+    if (typeof councilBack === 'function' && councilBack()) return true;
+    if (Voice.isOpen) { Voice.close(); return true; }
+    if ($('#phone').classList.contains('open')) { App.drawer(false); return true; }
+    if (App.view !== 'chat') { App.show('chat'); return true; }
+    return false;
+  };
 })();

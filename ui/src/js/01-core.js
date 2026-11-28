@@ -191,6 +191,7 @@ function sheet({ title, tall = false, top = false, build }) {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
   function close() { document.removeEventListener('keydown', onKey); shade.remove(); }
+  shade._close = close;   /* phone Back closes the topmost sheet first */
   build(body, close);
   $('#phone').appendChild(shade);
   return close;

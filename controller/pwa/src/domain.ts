@@ -278,3 +278,53 @@ export function detachModelFromRoutes(
   }
   return { ok: true, routes, changed };
 }
+/** Route whose Groq entries drive the direct Standard chat (Groq-only, in order). */
+export const STANDARD_ROUTE = "utility:quick";
+function quickBase(config: Config, bundled: Record<string, string[]>) {
+  const raw = config.routes[STANDARD_ROUTE] ?? bundled[STANDARD_ROUTE] ?? [];
+  return raw.filter((label) =>
+    config.models.some((m) => m.label === label && m.enabled),
+  );
+}
+/** Groq models Standard chat will call, primary first (what the app resolves at runtime). */
+export function standardChain(
+  config: Config,
+  bundled: Record<string, string[]>,
+): string[] {
+  const groq = (label: string) =>
+    config.models.find((m) => m.label === label)?.provider === "groq";
+  const labels = quickBase(config, bundled).filter(groq);
+  // Without an explicit override the app uses only the first bundled Groq entry.
+  return Object.hasOwn(config.routes, STANDARD_ROUTE) ? labels : labels.slice(0, 1);
+}
+/**
+ * Make `label` (an enabled Groq model) the Standard primary. The utility:quick chain
+ * becomes [label, non-Groq fallbacks..., other Groq models...] so it keeps the
+ * Groq + OpenRouter + Gemini coverage and a different-provider first fallback.
+ */
+export function setStandardPrimary(
+  config: Config,
+  label: string,
+  bundled: Record<string, string[]>,
+): { ok: true; config: Config } | { ok: false; error: string } {
+  const model = config.models.find((m) => m.label === label);
+  if (!model || !model.enabled || model.provider !== "groq")
+    return { ok: false, error: "Standard mode sirf enabled Groq model use karta hai." };
+  const providerOf = (l: string) =>
+    config.models.find((m) => m.label === l)?.provider;
+  const base = quickBase(config, bundled).filter((l) => l !== label);
+  let chain = [
+    label,
+    ...base.filter((l) => providerOf(l) !== "groq"),
+    ...base.filter((l) => providerOf(l) === "groq"),
+  ];
+  for (const need of ["openrouter", "gemini"] as Provider[]) {
+    if (chain.some((l) => providerOf(l) === need)) continue;
+    const extra = config.models.find((m) => m.enabled && m.provider === need);
+    if (extra) chain.splice(1, 0, extra.label);
+  }
+  chain = chain.slice(0, 10);
+  const next = { ...config, routes: { ...config.routes, [STANDARD_ROUTE]: chain } };
+  const issue = routeError(STANDARD_ROUTE, chain, next);
+  return issue ? { ok: false, error: issue } : { ok: true, config: next };
+}

@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { routeError, type Config } from "../domain";
+import {
+  routeError,
+  setStandardPrimary,
+  standardChain,
+  STANDARD_ROUTE,
+  type Config,
+} from "../domain";
+import defaultRoutes from "../default-routes.json";
+const BUNDLED = defaultRoutes as Record<string, string[]>;
 import { Dialog } from "./ui";
 
 type Props = {
@@ -73,6 +81,19 @@ function byGroup(options: RouteOption[]) {
 export default function Routing({ config, onChange, editable }: Props) {
   const [newRoute, setNewRoute] = useState("");
   const [showReset, setShowReset] = useState<string | null>(null);
+  const [standardIssue, setStandardIssue] = useState<string | null>(null);
+  const groqModels = config.models.filter(
+    (model) => model.enabled && model.provider === "groq",
+  );
+  const stdChain = standardChain(config, BUNDLED);
+  function pickStandard(label: string) {
+    if (!editable || !label) return;
+    const result = setStandardPrimary(config, label, BUNDLED);
+    if (result.ok) {
+      setStandardIssue(null);
+      onChange(result.config);
+    } else setStandardIssue(result.error);
+  }
   const enabled = useMemo(
     () => config.models.filter((model) => model.enabled),
     [config.models],
@@ -128,6 +149,46 @@ export default function Routing({ config, onChange, editable }: Props) {
         <code> mode:standard:* </code> council-role routes alag hain; unhe
         badalne se direct Standard multi-provider nahi banega.
       </div>
+      <section className="card" aria-labelledby="standard-model-title">
+        <h2 id="standard-model-title">Standard mode model</h2>
+        <p className="help">
+          Direct Standard chat sirf Groq model call karta hai. Yahan primary
+          choose karo; baaki Groq models usi order mein fallback rahenge. Save
+          ke baad app agle sync par naya model use karega.
+        </p>
+        <label className="field">
+          Primary Groq model
+          <select
+            disabled={!editable || groqModels.length === 0}
+            value={stdChain[0] ?? ""}
+            onChange={(e) => pickStandard(e.target.value)}
+          >
+            {!stdChain[0] && <option value="">Groq model choose karo</option>}
+            {groqModels.map((model) => (
+              <option key={model.label} value={model.label}>
+                {model.label} · {model.model}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="row">
+          <span className="badge">Standard chain</span>
+          <span className="mono">
+            {stdChain.length ? stdChain.join(" → ") : "Koi enabled Groq model nahi"}
+          </span>
+        </div>
+        {groqModels.length === 0 && (
+          <p className="warning" role="alert">
+            Models page par kam se kam ek Groq model enable karo.
+          </p>
+        )}
+        {standardIssue && (
+          <p className="warning" role="alert">
+            {standardIssue}
+          </p>
+        )}
+        <p className="help mono muted">Route: {STANDARD_ROUTE}</p>
+      </section>
       {available.length > 0 && (
         <details className="card">
           <summary>

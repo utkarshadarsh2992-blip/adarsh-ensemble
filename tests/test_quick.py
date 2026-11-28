@@ -290,3 +290,19 @@ def test_adapter_routes_tts(monkeypatch):
 
     monkeypatch.setattr(voice, "handle", fake)
     assert run(chat_adapter.handle({"tts": {"text": "hi"}}))["type"] == "audio"
+
+
+def test_photo_with_octet_stream_label_but_jpeg_bytes_is_accepted_and_relabelled():
+    import chat_adapter
+    body = base64.b64encode(b"\xff\xd8\xff\xe0photo-bytes").decode("ascii")
+    wrapped = body[:8] + "\n" + body[8:]
+    for url in ("data:application/octet-stream;base64," + wrapped,
+                "data:;base64," + body,
+                "data:image/png;name=IMG_1.jpg;base64," + body):
+        images, err = chat_adapter._image_attachments([{"kind": "image", "type": "", "dataUrl": url}])
+        assert err == "", url
+        assert images[0]["mime"] == "image/jpeg"
+        assert images[0]["data_url"] == "data:image/jpeg;base64," + body
+    images, err = chat_adapter._image_attachments(
+        [{"kind": "image", "dataUrl": "data:application/octet-stream;base64," + base64.b64encode(b"GIF89a").decode()}])
+    assert images == [] and err

@@ -600,6 +600,9 @@ button.item:active{background:var(--card2)}
 .voice .chipbtn.gl[aria-pressed="true"]{background:linear-gradient(135deg,#F5A07B,#DF805D);border-color:transparent;color:#24140F;box-shadow:0 0 22px rgba(231,128,92,.17)}
 .voice .chipbtn.gl[aria-disabled="true"]{border-style:dashed}
 .voice .chipbtn.camera-toggle[aria-disabled="true"]{border-style:dashed;opacity:.66}
+.voice .v-end{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:0;border-radius:999px;background:#E5484D;color:#fff;font:inherit;font-weight:600;font-size:15px;box-shadow:0 6px 18px rgba(229,72,77,.35);cursor:pointer}
+.voice .v-end:active{transform:scale(.97)}
+.voice.wake-mini .v-end{padding:6px 12px;font-size:13px;box-shadow:none}
 .voice .camera-status{margin:0;text-align:center;color:#AAA4A5;font:500 10.5px/1.35 var(--mono);letter-spacing:.01em}
 .voice .chipbtn.gl[data-preview-only="true"]::after{content:'ANDROID ONLY';display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid rgba(240,146,110,.2);border-radius:999px;background:rgba(240,146,110,.08);font:500 8px/1 var(--mono);letter-spacing:.07em;color:#F2A080}
 .voice .v-type input{background:#1B1E28;border:1px solid rgba(255,255,255,.055);color:#F5F1EF}

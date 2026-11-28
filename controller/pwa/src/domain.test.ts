@@ -191,3 +191,23 @@ test("detachModelFromRoutes removes a model from every route and keeps chains va
   const none = detachModelFromRoutes({ ...cfg, models: cfg.models.filter((m) => m.label !== "g2") }, defaults, "g");
   assert.equal(none.ok, false);
 });
+
+test("Standard model picker keeps Groq-only Standard chain and valid quick route", async () => {
+  const { setStandardPrimary, standardChain, routeError } = await import("./domain");
+  const m = (label: string, provider: string, enabled = true) => ({ label, provider, model: label, enabled, extra: {} });
+  const config: any = {
+    schema_version: 1, providers: {}, quality: {}, limits: {}, routes: {},
+    models: [m("gpt-oss-120b", "groq"), m("gpt-oss-20b", "groq"), m("llama-x", "groq", false),
+      m("gem", "gemini"), m("or", "openrouter")],
+  };
+  const bundled = { "utility:quick": ["gpt-oss-120b", "gem", "or", "gpt-oss-20b"] };
+  assert.deepEqual(standardChain(config, bundled), ["gpt-oss-120b"]);
+  const r = setStandardPrimary(config, "gpt-oss-20b", bundled);
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.deepEqual(r.config.routes["utility:quick"], ["gpt-oss-20b", "gem", "or", "gpt-oss-120b"]);
+  assert.equal(routeError("utility:quick", r.config.routes["utility:quick"], r.config), null);
+  assert.deepEqual(standardChain(r.config, bundled), ["gpt-oss-20b", "gpt-oss-120b"]);
+  assert.equal(setStandardPrimary(config, "gem", bundled).ok, false);
+  assert.equal(setStandardPrimary(config, "llama-x", bundled).ok, false);
+});

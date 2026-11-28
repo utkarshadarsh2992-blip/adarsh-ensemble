@@ -58,7 +58,8 @@ MAX_ATTACHMENT_DATA_CHARS = 12 * 1024 * 1024
 MAX_VISION_IMAGES = 3
 MAX_VISION_IMAGE_BYTES = 6 * 1024 * 1024
 MAX_VISION_TOTAL_BYTES = 10 * 1024 * 1024
-_IMAGE_DATA_URL = re.compile(r"^data:(image/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$", re.I)
+# The label is only a hint (pickers send application/octet-stream or an empty type); the bytes are sniffed below.
+_IMAGE_DATA_URL = re.compile(r"^data:([A-Za-z0-9.+/-]*)(?:;[A-Za-z0-9._%+=-]*)*?;base64,([A-Za-z0-9+/=\s]+)$", re.I)
 MAX_META_CHARS = 64 * 1024
 _PRIVATE_OPEN = "<ADARSH_PRIVATE_CONTEXT>"
 _PRIVATE_CLOSE = "</ADARSH_PRIVATE_CONTEXT>"
@@ -146,7 +147,8 @@ def _image_attachments(attachments) -> tuple[list[dict], str]:
         mime = match.group(1).lower()
         mime = "image/jpeg" if mime == "image/jpg" else mime
         try:
-            raw = base64.b64decode(match.group(2), validate=True)
+            b64 = re.sub(r"\s+", "", match.group(2))
+            raw = base64.b64decode(b64, validate=True)
         except (ValueError, base64.binascii.Error):
             return [], "Photo upload sahi se nahi padha. Chhoti JPG, PNG ya WebP photo dobara attach karo."
         if not raw:
@@ -156,12 +158,16 @@ def _image_attachments(attachments) -> tuple[list[dict], str]:
         actual = ("image/jpeg" if raw.startswith(b"\xff\xd8\xff") else
                   "image/png" if raw.startswith(b"\x89PNG\r\n\x1a\n") else
                   "image/webp" if raw.startswith(b"RIFF") and raw[8:12] == b"WEBP" else "")
-        if actual != mime:
+        # Camera/gallery pickers often label photos application/octet-stream or a wrong image type;
+        # the bytes decide, and only JPEG/PNG/WebP bytes are ever accepted.
+        if not actual:
             return [], "Photo format pehchaan nahi paaya. JPG, PNG ya WebP photo dobara attach karo."
+        mime = actual
         total += len(raw)
         if total > MAX_VISION_TOTAL_BYTES:
             return [], "Sab photos mila kar 10 MB tak bhejo; badi photo hatao ya chhoti karo."
-        images.append({"mime": mime, "data_url": data_url})
+        # Re-label with the sniffed type so providers never see octet-stream or a wrong MIME.
+        images.append({"mime": mime, "data_url": f"data:{mime};base64,{b64}"})
     return images, ""
 
 

@@ -606,6 +606,9 @@ button.item:active{background:var(--card2)}
 .voice .chipbtn.gl[aria-pressed="true"]{background:linear-gradient(135deg,#F5A07B,#DF805D);border-color:transparent;color:#24140F;box-shadow:0 0 22px rgba(231,128,92,.17)}
 .voice .chipbtn.gl[aria-disabled="true"]{border-style:dashed}
 .voice .chipbtn.camera-toggle[aria-disabled="true"]{border-style:dashed;opacity:.66}
+.voice .v-end{display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:0;border-radius:999px;background:#E5484D;color:#fff;font:inherit;font-weight:600;font-size:15px;box-shadow:0 6px 18px rgba(229,72,77,.35);cursor:pointer}
+.voice .v-end:active{transform:scale(.97)}
+.voice.wake-mini .v-end{padding:6px 12px;font-size:13px;box-shadow:none}
 .voice .camera-status{margin:0;text-align:center;color:#AAA4A5;font:500 10.5px/1.35 var(--mono);letter-spacing:.01em}
 .voice .chipbtn.gl[data-preview-only="true"]::after{content:'ANDROID ONLY';display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid rgba(240,146,110,.2);border-radius:999px;background:rgba(240,146,110,.08);font:500 8px/1 var(--mono);letter-spacing:.07em;color:#F2A080}
 .voice .v-type input{background:#1B1E28;border:1px solid rgba(255,255,255,.055);color:#F5F1EF}
@@ -1516,6 +1519,7 @@ function sheet({ title, tall = false, top = false, build }) {
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', onKey);
   function close() { document.removeEventListener('keydown', onKey); shade.remove(); }
+  shade._close = close;   /* phone Back closes the topmost sheet first */
   build(body, close);
   $('#phone').appendChild(shade);
   return close;
@@ -2920,7 +2924,7 @@ const Chat = (() => {
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
   const typedReplies = new WeakMap(); // transient UI state only; the complete answer remains in S.chats
-  let displayedChatId = null;
+  let displayedChatId = null, openedByUser = false;
   let copyPill = null, copyAnchor = null, copyValue = '';
   const MAX_REPLY_BYTES = 256 * 1024;
   const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
@@ -2957,7 +2961,7 @@ const Chat = (() => {
     const c = { id: uid('c'), title: 'New chat', ts: Date.now(), msgs: [] };
     S.chats.unshift(c); S.cur = c.id; save(); return c;
   }
-  function open(id) { S.cur = id; save(); App.show('chat'); renderThread(); }
+  function open(id) { openedByUser = S.cur !== id || displayedChatId !== id; S.cur = id; save(); App.show('chat'); renderThread(); }
   function remove(id) {
     const i = S.chats.findIndex(c => c.id === id); if (i < 0) return;
     const [gone] = S.chats.splice(i, 1);
@@ -3081,7 +3085,9 @@ const Chat = (() => {
     const c = cur();
     const nextChatId = c ? c.id : null;
     const priorTop = thread.scrollTop;
-    const switching = App.view === 'chat' && displayedChatId !== nextChatId;
+    /* Only a chat the user opened lands on its end; replies pushed into a new chat keep the normal follow rules. */
+    const switching = App.view === 'chat' && displayedChatId !== nextChatId && (openedByUser || displayedChatId === null);
+    if (App.view === 'chat') openedByUser = false;
     /* Measure before clearing: an empty column makes every scroll position look like the bottom. */
     const last = c && c.msgs[c.msgs.length - 1], typing = last && typedReplies.get(last);
     const near = switching || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260 ||
@@ -3110,8 +3116,11 @@ const Chat = (() => {
     }
     if (busy && thinkEl) col.append(thinkEl);
     if (App.view === 'chat') displayedChatId = nextChatId;
-    if (near && App.view === 'chat') scroll();
-    else thread.scrollTop = Math.min(priorTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
+    /* Clearing the column clamps scrollTop to 0; put it back before any paint, so a re-render never
+       flashes the top of the chat and glides down again. A freshly opened chat lands on its end directly. */
+    const end = Math.max(0, thread.scrollHeight - thread.clientHeight);
+    thread.scrollTop = switching ? end : Math.min(priorTop, end);
+    if (near && App.view === 'chat' && !switching) scroll();
   }
   /* Follow the answer itself, never the quiz/fact-check cards that happen to be mounted below it. */
   function answerDestination() {
@@ -3435,7 +3444,25 @@ const Chat = (() => {
     pending.forEach(a => atts.append(h('div', { class: 'att' }, a.kind === 'image' ? h('img', { src: a.thumb, alt: '' }) : h('span', { class: 'ic' }, icon('file', 's')), h('span', {}, a.name),
       h('button', { 'aria-label': 'Remove ' + a.name, on: { click: () => { pending = pending.filter(x => x !== a); drawAtts(); onInput(); } } }, icon('x', 's')))));
   }
-  const readAtt = (a) => new Promise(res => { const r = new FileReader(); r.onload = () => res({ id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size, dataUrl: r.result }); r.onerror = () => res({ id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size }); r.readAsDataURL(a.file); });
+  /* Camera and gallery photos often arrive without a MIME type, as HEIC, or very large: re-encode to a bounded JPEG. */
+  async function photoJpeg(file) {
+    if (typeof createImageBitmap !== 'function') return null;
+    try {
+      const bmp = await createImageBitmap(file);
+      const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bmp.width * s)); c.height = Math.max(1, Math.round(bmp.height * s));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const d = c.toDataURL('image/jpeg', 0.85);
+      return d.startsWith('data:image/jpeg;base64,') ? d : null;
+    } catch (e) { return null; }
+  }
+  const readAtt = async (a) => {
+    const base = { id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size };
+    if (a.kind === 'image') { const d = await photoJpeg(a.file); if (d) return { ...base, type: 'image/jpeg', dataUrl: d }; }
+    return new Promise(res => { const r = new FileReader(); r.onload = () => res({ ...base, dataUrl: r.result }); r.onerror = () => res(base); r.readAsDataURL(a.file); });
+  };
 
   let dictating = false;
   function dictate() {
@@ -5488,12 +5515,16 @@ const App = (() => {
     drawer(false); if (name !== 'chat') build(name); else Chat.renderThread();
     drawerList();
   }
-  function build(name) {
-    const el = $('#v-' + name); el.textContent = '';
+  /* keep: a redraw of the screen already open keeps its scroll position (no jump to the top and back) */
+  function build(name, keep = false) {
+    const el = $('#v-' + name);
+    const prior = keep ? (($('#v-' + name + ' .scroll') || {}).scrollTop || 0) : 0;
+    el.textContent = '';
     const body = h('div', { class: 'scroll pad' }, h('div', { class: 'stack' }));
     const stack = body.firstChild;
     el.append(h('header', { class: 'hdr pad' }, ibtn('back', 'Back to chat', () => show('chat')), h('h1', {}, TITLES[name]), name === 'settings' ? h('span') : ibtn('sliders', 'Settings', () => show('settings'))), body);
-    BUILD[name](stack, () => build(name));
+    BUILD[name](stack, () => build(name, true));
+    if (prior) body.scrollTop = prior;
   }
   function drawer(open) {
     root().classList.toggle('open', open);
@@ -5568,19 +5599,18 @@ const App = (() => {
 
   /* ================= Tasks ================= */
   ['tasks', 'work', 'alarms', 'notes'].forEach(k => { BUILD[k] = ProductivityViews[k]; });
-  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view); });
+  Bus.on('records:changed', () => { drawerList(); if (['tasks', 'work', 'alarms', 'notes', 'today', 'library'].includes(view)) build(view, true); });
   /* ================= Mission, retained local usage history, and news views ================= */
   BUILD.goals = (st, redraw) => Mission.view(st, redraw);
   BUILD.usage = (st, redraw) => Usage.view(st, redraw);
   BUILD.news = (st, redraw) => News.view(st, redraw);
   Bus.on('mission:changed', () => {
-    if (view === 'today') build('today');
+    if (view === 'today') build('today', true);
     if (view !== 'goals') return;
-    const y = ($('#v-goals .scroll') || {}).scrollTop || 0;
-    build('goals'); const sc = $('#v-goals .scroll'); if (sc) sc.scrollTop = y;
+    build('goals', true);
   });
 
-  Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks'); });
+  Bus.on('missions:changed', () => { if (view === 'tasks') build('tasks', true); });
 
   /* ================= Memory ================= */
   BUILD.library = (st, redraw) => {
@@ -6602,8 +6632,9 @@ const Voice = (() => {
     sourceBox = h('div', { class: 'live-sources' }, sourceBtn, sourceList);
     showLiveSources([]);
     tagEl = h('span', { class: 'tag' }, tagText());
+    const endBtn = h('button', { class: 'v-end', type: 'button', 'aria-label': 'End call', on: { click: () => { vibe(); close(); } } }, icon('x', 's'), 'End');
     el.append(h('div', { class: 'v-top pad' }, tagEl, ibtn('x', 'Close voice mode', close)),
-      h('div', { class: 'v-mid' }, orb, stateEl, cap),
+      h('div', { class: 'v-mid' }, orb, stateEl, cap, endBtn),
       h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn, cameraBtn), cameraStatus, sourceBox,
         h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
     refreshCameraControls();
@@ -7756,6 +7787,18 @@ const Splash = (() => {
   try { Briefing.init(); } catch (e) { console.warn('briefing init', e); }   /* change 1.3 */
   try { News.init(); } catch (e) { console.warn('news init', e); }   /* change 1.5 */
   BackgroundVoice.init();
+  /* Android Back: step back inside the app first; only an idle chat screen leaves the app. */
+  const councilBack = window.__adarshBack;
+  window.__adarshBack = () => {
+    const lock = $('#lock'); if (lock && !lock.hidden) return false;
+    const shades = $$('#phone > .shade'); const top = shades[shades.length - 1];
+    if (top) { if (top._close) top._close(); else top.remove(); return true; }
+    if (typeof councilBack === 'function' && councilBack()) return true;
+    if (Voice.isOpen) { Voice.close(); return true; }
+    if ($('#phone').classList.contains('open')) { App.drawer(false); return true; }
+    if (App.view !== 'chat') { App.show('chat'); return true; }
+    return false;
+  };
 })();
 
 </script>

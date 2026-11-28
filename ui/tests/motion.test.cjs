@@ -153,11 +153,12 @@ test('automatic reveal follows the answer boundary and supplemental cards wait u
     truth: { claims: [{ c: 'g = 9.8', v: 'ok', why: '' }], basis: 'model', ok: 1, shak: 0, galat: 0 } });
   let body = app.document.querySelector('#v-chat .msg[data-id] > .prose');
   body.getBoundingClientRect = () => ({ top: 200, bottom: 500, height: 300 });
+  thread.scrollTop = 0; // synthetic viewport origin for the bounded-target assertion
   assert.equal(app.document.querySelector('.lcheck'), null, 'CHECK card stays hidden while answer is being typed');
   assert.equal(app.document.querySelector('.lwords'), null, 'NAYE SHABD card stays hidden while answer is being typed');
   assert.equal(app.document.querySelector('.fcheck'), null, 'FACT-CHECK card stays hidden while answer is being typed');
   assert.equal(typeof captured?.to, 'function');
-  assert.equal(captured.to(), 120, 'target stops at the answer boundary, not thread bottom (1200)');
+  assert.equal(captured.to(), 120, 'target stops at the answer boundary, not the thread bottom');
   await settle(900);
   assert.ok(app.document.querySelector('.lcheck'), 'CHECK card appears after the final answer word');
   assert.ok(app.document.querySelector('.lwords'), 'NAYE SHABD card appears after the final answer word');

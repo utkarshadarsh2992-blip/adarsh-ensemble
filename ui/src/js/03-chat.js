@@ -7,7 +7,7 @@ const Chat = (() => {
   let busy = false, ctl = null, pending = [], thinkEl = null;
   const thumbs = new Map(); // attachment id -> object URL (session only)
   const typedReplies = new WeakMap(); // transient UI state only; the complete answer remains in S.chats
-  let displayedChatId = null;
+  let displayedChatId = null, openedByUser = false;
   let copyPill = null, copyAnchor = null, copyValue = '';
   const MAX_REPLY_BYTES = 256 * 1024;
   const replyBytes = (v) => { try { return new TextEncoder().encode(JSON.stringify(v)).length; } catch (e) { return Infinity; } };
@@ -44,7 +44,7 @@ const Chat = (() => {
     const c = { id: uid('c'), title: 'New chat', ts: Date.now(), msgs: [] };
     S.chats.unshift(c); S.cur = c.id; save(); return c;
   }
-  function open(id) { S.cur = id; save(); App.show('chat'); renderThread(); }
+  function open(id) { openedByUser = S.cur !== id || displayedChatId !== id; S.cur = id; save(); App.show('chat'); renderThread(); }
   function remove(id) {
     const i = S.chats.findIndex(c => c.id === id); if (i < 0) return;
     const [gone] = S.chats.splice(i, 1);
@@ -168,7 +168,9 @@ const Chat = (() => {
     const c = cur();
     const nextChatId = c ? c.id : null;
     const priorTop = thread.scrollTop;
-    const switching = App.view === 'chat' && displayedChatId !== nextChatId;
+    /* Only a chat the user opened lands on its end; replies pushed into a new chat keep the normal follow rules. */
+    const switching = App.view === 'chat' && displayedChatId !== nextChatId && (openedByUser || displayedChatId === null);
+    if (App.view === 'chat') openedByUser = false;
     /* Measure before clearing: an empty column makes every scroll position look like the bottom. */
     const last = c && c.msgs[c.msgs.length - 1], typing = last && typedReplies.get(last);
     const near = switching || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 260 ||
@@ -197,8 +199,11 @@ const Chat = (() => {
     }
     if (busy && thinkEl) col.append(thinkEl);
     if (App.view === 'chat') displayedChatId = nextChatId;
-    if (near && App.view === 'chat') scroll();
-    else thread.scrollTop = Math.min(priorTop, Math.max(0, thread.scrollHeight - thread.clientHeight));
+    /* Clearing the column clamps scrollTop to 0; put it back before any paint, so a re-render never
+       flashes the top of the chat and glides down again. A freshly opened chat lands on its end directly. */
+    const end = Math.max(0, thread.scrollHeight - thread.clientHeight);
+    thread.scrollTop = switching ? end : Math.min(priorTop, end);
+    if (near && App.view === 'chat' && !switching) scroll();
   }
   /* Follow the answer itself, never the quiz/fact-check cards that happen to be mounted below it. */
   function answerDestination() {
@@ -522,7 +527,25 @@ const Chat = (() => {
     pending.forEach(a => atts.append(h('div', { class: 'att' }, a.kind === 'image' ? h('img', { src: a.thumb, alt: '' }) : h('span', { class: 'ic' }, icon('file', 's')), h('span', {}, a.name),
       h('button', { 'aria-label': 'Remove ' + a.name, on: { click: () => { pending = pending.filter(x => x !== a); drawAtts(); onInput(); } } }, icon('x', 's')))));
   }
-  const readAtt = (a) => new Promise(res => { const r = new FileReader(); r.onload = () => res({ id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size, dataUrl: r.result }); r.onerror = () => res({ id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size }); r.readAsDataURL(a.file); });
+  /* Camera and gallery photos often arrive without a MIME type, as HEIC, or very large: re-encode to a bounded JPEG. */
+  async function photoJpeg(file) {
+    if (typeof createImageBitmap !== 'function') return null;
+    try {
+      const bmp = await createImageBitmap(file);
+      const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(bmp.width * s)); c.height = Math.max(1, Math.round(bmp.height * s));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      if (bmp.close) bmp.close();
+      const d = c.toDataURL('image/jpeg', 0.85);
+      return d.startsWith('data:image/jpeg;base64,') ? d : null;
+    } catch (e) { return null; }
+  }
+  const readAtt = async (a) => {
+    const base = { id: a.id, name: a.name, kind: a.kind, type: a.type, size: a.size };
+    if (a.kind === 'image') { const d = await photoJpeg(a.file); if (d) return { ...base, type: 'image/jpeg', dataUrl: d }; }
+    return new Promise(res => { const r = new FileReader(); r.onload = () => res({ ...base, dataUrl: r.result }); r.onerror = () => res(base); r.readAsDataURL(a.file); });
+  };
 
   let dictating = false;
   function dictate() {
