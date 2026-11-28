@@ -103,34 +103,35 @@ Deno.test("all suppressed Groq keys make scoring stop honestly and leave items q
   assertEquals(calls, 0);
 });
 
-Deno.test("an explicitly empty managed slot set does not resurrect a legacy environment key", async () => {
-  const old = Deno.env.get("GROQ_API_KEY_1");
-  Deno.env.set("GROQ_API_KEY_1", "legacy-env-secret");
+Deno.test("empty or failing Vault News keys fall back to Edge Function secrets", async () => {
+  const saved = ["GROQ_API_KEY", "GROQ_API_KEY_1", "GROQ_API_KEY_2"].map((k) => [k, Deno.env.get(k)] as const);
+  Deno.env.delete("GROQ_API_KEY_1"); Deno.env.delete("GROQ_API_KEY_2");
+  Deno.env.set("GROQ_API_KEY", "env-secret");
   try {
-    const store = new MemoryStore();
-    store.setProviderKeys("groq", []);
-    let calls = 0;
-    await assertRejects(
-      () =>
-        groq(
-          store,
-          async () => {
-            calls++;
-            return okGroq();
-          },
-          "p",
-          "scoring",
-        ),
-      Error,
-      "Groq keys unavailable",
-    );
-    assertEquals(calls, 0);
+    for (const failing of [false, true]) {
+      const store = new MemoryStore();
+      store.setProviderKeys("groq", []);
+      if (failing) (store as any).getProviderKeys = async () => { throw new Error("vault down"); };
+      const seen: string[] = [];
+      const out = await groq(store, async (_u, init) => {
+        seen.push(String((init?.headers as Record<string, string>).authorization));
+        return okGroq();
+      }, "p", "scoring");
+      assertEquals(typeof out.text, "string");
+      assertEquals(seen, ["Bearer env-secret"]);
+    }
+    const managed = new MemoryStore();
+    managed.setProviderKeys("groq", [{ slot: 1, key: "vault-secret", generation: "g1" }]);
+    const seen: string[] = [];
+    await groq(managed, async (_u, init) => {
+      seen.push(String((init?.headers as Record<string, string>).authorization));
+      return okGroq();
+    }, "p", "scoring");
+    assertEquals(seen, ["Bearer vault-secret"], "Vault key still wins when present");
   } finally {
-    if (old === undefined) Deno.env.delete("GROQ_API_KEY_1");
-    else Deno.env.set("GROQ_API_KEY_1", old);
+    for (const [k, v] of saved) v === undefined ? Deno.env.delete(k) : Deno.env.set(k, v);
   }
 });
-
 Deno.test("News key reset uses exact configured Asia/Kolkata boundary; slot 1 resumes first at 05:00", async () => {
   const store = new MemoryStore();
   store.setProviderKeys("groq", keyRows());

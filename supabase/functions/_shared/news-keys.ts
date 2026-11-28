@@ -75,10 +75,11 @@ export async function legacyProviderKeys(
 ): Promise<ProviderKey[]> {
   const values: Array<{ slot: number; key: string }> = [];
   if (provider === "groq") {
-    for (const slot of [1, 2]) {
-      const key = Deno.env.get(`GROQ_API_KEY_${slot}`)?.trim();
-      if (key) values.push({ slot, key });
-    }
+    const one = Deno.env.get("GROQ_API_KEY_1")?.trim() ||
+      Deno.env.get("GROQ_API_KEY")?.trim();
+    const two = Deno.env.get("GROQ_API_KEY_2")?.trim();
+    if (one) values.push({ slot: 1, key: one });
+    if (two) values.push({ slot: 2, key: two });
   } else {
     const one = Deno.env.get("TAVILY_API_KEY_1")?.trim() ||
       Deno.env.get("TAVILY_API_KEY")?.trim();
@@ -119,10 +120,19 @@ export async function providerKeys(
   store: Store,
   provider: NewsProvider,
 ): Promise<ProviderKey[]> {
-  const keys = store.getProviderKeys
-    ? await store.getProviderKeys(provider)
-    : await legacyProviderKeys(provider);
-  return dedupeProviderKeys(keys);
+  // Controller (Vault) keys win when present. If Vault has no News key, or the
+  // lookup fails, News keeps running on the Edge Function secrets instead.
+  let managed: ProviderKey[] = [];
+  if (store.getProviderKeys) {
+    try {
+      managed = dedupeProviderKeys(await store.getProviderKeys(provider));
+    } catch {
+      managed = [];
+    }
+  }
+  return managed.length
+    ? managed
+    : dedupeProviderKeys(await legacyProviderKeys(provider));
 }
 
 async function stateKey(
