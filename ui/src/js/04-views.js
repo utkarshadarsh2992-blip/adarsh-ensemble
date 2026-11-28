@@ -20,13 +20,22 @@ const App = (() => {
   const BUILD = {};
   let q = '';
 
+  let themeSeen = '', themeTimer = 0;
   function applyTheme() {
     const r = document.documentElement; const t = S.settings.theme;
+    const key = t + '|' + S.settings.font;
+    if (themeSeen && themeSeen !== key) {   /* a grade change cross-fades instead of flashing */
+      r.classList.add('theme-anim'); clearTimeout(themeTimer);
+      themeTimer = setTimeout(() => r.classList.remove('theme-anim'), 450);
+    }
+    themeSeen = key;
     if (t === 'light' || t === 'dark') r.setAttribute('data-theme', t); else r.removeAttribute('data-theme');
     r.setAttribute('data-font', S.settings.font);
   }
   function show(name) {
-    view = name; $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + name));
+    const prev = view; view = name;
+    if (prev !== name) document.documentElement.setAttribute('data-nav', name === 'chat' ? 'back' : 'fwd');
+    $$('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + name));
     if (name === 'settings' && BackgroundVoice.active()) BackgroundVoice.stop('Settings opened. Restart background voice after changes.');
     drawer(false); if (name !== 'chat') build(name); else Chat.renderThread();
     drawerList();
@@ -392,7 +401,7 @@ const App = (() => {
         if (!liveNative) { liveOut.textContent = 'Adarsh Live sirf Android app mein chalta hai.'; return; }
         liveOut.textContent = 'Testing…';
         const lines = [];
-        Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) liveOut.textContent = 'Connecting ' + ev.attempt + '/' + ev.total; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); liveOut.textContent = lines.join(' · '); } },
+        Live.start({ onState: (s, m, ev) => { if (s === 'connecting' && ev && ev.attempt) liveOut.textContent = ev.attempt > 1 ? 'Connecting… retry' : 'Connecting…'; if (s === 'listening') { lines.push('Live on' + (m ? ' · ' + m : '')); liveOut.textContent = lines.join(' · '); } },
           onProbe: (m) => { lines.push('Key: ' + m); liveOut.textContent = lines.join(' · '); },
           onNotice: (m) => { lines.push(m); liveOut.textContent = lines.join(' · '); },
           onRole: (r, l) => { if (r && l) { lines.push(l); liveOut.textContent = lines.join(' · '); } },

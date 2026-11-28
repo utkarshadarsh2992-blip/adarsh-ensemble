@@ -280,6 +280,8 @@ QUICK = use("gpt-oss-120b", "synthesizer", ["gemini-3.1-flash-lite", "nemotron-l
             {"reasoning_effort": "low"})
 # Remote-compatible Standard route. The controller adapter replaces this only with validated Groq labels.
 STANDARD_CHAIN_LABELS = ("gpt-oss-120b",)
+# Controller quality.standardOtherProviders: Standard may use the non-Groq models of utility:quick, in owner order.
+STANDARD_OTHER_PROVIDERS = False
 # fact auditor: a DIFFERENT model family from the judge (Gemini) so they do not share blind spots. Its input is only the
 # question + final answer, so it fits Groq's 8K tokens/min.
 # The same chain also runs the Manual-mode grounding check, whose input is BIG (pasted answers + claims + master answer):

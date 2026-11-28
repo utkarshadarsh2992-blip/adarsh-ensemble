@@ -286,3 +286,13 @@ def test_shared_controller_fixture_parity():
         except controller.ControllerConfigError:
             valid = False
         assert valid is case["valid"], case["name"]
+def test_standard_other_providers_flag_uses_whole_owner_ordered_quick_chain():
+    routes = {"utility:quick": ["gemini-3.1-flash-lite", "gpt-oss-20b", "nemotron-lightning", "gpt-oss-120b"]}
+    _apply(document(routes=routes))
+    assert config.STANDARD_CHAIN_LABELS == ("gpt-oss-20b", "gpt-oss-120b") and config.STANDARD_OTHER_PROVIDERS is False
+    _apply(document(routes=routes, quality={"standardOtherProviders": True}))
+    assert config.STANDARD_OTHER_PROVIDERS is True
+    assert config.STANDARD_CHAIN_LABELS[0] == "gemini-3.1-flash-lite"
+    assert "gpt-oss-20b" in config.STANDARD_CHAIN_LABELS
+    with pytest.raises(controller.ControllerConfigError):
+        controller.validate_document(document(quality={"standardOtherProviders": "yes"}))

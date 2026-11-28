@@ -377,14 +377,14 @@ const Live = (() => {
 })();
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, tagEl, glBtn, cameraBtn, cameraStatus;
+  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, micLbl, tagEl, glBtn, cameraBtn, cameraStatus;
   let session = 0, releasePrompt = null, releaseAsk = null;
   let sourceBox = null, sourceBtn = null, sourceList = null, sourceOpen = false;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
   let liveOn = false, wakeLive = false, liveUser = '', liveModel = '';
   let liveConnected = false, liveRole = 'main', cameraState = 'off', cameraMessage = '', cameraRequested = false;
-  const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
+  const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) { const lbl = liveOn ? (s === 'speaking' ? 'Interrupt' : 'Live · bolo') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : s === 'thinking' ? 'Thinking' : 'Talk'; micLbl.textContent = lbl; micBtn.setAttribute('aria-label', lbl); micBtn.setAttribute('aria-disabled', String(liveOn && s !== 'speaking')); } };
   const cameraNative = () => { const n = window.AdarshNative; return !!(Live.native() && n && typeof n.liveCameraStart === 'function' && typeof n.liveCameraStop === 'function'); };
   const audioOnlyRole = r => ['transcribe', 'translate', 'audio-only', 'audio_only'].includes(String(r || '').toLowerCase());
   const cameraEligible = () => cameraNative() && openFlag && liveOn && liveConnected && !audioOnlyRole(liveRole);
@@ -496,7 +496,8 @@ const Voice = (() => {
     stateEl = h('p', { class: 'v-state', 'aria-live': 'polite' }, LABEL.idle); cap = h('div', { class: 'v-cap' });
     capRev = null; capU = null; capA = null;   /* the reveal is rebuilt with the screen */
     inp = h('input', { type: 'text', placeholder: 'Or type here', 'aria-label': 'Type a message', on: { keydown: (e) => { if (e.key === 'Enter') typed(); } } });
-    micBtn = h('button', { class: 'chipbtn', on: { click: toggle } }, 'Talk');
+    micLbl = h('span', {}, 'Talk');
+    micBtn = h('button', { class: 'v-mic', type: 'button', 'aria-label': 'Talk', on: { click: toggle } }, icon('mic', 's'), micLbl);
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
     speakOn = S.settings.voiceReplies !== false;
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
@@ -526,11 +527,12 @@ const Voice = (() => {
     sourceBox = h('div', { class: 'live-sources' }, sourceBtn, sourceList);
     showLiveSources([]);
     tagEl = h('span', { class: 'tag' }, tagText());
-    const endBtn = h('button', { class: 'v-end', type: 'button', 'aria-label': 'End call', on: { click: () => { vibe(); close(); } } }, icon('x', 's'), 'End');
+    const endBtn = h('button', { class: 'v-end', type: 'button', 'aria-label': 'End call', on: { click: () => { vibe(); close(); } } }, icon('x', 's'), 'End call');
     el.append(h('div', { class: 'v-top pad' }, tagEl, ibtn('x', 'Close voice mode', close)),
-      h('div', { class: 'v-mid' }, orb, stateEl, cap, endBtn),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn, cameraBtn), cameraStatus, sourceBox,
-        h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-mid' }, orb, stateEl, cap),
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, hf, sp, glBtn, cameraBtn), cameraStatus, sourceBox,
+        h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send'))),
+        h('div', { class: 'v-dock' }, micBtn, endBtn)));
     refreshCameraControls();
   }
   const tagText = () => ((S.settings.adarshLive || wakeLive) && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output');
@@ -597,8 +599,7 @@ const Voice = (() => {
           liveConnected = false; stopCamera();
           setState('connecting');
           /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
-          const n = ev && ev.attempt ? ' ' + ev.attempt + '/' + ev.total : '';
-          stateEl.textContent = 'Connecting…' + n;
+          stateEl.textContent = ev && ev.attempt > 1 ? 'Connecting… retry' : 'Connecting…';
         }
       },
       onNotice: (m) => { if (active(token)) caption(liveUser, m); },
@@ -658,7 +659,7 @@ const Voice = (() => {
   function toggle() {
     if (liveOn) {
       if (el.dataset.state === 'speaking') { stopCamera(); liveConnected = false; Live.stop(); liveOn = false; refreshCameraControls(); setState('idle'); return; }   // interrupt, stay open
-      stopCamera(); liveConnected = false; Live.stop(); liveOn = false; refreshCameraControls(); close(); return;   // end the live session
+      toast('Live chal raha hai — bas boliye. Band karne ke liye End call dabaiye.'); return;   // only End call ends the session
     }
     const s = el.dataset.state;
     if (s === 'listening') return STT.stop();

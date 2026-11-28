@@ -344,7 +344,7 @@ export function validateConfig(input: unknown): ControllerConfig {
   if (routeIssues.length) throw new ControllerFault(400, 'invalid_route', { invalid_routes: routeIssues });
 
   const quality: Record<string, string | boolean> = {};
-  exactKeys(input.quality, ['truthLevel', 'factCheck', 'builtInWebSearch', 'audit', 'ground', 'research', 'review', 'debate']);
+  exactKeys(input.quality, ['truthLevel', 'factCheck', 'builtInWebSearch', 'audit', 'ground', 'research', 'review', 'debate', 'standardOtherProviders']);
   for (const [key, value] of Object.entries(input.quality)) {
     if (key === 'truthLevel') {
       if (!['strict', 'balanced', 'creative'].includes(String(value))) fault(400, 'invalid_config');

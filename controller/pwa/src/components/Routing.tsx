@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
 import {
   routeError,
+  setStandardOtherProviders,
   setStandardPrimary,
+  standardOtherOn,
   standardChain,
   STANDARD_ROUTE,
   type Config,
@@ -82,10 +84,19 @@ export default function Routing({ config, onChange, editable }: Props) {
   const [newRoute, setNewRoute] = useState("");
   const [showReset, setShowReset] = useState<string | null>(null);
   const [standardIssue, setStandardIssue] = useState<string | null>(null);
+  const otherOn = standardOtherOn(config);
   const groqModels = config.models.filter(
-    (model) => model.enabled && model.provider === "groq",
+    (model) => model.enabled && (otherOn || model.provider === "groq"),
   );
   const stdChain = standardChain(config, BUNDLED);
+  function toggleOther(on: boolean) {
+    if (!editable) return;
+    const result = setStandardOtherProviders(config, on, BUNDLED);
+    if (result.ok) {
+      setStandardIssue(null);
+      onChange(result.config);
+    } else setStandardIssue(result.error);
+  }
   function pickStandard(label: string) {
     if (!editable || !label) return;
     const result = setStandardPrimary(config, label, BUNDLED);
@@ -144,29 +155,40 @@ export default function Routing({ config, onChange, editable }: Props) {
       <div className="warning">
         <strong>Validation:</strong> Har role/utility chain mein enabled models
         chahiye. Bundled routes ke provider-coverage/fallback invariants retain
-        karne hain. Direct Standard chat sirf Groq use karta hai: uske models
-        <code> utility:quick </code> ke Groq entries se select hote hain.
+        karne hain. Direct Standard chat default mein sirf Groq use karta hai
+        (<code> utility:quick </code> ke Groq entries); neeche "Doosre providers"
+        on karne par poori chain order mein use hoti hai.
         <code> mode:standard:* </code> council-role routes alag hain; unhe
         badalne se direct Standard multi-provider nahi banega.
       </div>
       <section className="card" aria-labelledby="standard-model-title">
         <h2 id="standard-model-title">Standard mode model</h2>
         <p className="help">
-          Direct Standard chat sirf Groq model call karta hai. Yahan primary
-          choose karo; baaki Groq models usi order mein fallback rahenge. Save
-          ke baad app agle sync par naya model use karega.
+          {otherOn
+            ? "Standard ab kisi bhi enabled provider ka model use kar sakta hai. Primary fail ho to chain ke agle provider par jayega. Groq ke bahar browser web search nahi hota; Wikipedia context milta hai."
+            : "Direct Standard chat abhi sirf Groq model call karta hai. Primary choose karo; baaki Groq models usi order mein fallback rahenge."}{" "}
+          Save ke baad app agle sync par naya model use karega.
         </p>
+        <label className="row">
+          <input
+            type="checkbox"
+            disabled={!editable}
+            checked={otherOn}
+            onChange={(e) => toggleOther(e.target.checked)}
+          />
+          Doosre providers par jaane do (OpenRouter, Gemini, NVIDIA, Cloudflare, Mistral)
+        </label>
         <label className="field">
-          Primary Groq model
+          {otherOn ? "Primary model" : "Primary Groq model"}
           <select
             disabled={!editable || groqModels.length === 0}
             value={stdChain[0] ?? ""}
             onChange={(e) => pickStandard(e.target.value)}
           >
-            {!stdChain[0] && <option value="">Groq model choose karo</option>}
+            {!stdChain[0] && <option value="">Model choose karo</option>}
             {groqModels.map((model) => (
               <option key={model.label} value={model.label}>
-                {model.label} · {model.model}
+                {otherOn ? `${model.provider} · ` : ""}{model.label} · {model.model}
               </option>
             ))}
           </select>
@@ -174,7 +196,7 @@ export default function Routing({ config, onChange, editable }: Props) {
         <div className="row">
           <span className="badge">Standard chain</span>
           <span className="mono">
-            {stdChain.length ? stdChain.join(" → ") : "Koi enabled Groq model nahi"}
+            {stdChain.length ? stdChain.join(" → ") : "Koi enabled model nahi"}
           </span>
         </div>
         {groqModels.length === 0 && (

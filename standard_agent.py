@@ -98,7 +98,7 @@ def _base_spec(label: str | None = None) -> config.ModelSpec:
     slot = int(tail) if sep and tail.isdigit() else 0
     base_label = config.base_label(str(label))
     spec = config.REGISTRY.get(base_label)
-    if spec is None or spec.provider != "groq":
+    if spec is None or (spec.provider != "groq" and not getattr(config, "STANDARD_OTHER_PROVIDERS", False)):
         raise StandardError(f"Standard chain model {base_label!r} is not a configured Groq model.")
     if slot:
         spec = config.keyed(spec, slot)
@@ -169,6 +169,9 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
     evidence = short snippets of what the tools returned (for truth.check);
     raises StandardError when no Groq key could answer. `web=False` keeps Wikipedia but never sends browser_search."""
     base = _base_spec(model_label)
+    if base.provider != "groq":
+        return await _answer_other(base, messages, max_tokens=max_tokens, temperature=temperature, budget=budget,
+                                   supplied_sources=supplied_sources)
     prov = config.PROVIDERS["groq"]
     slots = prov.slots()
     if not slots:
@@ -371,6 +374,36 @@ async def _answer_one(messages: list[dict], *, model_label: str = MODEL_LABEL, t
                         ". Standard mode sirf Groq use karta hai; thodi der baad try karo ya Settings mein aur Groq key daalo.")
 
 
+async def _answer_other(base: config.ModelSpec, messages: list[dict], *, max_tokens: int, temperature: float,
+                        budget: float | None, supplied_sources: list[dict] | None) -> dict:
+    """Owner allowed other providers (Controller): one plain call to a non-Groq Standard model over its key slots.
+    Groq's browser_search is not available here; Wikipedia is looked up once up front and passed as context."""
+    import llm
+    t0 = time.monotonic()
+    budget = config.STANDARD_TIMEOUT_S if budget is None else min(float(budget), config.STANDARD_TIMEOUT_S)
+    msgs = [dict(m) for m in messages]
+    sources, wiki_queries = list(supplied_sources or []), []
+    user_i = next((i for i in range(len(msgs) - 1, -1, -1) if msgs[i].get("role") == "user"), None)
+    question = " ".join(str(msgs[user_i].get("content") or "").split())[:200] if user_i is not None else ""
+    async with _client() as client:
+        if question:
+            _, found = await _wikipedia(client, question)
+            if found:
+                wiki_queries.append(question[:80])
+                sources += found
+                ctx = "\n".join(f"- {h['title']} ({h['url']}): {h['text'][:600]}" for h in found)
+                msgs[user_i]["content"] = str(msgs[user_i].get("content") or "") + "\n\n[Wikipedia context]\n" + ctx
+        try:
+            text = await llm.chat(client, replace(base, fallbacks=()), msgs, temperature=temperature,
+                                  max_tokens=max_tokens, budget=max(5.0, budget - (time.monotonic() - t0)))
+        except llm.LLMError as exc:
+            raise StandardError(f"{base.label} ({base.provider}) se jawab nahi aaya: {str(exc)[:200]}") from exc
+    text = clean(text)
+    if not text:
+        raise StandardError(f"{base.label} ({base.provider}) ne khaali jawab diya.")
+    uniq, evidence = _split_evidence(sources)
+    return {"text": text, "used": base.label, "searches": 0, "wiki": wiki_queries, "sources": uniq,
+            "evidence": evidence, "secs": round(time.monotonic() - t0, 1)}
 async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, max_tokens: int = 1500,
                  effort: str = "low", temperature: float = 0.6, budget: float | None = None) -> dict:
     """Try the configured Standard chain in order; every member is validated as Groq-only."""
@@ -394,7 +427,9 @@ async def answer(messages: list[dict], *, tools: bool = True, web: bool = True, 
                                      supplied_sources=supplied_sources)
         except StandardError as exc:
             failures.append(f"{label}: {str(exc)[:220]}")
-    raise StandardError("Standard mode sirf Groq use karta hai. " + "; ".join(failures)[:700])
+    lead = ("Standard chain ke kisi model se jawab nahi aaya. " if getattr(config, "STANDARD_OTHER_PROVIDERS", False)
+            else "Standard mode sirf Groq use karta hai. ")
+    raise StandardError(lead + "; ".join(failures)[:700])
 
 
 def sources_block(sources: list[dict], limit: int = 4) -> str:

@@ -71,8 +71,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
             Variant("v1beta", true), Variant("v1alpha", true),
             Variant("v1beta", false), Variant("v1alpha", false)
         )
-        /** Tried in order when the chosen model is refused for this key. Each is a normal Live dialogue model. */
-        private val FALLBACK = listOf("gemini-2.5-flash-native-audio-preview-12-2025", "gemini-3.1-flash-live-preview")
+        /** The selected model only: shape 0 (tools) then shape 1 (no tools), on one documented endpoint. */
+        private fun selectedOnly(variant: Variant, model: String): List<Triple<Variant, String, Int>> =
+            listOf(Triple(variant, model, 0), Triple(variant, model, 1))
         /** Note the trailing dot: the service name is "google.ai.generativelanguage.<api>.GenerativeService". */
         private const val HOST_NAME = "generativelanguage.googleapis.com"
         private const val HOST = "wss://$HOST_NAME/ws/google.ai.generativelanguage."
@@ -216,11 +217,9 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         prompt = cfg.optString("prompt").take(MAX_PROMPT)
         target = cfg.optString("target", "hi").take(12).ifBlank { "hi" }
         webSearchEnabled = cfg.optBoolean("webSearch", true)
-        // chosen model on every endpoint, then the fallback models on the documented endpoint only: six attempts,
-        // and a network failure ends the sweep at once, so the screen never sits on "Connecting…" for a minute.
-        plans = listOf(Triple(VARIANTS[0], model, 0), Triple(VARIANTS[0], model, 1)) +
-            VARIANTS.drop(1).take(2).map { Triple(it, model, 0) } +
-            FALLBACK.map { Triple(VARIANTS[0], it, 0) }
+        // Only the model the owner selected: with tools first, then the same model without tools. No silent switch to
+        // another model, and a network failure ends the sweep at once.
+        plans = selectedOnly(VARIANTS[0], model)
         step = 0
         gotSetup = false
         lastWhy = ""
@@ -379,9 +378,7 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         ws = null
         try { old?.close(1000, "switch") } catch (_: Exception) { }
         stopAudio()
-        val first = lastGood ?: VARIANTS[0]
-        plans = listOf(Triple(first, target, 0), Triple(first, target, 1)) +
-            VARIANTS.filter { it != first }.take(2).map { Triple(it, target, 0) }
+        plans = selectedOnly(lastGood ?: VARIANTS[0], target)
         step = 0
         trace.clear()
         say(JSONObject().put("type", "state").put("state", "connecting").put("model", target)

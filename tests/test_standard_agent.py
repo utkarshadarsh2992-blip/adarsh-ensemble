@@ -338,3 +338,25 @@ def test_standard_answer_strips_citations_without_a_displayed_source(monkeypatch
     assert "Claim [S1] is supported" in out["text"]
     assert "[S2]" not in out["text"]
     assert "[S1] Reuters: Verified report — https://reuters.com/story" in out["text"]
+def test_owner_allowed_other_provider_answers_with_wikipedia_context(monkeypatch):
+    import llm
+    import research
+    monkeypatch.setattr(config, "STANDARD_OTHER_PROVIDERS", True)
+    monkeypatch.setattr(config, "STANDARD_CHAIN_LABELS", ("gemini-3.1-flash-lite",))
+    async def wiki(client, q, n, chars):
+        return [{"title": "Wikipedia: Gravity", "url": "https://en.wikipedia.org/wiki/Gravity", "text": "Gravity pulls."}]
+    seen = {}
+    async def chat(client, spec, messages, **kw):
+        seen["spec"], seen["messages"] = spec, messages
+        return "Gravity sab ko kheenchti hai."
+    monkeypatch.setattr(research, "_wikipedia", wiki)
+    monkeypatch.setattr(llm, "chat", chat)
+    out = run(standard_agent.answer(Q, tools=False, web=False))
+    assert out["used"] == "gemini-3.1-flash-lite" and out["text"] == "Gravity sab ko kheenchti hai."
+    assert seen["spec"].provider == "gemini" and seen["spec"].fallbacks == ()
+    assert "[Wikipedia context]" in seen["messages"][-1]["content"]
+    assert out["sources"][0]["url"] == "https://en.wikipedia.org/wiki/Gravity"
+def test_non_groq_standard_model_is_refused_without_the_owner_flag(monkeypatch):
+    monkeypatch.setattr(config, "STANDARD_OTHER_PROVIDERS", False)
+    with pytest.raises(standard_agent.StandardError):
+        standard_agent._base_spec("gemini-3.1-flash-lite")

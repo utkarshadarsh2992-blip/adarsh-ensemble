@@ -211,3 +211,28 @@ test("Standard model picker keeps Groq-only Standard chain and valid quick route
   assert.equal(setStandardPrimary(config, "gem", bundled).ok, false);
   assert.equal(setStandardPrimary(config, "llama-x", bundled).ok, false);
 });
+test("Standard other-provider toggle allows non-Groq primary and full chain", async () => {
+  const { setStandardOtherProviders, setStandardPrimary, standardChain, routeError } = await import("./domain");
+  const m = (label: string, provider: string) => ({ label, provider, model: label, enabled: true, extra: {} });
+  const config: any = {
+    schema_version: 1, providers: {}, quality: {}, limits: {}, routes: {},
+    models: [m("gpt-oss-120b", "groq"), m("gem", "gemini"), m("or", "openrouter"), m("or2", "openrouter")],
+  };
+  const bundled = { "utility:quick": ["gpt-oss-120b", "gem", "or"] };
+  assert.equal(setStandardPrimary(config, "or", bundled).ok, false);
+  const on = setStandardOtherProviders(config, true, bundled);
+  assert.ok(on.ok);
+  if (!on.ok) return;
+  assert.equal(on.config.quality.standardOtherProviders, true);
+  assert.deepEqual(standardChain(on.config, bundled), ["gpt-oss-120b", "gem", "or"]);
+  const p = setStandardPrimary(on.config, "or", bundled);
+  assert.ok(p.ok);
+  if (!p.ok) return;
+  assert.equal(p.config.routes["utility:quick"][0], "or");
+  assert.equal(routeError("utility:quick", p.config.routes["utility:quick"], p.config), null);
+  const off = setStandardOtherProviders(p.config, false, bundled);
+  assert.ok(off.ok);
+  if (!off.ok) return;
+  assert.equal("standardOtherProviders" in off.config.quality, false);
+  assert.deepEqual(standardChain(off.config, bundled), ["gpt-oss-120b"]);
+});

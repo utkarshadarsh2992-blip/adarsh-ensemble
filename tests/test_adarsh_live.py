@@ -44,7 +44,7 @@ def test_setup_message_shape():
     assert 'override fun onClosing(webSocket: WebSocket, code: Int, reason: String)' in LIVE
     assert 'put("type", "error")' in LIVE and '"Live nahi chala — "' in LIVE
     # a refused model falls back instead of leaving the screen on "Connecting…"
-    assert "FALLBACK" in LIVE and "next()" in LIVE
+    assert "FALLBACK" not in LIVE and "next()" in LIVE
 
 
 def test_every_endpoint_and_auth_variant_is_tried():
@@ -92,11 +92,12 @@ def test_a_dead_network_fails_fast_instead_of_burning_every_timeout():
     assert "preflight()" in LIVE and '"Internet/DNS theek nahi — "' in LIVE
     # a network failure ends the sweep immediately; only endpoint/model answers move on to the next attempt
     assert "isNetwork(t)" in LIVE and "SETUP_TIMEOUT_MS = 8_000L" in LIVE
-    # six attempts at most: the chosen model on all four endpoints, the fallbacks on the documented one
-    assert "Triple(VARIANTS[0], model, 0)" in LIVE and "FALLBACK.map { Triple(VARIANTS[0], it, 0) }" in LIVE
+    # only the owner-selected model: with tools, then without tools; never another model
+    assert "listOf(Triple(variant, model, 0), Triple(variant, model, 1))" in LIVE
+    assert "plans = selectedOnly(VARIANTS[0], model)" in LIVE and "plans = selectedOnly(lastGood ?: VARIANTS[0], target)" in LIVE
     # the page shows which attempt is running
     assert 'put("attempt", step + 1).put("total", plans.size)' in LIVE
-    assert "onState(ev.state, ev.model, ev)" in VOICE and "'Connecting…' + n" in VOICE
+    assert "onState(ev.state, ev.model, ev)" in VOICE and "'Connecting… retry'" in VOICE and "ev.total" not in VOICE
 
 
 def test_auto_routing_roles_match_between_kotlin_and_the_ui():

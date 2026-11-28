@@ -45,7 +45,7 @@ QUALITY_ENUMS = {
     "truthLevel": {"strict", "balanced", "creative"},
     "factCheck": {"off", "auto", "always"},
 }
-QUALITY_BOOLEANS = {"builtInWebSearch", "audit", "ground", "research", "review", "debate"}
+QUALITY_BOOLEANS = {"builtInWebSearch", "audit", "ground", "research", "review", "debate", "standardOtherProviders"}
 EXTRA_ENUMS = {
     "reasoning_effort": {"low", "medium", "high"},
     "reasoning_format": {"hidden", "raw", "parsed"},
@@ -255,6 +255,7 @@ def _reset_bundled():
     mode_plans.ALIASES.clear()
     mode_plans.ALIASES.update(_base_config["plan_aliases"])
     config.STANDARD_CHAIN_LABELS = ("gpt-oss-120b",)
+    config.STANDARD_OTHER_PROVIDERS = False
     config.REMOTE_QUALITY = {}
     config.REMOTE_LIMITS = {}
     config.REMOTE_MODEL_EXTRAS = {}
@@ -426,13 +427,19 @@ def _apply_document(doc: dict):
     config.SPECIALISTS = {mode: _resolve_default(spec, disabled, strict=False, route=f"legacy:specialist:{mode}")
                           for mode, spec in config.SPECIALISTS.items()}
 
-    # Standard's direct one-call Groq path shares the utility:quick route; it must never fall through to another provider.
-    quick_labels = [item.label for item in config.chain_of(config.QUICK) if item.provider == "groq"]
-    if not quick_labels:
-        raise ControllerConfigError("utility:quick has no enabled Groq model for Standard mode")
-    config.STANDARD_CHAIN_LABELS = tuple(quick_labels if "utility:quick" in routes else quick_labels[:1])
-    if any(config.REGISTRY[label].provider != "groq" for label in config.STANDARD_CHAIN_LABELS):
-        raise ControllerConfigError("Standard direct route must use Groq models only")
+    # Standard's direct path shares the utility:quick route. By default it is Groq-only; the owner can allow other
+    # providers (quality.standardOtherProviders), then the whole owner-ordered utility:quick chain is used.
+    other = bool(doc["quality"].get("standardOtherProviders", False)) and "utility:quick" in routes
+    config.STANDARD_OTHER_PROVIDERS = other
+    if other:
+        config.STANDARD_CHAIN_LABELS = tuple(item.label for item in config.chain_of(config.QUICK))
+    else:
+        quick_labels = [item.label for item in config.chain_of(config.QUICK) if item.provider == "groq"]
+        if not quick_labels:
+            raise ControllerConfigError("utility:quick has no enabled Groq model for Standard mode")
+        config.STANDARD_CHAIN_LABELS = tuple(quick_labels if "utility:quick" in routes else quick_labels[:1])
+        if any(config.REGISTRY[label].provider != "groq" for label in config.STANDARD_CHAIN_LABELS):
+            raise ControllerConfigError("Standard direct route must use Groq models only")
 
     plan_constants = {"standard": "STANDARD", "verified": "VERIFIED", "physics": "PHYSICS", "math": "MATH",
                       "business": "BUSINESS", "coding": "CODING"}

@@ -84,6 +84,21 @@ test('voice screen has an End call button that closes it', async (t) => {
   assert.equal(app.Voice.isOpen, false);
 });
 
+test('voice screen has exactly one End control, in the footer dock beside Talk', async (t) => {
+  const app = mount({ settings: { bootAnim: false } });
+  t.after(() => app.close());
+  await settle(50);
+  app.Voice.open();
+  await settle(50);
+  const v = app.document.querySelector('#voice');
+  assert.equal(v.querySelectorAll('.v-end').length, 1);
+  assert.equal(v.querySelector('.v-mid .v-end'), null, 'no floating End over the orb');
+  const dock = v.querySelector('.v-foot .v-dock');
+  assert.ok(dock && dock.querySelector('.v-mic') && dock.querySelector('.v-end'));
+  const chips = [...v.querySelectorAll('.v-btns .chipbtn')].map(b => b.textContent.trim());
+  assert.ok(!chips.includes('End') && !chips.includes('Talk'), 'no End/Talk chip duplicates: ' + chips.join(','));
+  app.Voice.close();
+});
 test('Back closes the voice screen before leaving the app', async (t) => {
   const app = mount({ settings: { bootAnim: false } });
   t.after(() => app.close());

@@ -31,6 +31,8 @@ export type Quality = {
   truthLevel?: "strict" | "balanced" | "creative";
   factCheck?: "off" | "auto" | "always";
   builtInWebSearch?: boolean;
+  /** Standard chat may use the non-Groq models of utility:quick (owner order). */
+  standardOtherProviders?: boolean;
   audit?: boolean;
   ground?: boolean;
   research?: boolean;
@@ -286,21 +288,47 @@ function quickBase(config: Config, bundled: Record<string, string[]>) {
     config.models.some((m) => m.label === label && m.enabled),
   );
 }
-/** Groq models Standard chat will call, primary first (what the app resolves at runtime). */
+/** True when the owner let Standard chat use other providers (needs an explicit utility:quick route). */
+export function standardOtherOn(config: Config): boolean {
+  return config.quality.standardOtherProviders === true;
+}
+/** Models Standard chat will call, primary first (what the app resolves at runtime). */
 export function standardChain(
   config: Config,
   bundled: Record<string, string[]>,
 ): string[] {
+  const explicit = Object.hasOwn(config.routes, STANDARD_ROUTE);
+  if (standardOtherOn(config) && explicit) return quickBase(config, bundled);
   const groq = (label: string) =>
     config.models.find((m) => m.label === label)?.provider === "groq";
   const labels = quickBase(config, bundled).filter(groq);
   // Without an explicit override the app uses only the first bundled Groq entry.
-  return Object.hasOwn(config.routes, STANDARD_ROUTE) ? labels : labels.slice(0, 1);
+  return explicit ? labels : labels.slice(0, 1);
+}
+/** Turn "Standard may use other providers" on/off. On pins the current utility:quick chain as an override. */
+export function setStandardOtherProviders(
+  config: Config,
+  on: boolean,
+  bundled: Record<string, string[]>,
+): { ok: true; config: Config } | { ok: false; error: string } {
+  const quality = { ...config.quality };
+  if (on) quality.standardOtherProviders = true;
+  else delete quality.standardOtherProviders;
+  const routes = { ...config.routes };
+  if (on && !Object.hasOwn(routes, STANDARD_ROUTE)) {
+    const chain = quickBase(config, bundled);
+    const issue = routeError(STANDARD_ROUTE, chain, config);
+    if (issue) return { ok: false, error: issue };
+    routes[STANDARD_ROUTE] = chain;
+  }
+  if (!on && !standardChain({ ...config, quality, routes }, bundled).length)
+    return { ok: false, error: "Groq-only ke liye utility:quick mein ek enabled Groq model chahiye." };
+  return { ok: true, config: { ...config, quality, routes } };
 }
 /**
- * Make `label` (an enabled Groq model) the Standard primary. The utility:quick chain
- * becomes [label, non-Groq fallbacks..., other Groq models...] so it keeps the
- * Groq + OpenRouter + Gemini coverage and a different-provider first fallback.
+ * Make `label` the Standard primary (Groq only, unless other providers are allowed).
+ * The utility:quick chain becomes [label, other-provider fallbacks..., same-provider models...]
+ * so it keeps the Groq + OpenRouter + Gemini coverage and a different-provider first fallback.
  */
 export function setStandardPrimary(
   config: Config,
@@ -308,17 +336,23 @@ export function setStandardPrimary(
   bundled: Record<string, string[]>,
 ): { ok: true; config: Config } | { ok: false; error: string } {
   const model = config.models.find((m) => m.label === label);
-  if (!model || !model.enabled || model.provider !== "groq")
-    return { ok: false, error: "Standard mode sirf enabled Groq model use karta hai." };
+  const other = standardOtherOn(config);
+  if (!model || !model.enabled || (!other && model.provider !== "groq"))
+    return {
+      ok: false,
+      error: other
+        ? "Standard mode ke liye enabled model choose karo."
+        : "Standard mode sirf enabled Groq model use karta hai.",
+    };
   const providerOf = (l: string) =>
     config.models.find((m) => m.label === l)?.provider;
   const base = quickBase(config, bundled).filter((l) => l !== label);
   let chain = [
     label,
-    ...base.filter((l) => providerOf(l) !== "groq"),
-    ...base.filter((l) => providerOf(l) === "groq"),
+    ...base.filter((l) => providerOf(l) !== model.provider),
+    ...base.filter((l) => providerOf(l) === model.provider),
   ];
-  for (const need of ["openrouter", "gemini"] as Provider[]) {
+  for (const need of ["groq", "openrouter", "gemini"] as Provider[]) {
     if (chain.some((l) => providerOf(l) === need)) continue;
     const extra = config.models.find((m) => m.enabled && m.provider === need);
     if (extra) chain.splice(1, 0, extra.label);
