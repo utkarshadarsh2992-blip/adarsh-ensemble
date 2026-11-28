@@ -77,6 +77,14 @@
     controllerStatus() { try { return JSON.parse(N.controllerStatus()); } catch (e) { return { linked: false, revision: 0 }; } },
     controllerPair(code) { return nativeJob('controllerPair', code); },
     controllerSync() { return nativeJob('controllerSync'); },
+    controllerAssistantRead() { return nativeJob('controllerAssistantRead'); },
+    controllerAssistantUpdate(change) {
+      if (!change || typeof change !== 'object' || Array.isArray(change)) return Promise.reject(new Error('Invalid Controller change.'));
+      let payload;
+      try { payload = JSON.stringify(change); } catch (e) { return Promise.reject(new Error('Invalid Controller change.')); }
+      if (typeof payload !== 'string') return Promise.reject(new Error('Invalid Controller change.'));
+      return nativeJob('controllerAssistantUpdate', payload);
+    },
     status() { try { return JSON.parse(N.status()); } catch (e) { return { ready: false }; } },
     send(req, o) {
       return new Promise((res, rej) => {

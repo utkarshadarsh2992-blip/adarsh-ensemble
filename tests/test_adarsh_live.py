@@ -172,3 +172,39 @@ def test_the_live_row_is_always_in_the_voice_sheet():
     # Settings shows which build is running, so a report can name the APK
     assert "AdarshNative.appVersion" in VIEWS and "ADARSH v" in VIEWS
     assert 'fun appVersion(): String' in BRIDGE and "fun appVersion(): String" in ACTIVITY
+
+
+def test_live_camera_frames_are_opt_in_bounded_and_stay_native():
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text()
+    gradle = (ROOT / "android/app/build.gradle.kts").read_text()
+    assert '"realtimeInput", JSONObject().put("video"' in LIVE
+    assert '"mimeType", "image/jpeg"' in LIVE and "Base64.encodeToString(jpeg, Base64.NO_WRAP)" in LIVE
+    assert "MAX_VIDEO_FRAME_BYTES = 256 * 1024" in LIVE
+    assert "MAX_SOCKET_QUEUE_BYTES = 512 * 1024L" in LIVE and "socket.queueSize()" in LIVE
+    assert "MIN_VIDEO_FRAME_INTERVAL_MS = 900L" in LIVE
+    assert 'roleOf(model) !in setOf("translate", "transcribe")' in LIVE
+    assert 'android.permission.CAMERA' in manifest and 'android.hardware.camera.any" android:required="false"' in manifest
+    for artifact in ("camera-camera2", "camera-lifecycle", "camera-view"):
+        assert f"androidx.camera:{artifact}:1.3.4" in gradle
+    assert "STRATEGY_KEEP_ONLY_LATEST" in ACTIVITY and "image.close()" in ACTIVITY
+    assert "encodeLiveCameraFrame(image)?.let { session.sendVideoFrame(it) }" in ACTIVITY
+    assert "liveCameraStart" in BRIDGE and "liveCameraStop" in BRIDGE
+    assert "liveCameraStart" in ACTIVITY and "liveCameraStop" in ACTIVITY
+    assert "liveSendVideo" not in VOICE and "liveSendFrame" not in VOICE, "image bytes must not pass through JavaScript"
+    assert "if (liveCameraActive) stopLiveCamera" in ACTIVITY
+    assert "stopLiveCamera(notify = false)" in ACTIVITY.split("override fun onDestroy")[1][:240]
+
+
+def test_live_audio_teardown_unblocks_workers_before_join_and_restores_normal_voice():
+    stop_audio = LIVE.split("private fun stopAudio()")[1].split("fun stop()")[0]
+    assert stop_audio.index("oldTrack?.release()") < stop_audio.index("worker.join(1_000L)")
+    assert stop_audio.index("oldRecorder?.release()") < stop_audio.index("worker.join(1_000L)")
+    assert "if (oldWriter?.isAlive != true)" in stop_audio
+    assert "if (oldMic?.isAlive != true)" in stop_audio
+    assert "@Volatile private var micThread" in LIVE and "@Volatile private var writerThread" in LIVE
+    assert "if (micThread?.isAlive == true) return" in LIVE
+    assert "if (!closed.get() && gotSetup) main.post" in LIVE, "new Live session restarts mic after prior worker exits"
+    handoff = ACTIVITY.split("private fun handoffToBackground()")[1].split("override fun onUserLeaveHint")[0]
+    assert handoff.index("live?.stop()") < handoff.index("BackgroundVoiceService.start")
+    live_stop = ACTIVITY.split("fun liveStop(): String")[1].split("// ---- speech out")[0]
+    assert live_stop.index("stopLiveCamera") < live_stop.index("a.live?.stop()")

@@ -555,6 +555,58 @@ button.item:active{background:var(--card2)}
 .v-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .chipbtn{font:500 13px var(--sans);padding:8px 14px;border-radius:999px;background:var(--card);color:var(--muted)}
 .chipbtn[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.live-sources{display:flex;flex-direction:column;align-items:center;gap:7px}
+.live-sources[hidden],.live-source-list[hidden]{display:none}
+.live-source-list{width:min(560px,100%);max-height:18vh;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:0 4px;text-align:left}
+.live-source-item{padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--card) 78%,transparent);font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.live-source-item a{color:var(--accent);text-decoration:none}
+.live-source-item a:active{text-decoration:underline}
+
+/* Voice screen color grade: charcoal glass, coral core, copper telemetry rings. */
+.voice{
+  --voice-fg:#F5F1EF; --voice-muted:#B8B2B2; --voice-accent:#F0926E; --voice-copper:#A66B54;
+  color:var(--voice-fg);
+  background:radial-gradient(64% 38% at 50% 38%,rgba(233,126,91,.16),transparent 76%),
+    linear-gradient(180deg,#211819 0%,#171519 48%,#0D1014 100%);
+}
+.voice::before{
+  content:'';position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.55;
+  background-image:linear-gradient(rgba(241,149,112,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(241,149,112,.035) 1px,transparent 1px);
+  background-size:36px 36px;mask-image:linear-gradient(to bottom,#000 0%,transparent 76%);
+}
+.voice>.v-top,.voice>.v-mid,.voice>.v-foot{position:relative;z-index:1}
+.voice .v-top{border-bottom:1px solid rgba(214,151,124,.12)}
+.voice .v-top .tag{color:#D9C6BF;border-color:rgba(194,135,111,.31);background:rgba(15,15,19,.28)}
+.voice .orb .r{border-color:color-mix(in srgb,var(--voice-copper) 88%,transparent)}
+.voice .orb .r1{border-color:rgba(241,149,112,.78)}
+.voice .orb .r2{border-color:rgba(199,125,98,.75)}
+.voice .orb .r3{border-color:rgba(166,107,84,.7)}
+.voice .orb .core{
+  background:radial-gradient(circle at 35% 29%,#FFD0BC 0%,#F39A76 43%,#DB7956 100%);
+  box-shadow:0 0 54px rgba(231,128,92,.42),0 0 104px rgba(231,128,92,.13),inset 0 0 18px rgba(255,255,255,.27);
+}
+.voice .orb .arc{border-top-color:#FFC0A2;border-right-color:rgba(241,149,112,.42)}
+.voice .v-state{color:#F5F1EF;text-shadow:0 0 24px rgba(241,149,112,.15)}
+.voice .v-cap{color:var(--voice-muted)}
+.voice .v-cap .u{color:#AAA4A5}
+.voice .v-cap .a{color:#F5F1EF}
+.voice .v-foot{border-top:1px solid rgba(214,151,124,.1)}
+.voice .chipbtn{
+  border:1px solid rgba(255,255,255,.045);background:#1C1E27;color:#B8B8C1;
+  transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease;
+}
+.voice .chipbtn:active{transform:translateY(1px)}
+.voice .chipbtn[aria-pressed="true"]{background:rgba(240,146,110,.15);border-color:rgba(240,146,110,.27);color:#F5A17F}
+.voice .chipbtn.gl[aria-pressed="true"]{background:linear-gradient(135deg,#F5A07B,#DF805D);border-color:transparent;color:#24140F;box-shadow:0 0 22px rgba(231,128,92,.17)}
+.voice .chipbtn.gl[aria-disabled="true"]{border-style:dashed}
+.voice .chipbtn.camera-toggle[aria-disabled="true"]{border-style:dashed;opacity:.66}
+.voice .camera-status{margin:0;text-align:center;color:#AAA4A5;font:500 10.5px/1.35 var(--mono);letter-spacing:.01em}
+.voice .chipbtn.gl[data-preview-only="true"]::after{content:'ANDROID ONLY';display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid rgba(240,146,110,.2);border-radius:999px;background:rgba(240,146,110,.08);font:500 8px/1 var(--mono);letter-spacing:.07em;color:#F2A080}
+.voice .v-type input{background:#1B1E28;border:1px solid rgba(255,255,255,.055);color:#F5F1EF}
+.voice .v-type input::placeholder{color:#838591}
+.voice .v-type .circ.send{background:#F0926E;color:#23140F;box-shadow:0 0 24px rgba(240,146,110,.2)}
+.voice .live-source-item{border-color:rgba(194,135,111,.22);background:rgba(28,30,39,.8)}
+.voice .live-source-item a{color:#F2A080}
 
 /* ---------- lock ---------- */
 .lock{position:absolute;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px}
@@ -704,7 +756,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .keygrp[open]>summary::before{content:'\25BE  '}
 
 /* Hey Adarsh opens the same app voice session in a small, dismissible in-app panel. */
-.voice.wake-mini{inset:auto 12px calc(12px + env(safe-area-inset-bottom,0px)) 12px;height:168px;max-height:calc(100% - 24px);padding:10px 13px 12px;gap:0;border:1px solid color-mix(in srgb,var(--fg) 10%,transparent);border-radius:24px;background:color-mix(in srgb,var(--paper) 94%,transparent);box-shadow:0 16px 44px rgba(0,0,0,.28);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.voice.wake-mini{inset:auto 12px calc(12px + env(safe-area-inset-bottom,0px)) 12px;height:168px;max-height:calc(100% - 24px);padding:10px 13px 12px;gap:0;border:1px solid rgba(194,135,111,.3);border-radius:24px;background:linear-gradient(145deg,#251c1c 0%,#12151a 100%);color:var(--voice-fg);box-shadow:0 16px 44px rgba(0,0,0,.42);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
 .voice.wake-mini .v-top{min-height:30px;flex:none;padding:0}
 .voice.wake-mini .tag{font-size:10px;letter-spacing:.12em}
 .voice.wake-mini .v-mid{flex:1;flex-direction:row;justify-content:flex-start;gap:10px;padding:5px 2px 0;overflow:hidden}

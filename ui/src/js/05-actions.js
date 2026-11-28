@@ -8,7 +8,11 @@ const Actions = (() => {
     'note.add': ['Note', 'file'], 'note.edit': ['Note edit', 'edit'], 'note.list': ['Notes', 'file'],
     'work.add': ['Work project', 'book'], 'work.edit': ['Work edit', 'edit'], 'work.log': ['Work log', 'book'], 'work.list': ['Work', 'book'],
     'memory.add': ['Memory', 'brain'], 'memory.edit': ['Memory edit', 'edit'], 'memory.list': ['Memory', 'brain'], 'settings.update': ['Setting', 'sliders'],
-    'app.open': ['App', 'sliders'], 'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
+    'app.open': ['App', 'sliders'], 'controller.read': ['Controller status', 'server'], 'controller.model.toggle': ['Controller model', 'sliders'],
+    'controller.model.remove': ['Controller model removal', 'sliders'],
+    'controller.model.set': ['Controller model', 'sliders'], 'controller.route.set': ['Controller routing', 'sliders'],
+    'controller.news.set': ['Controller News limit', 'sliders'], 'controller.briefing.set': ['Controller briefing', 'sliders'],
+    'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
     'voice.open': ['Voice', 'voice'], 'message.draft': ['Message', 'send'], 'call.dial': ['Call', 'chat'], 'torch.set': ['Torch', 'bolt'] };
   const contexts = new WeakMap();
   const ctx = d => contexts.get(d);
@@ -23,16 +27,119 @@ const Actions = (() => {
   function webStep(s) {
     const a = s.args || {};
     if (s.action === 'web.search') { window.open('https://www.google.com/search?q=' + encodeURIComponent(a.query), '_blank', 'noopener'); return { ok: true, message: 'Search khol diya' }; }
-    const sites = { youtube: 'youtube.com', whatsapp: 'web.whatsapp.com', instagram: 'instagram.com', gmail: 'mail.google.com', maps: 'maps.google.com', telegram: 'web.telegram.org', spotify: 'open.spotify.com', drive: 'drive.google.com', facebook: 'facebook.com', twitter: 'x.com', netflix: 'netflix.com' };
-    if (s.action === 'app.open' && sites[a.app]) { window.open('https://' + sites[a.app], '_blank', 'noopener'); return { ok: true, message: 'App website khol di' }; }
+    const sites = { youtube: 'youtube.com', whatsapp: 'web.whatsapp.com', instagram: 'instagram.com', gmail: 'mail.google.com', maps: 'maps.google.com', telegram: 'web.telegram.org', spotify: 'open.spotify.com', drive: 'drive.google.com', facebook: 'facebook.com', twitter: 'x.com', netflix: 'netflix.com', controller: 'adarshctl-pc68aukk.manus.space' };
+    if (s.action === 'app.open' && Object.prototype.hasOwnProperty.call(sites, a.app)) {
+      window.open('https://' + sites[a.app], '_blank', 'noopener');
+      return { ok: true, message: a.app === 'controller' ? 'Adarsh Controller khol diya' : 'App website khol di' };
+    }
     if (s.action === 'phone.status') return { ok: true, message: navigator.onLine ? 'Browser online hai' : 'Browser offline hai' };
     if (s.action === 'voice.open') { Voice.open(); return { ok: true, message: 'Voice mode khul gaya' }; }
     return { ok: false, message: 'Ye operation sirf Android app mein chalta hai' };
+  }
+  const NEWS_FIELDS = ['alerts_per_day', 'alert_min_score', 'list_min_score', 'groq_tokens_cap', 'groq_calls_cap', 'tavily_day_cap', 'tavily_month_cap'];
+  const safeNum = (obj, key) => obj && Number.isFinite(Number(obj[key])) ? Number(obj[key]) : null;
+  function safeControllerState(raw) {
+    if (!raw || raw.ok !== true || !raw.config || !Array.isArray(raw.config.models) || !raw.config.routes || typeof raw.config.routes !== 'object') return null;
+    const models = raw.config.models.slice(0, 100).filter(m => m && typeof m.label === 'string' && typeof m.model === 'string' && ['groq', 'openrouter', 'gemini', 'nvidia', 'cloudflare'].includes(m.provider))
+      .map(m => {
+        const extra = m.extra && typeof m.extra === 'object' ? m.extra : {};
+        return { label: m.label.slice(0, 80), provider: m.provider, model: m.model.slice(0, 128), enabled: m.enabled === true,
+          extra: { ...( ['low', 'medium', 'high'].includes(extra.reasoning_effort) ? { reasoning_effort: extra.reasoning_effort } : {}),
+            ...( ['hidden', 'raw', 'parsed'].includes(extra.reasoning_format) ? { reasoning_format: extra.reasoning_format } : {}) } };
+      });
+    const routes = Object.fromEntries(Object.entries(raw.config.routes).slice(0, 100).filter(([k, v]) => typeof k === 'string' && Array.isArray(v))
+      .map(([k, v]) => [k.slice(0, 100), v.filter(x => typeof x === 'string').slice(0, 10).map(x => x.slice(0, 80))]));
+    const srcNews = raw.news && typeof raw.news === 'object' ? raw.news : {};
+    const settings = {};
+    NEWS_FIELDS.forEach(k => { const n = safeNum(srcNews.settings, k); if (n !== null) settings[k] = n; });
+    const srcBudget = srcNews.budget && typeof srcNews.budget === 'object' ? srcNews.budget : {};
+    const copyNumbers = (obj, keys) => Object.fromEntries(keys.map(k => [k, safeNum(obj, k)]).filter(([, v]) => v !== null));
+    const budget = {
+      groq: copyNumbers(srcBudget.groq, ['tokens_used', 'tokens_cap', 'calls_used', 'calls_cap']),
+      tavily: copyNumbers(srcBudget.tavily, ['day_used', 'day_cap', 'month_used', 'month_cap']),
+      alerts: copyNumbers(srcBudget.alerts, ['today', 'cap']),
+    };
+    const ds = raw.device_settings && typeof raw.device_settings === 'object' ? raw.device_settings : {};
+    const device_settings = {
+      briefingOn: ds.briefingOn === true,
+      briefingTime: typeof ds.briefingTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(ds.briefingTime) ? ds.briefingTime : '',
+      newsBriefing: ds.newsBriefing === true,
+      briefingTelegram: ds.briefingTelegram === true,
+    };
+    return { revision: Number.isSafeInteger(raw.revision) ? raw.revision : 0, models, routes,
+      news: { local_day: String(srcNews.local_day || '').slice(0, 10), tz: String(srcNews.tz || '').slice(0, 80), settings, budget }, device_settings };
+  }
+  const fmtNum = n => Number(n).toLocaleString('en-IN');
+  function controllerSummary(s) {
+    const models = s.models.map(m => `${m.label}=${m.provider}/${m.model} ${m.enabled ? 'ON' : 'OFF'}`);
+    const routes = Object.entries(s.routes).map(([k, v]) => `${k} → ${v.join(' → ')}`);
+    const n = s.news, b = n.budget;
+    const limits = Object.entries(n.settings).map(([k, v]) => `${k} ${fmtNum(v)}`).join(', ') || 'unavailable';
+    const usage = [`Groq tokens ${fmtNum(b.groq.tokens_used || 0)}/${fmtNum(b.groq.tokens_cap || 0)}, calls ${fmtNum(b.groq.calls_used || 0)}/${fmtNum(b.groq.calls_cap || 0)}`,
+      `Tavily day ${fmtNum(b.tavily.day_used || 0)}/${fmtNum(b.tavily.day_cap || 0)}, month ${fmtNum(b.tavily.month_used || 0)}/${fmtNum(b.tavily.month_cap || 0)}`,
+      `alerts ${fmtNum(b.alerts.today || 0)}/${fmtNum(b.alerts.cap || 0)}`].join('; ');
+    const d = s.device_settings;
+    return [`Controller revision ${s.revision}.`, `Models (${models.length}): ${models.join('; ') || 'none'}.`,
+      `Routes (${routes.length} overrides): ${routes.join('; ') || 'bundled defaults'}.`, `News limits: ${limits}. Usage: ${usage}.`,
+      `Briefing: ${d.briefingOn ? 'on' : 'off'}${d.briefingTime ? ' at ' + d.briefingTime : ''}; News ${d.newsBriefing ? 'on' : 'off'}; Telegram ${d.briefingTelegram ? 'on' : 'off'}.`].join(' ').slice(0, 3600);
+  }
+  function controllerLabel(models, label) {
+    const matches = models.filter(m => m.label.toLowerCase() === String(label || '').toLowerCase());
+    return matches.length === 1 ? matches[0] : null;
+  }
+  async function controllerStep(s) {
+    const backend = window.ADARSH_BACKEND, action = s.action, a = s.args || {};
+    const reading = action === 'controller.read';
+    if (reading ? !Productivity.access().localRead : !Productivity.access().localEdit) return { ok: false, message: 'Controller AI access is off in Settings.' };
+    if (!Productivity.native() || !backend || backend.native !== true || typeof backend.controllerAssistantRead !== 'function' || typeof backend.controllerAssistantUpdate !== 'function') return { ok: false, message: 'Controller AI access paired Android app mein hi available hai.' };
+    try {
+      const current = safeControllerState(await backend.controllerAssistantRead());
+      if (!current) return { ok: false, message: 'Controller pair nahi hai ya safe state read nahi hui. Credentials AI ko nahi dikhaye gaye.' };
+      if (reading) return { ok: true, message: controllerSummary(current), controller: current };
+      let payload;
+      if (action === 'controller.model.toggle' || action === 'controller.model.remove' || action === 'controller.model.set' || action === 'controller.route.set') {
+        let models = current.models.map(m => ({ ...m, extra: { ...m.extra } })), routes = { ...current.routes };
+        if (action === 'controller.model.remove') {
+          const target = controllerLabel(models, a.label);
+          if (!target) return { ok: false, message: `Model label ${String(a.label).slice(0, 80)} unique registry mein nahi mila; kuch change nahi kiya.` };
+          models = models.filter(m => m.label !== target.label);
+        } else if (action === 'controller.model.toggle') {
+          const target = controllerLabel(models, a.label);
+          if (!target) return { ok: false, message: `Model label ${String(a.label).slice(0, 80)} unique registry mein nahi mila; kuch change nahi kiya.` };
+          models = models.map(m => m.label === target.label ? { ...m, enabled: a.enabled === true } : m);
+        } else if (action === 'controller.model.set') {
+          const existing = controllerLabel(models, a.label);
+          if (!existing && models.length >= 100) return { ok: false, message: 'Model registry limit 100 hai; kuch change nahi kiya.' };
+          if (!existing && models.some(m => m.label.toLowerCase() === String(a.label).toLowerCase())) return { ok: false, message: 'Model label case-insensitive duplicate hai; kuch change nahi kiya.' };
+          const extra = { ...(existing ? existing.extra : {}) };
+          if (a.reasoning_effort) extra.reasoning_effort = a.reasoning_effort;
+          if (a.reasoning_format) extra.reasoning_format = a.reasoning_format;
+          const next = { label: a.label, provider: a.provider, model: a.model, enabled: typeof a.enabled === 'boolean' ? a.enabled : (existing ? existing.enabled : true), extra };
+          models = existing ? models.map(m => m.label === existing.label ? next : m) : [...models, next];
+        } else routes[a.key] = a.models.slice();
+        payload = { kind: 'config', values: { models, routes }, expected_revision: current.revision,
+          reason: `Adarsh direct command: ${action} ${String(a.label || a.key || '').slice(0, 80)}` };
+      } else if (action === 'controller.news.set') {
+        payload = { kind: 'news_settings', values: { [a.field]: a.value }, reason: `Adarsh direct command: News ${a.field}=${a.value}` };
+      } else if (action === 'controller.briefing.set') {
+        payload = { kind: 'briefing_settings', values: { [a.field]: a.value }, reason: `Adarsh direct command: briefing ${a.field}` };
+      } else return { ok: false, message: 'Controller operation allowlist mein nahi hai.' };
+      const saved = await backend.controllerAssistantUpdate(payload);
+      if (!saved || saved.ok !== true) return { ok: false, message: 'Controller ne update reject kiya; existing configuration unchanged rakhi.' };
+      const suffix = saved.applied === false ? '; server par save hua, phone par apply pending hai' : '';
+      return { ok: true, message: `Controller update apply ho gaya${Number.isSafeInteger(saved.revision) ? ` (revision ${saved.revision})` : ''}${suffix}.`, revision: saved.revision };
+    } catch (e) {
+      return { ok: false, message: `Controller update nahi hua: ${String(e && e.message || 'connection ya validation error').slice(0, 180)}. Existing state safe rakhi.` };
+    }
   }
   async function step(s, confirmed, mode) {
     if (!LABEL[s.action]) return { ok: false, message: 'Sir, ye action AI ke liye allowed nahi hai.' };
     const sensitive = ['message.draft', 'call.dial'].includes(s.action);
     if (sensitive && !confirmed) return { ok: false, pending: true, message: 'Sir, confirmation chahiye.' };
+    if (s.action.startsWith('controller.')) {
+      if (mode !== 'standard') return { ok: false, message: 'Controller command ke liye Standard mode use karo.' };
+      return controllerStep(s);
+    }
     if (!Productivity.native() && /^(app|web|phone|voice)\./.test(s.action)) {
       if (mode !== 'standard' || !Productivity.access().localEdit || (s.action === 'app.open' && s.args.app === 'settings')) return { ok: false, message: 'Ye action disabled hai.' };
       try { return webStep(s); } catch (e) { return { ok: false, message: 'App/search nahi khul paya.' }; }

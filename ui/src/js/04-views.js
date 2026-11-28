@@ -168,7 +168,7 @@ const App = (() => {
     st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
-      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
+      swItem('globe', 'Built-in web search', 'Chat aur Adarsh Live Google Search', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
       swItem('search', 'Research sources', '', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet),
@@ -374,8 +374,16 @@ const App = (() => {
          The row is always shown, so a build that cannot reach the native bridge still shows the switch and says why. */
       const liveNative = !!(window.AdarshNative && (window.AdarshNative.liveStart || window.AdarshNative.liveProbe));
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
-        on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
+        on: { change: () => { S.settings.liveModel = livePick.value; save(); liveHelp.textContent = liveModelHelp(); } } },
         (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
+      const liveModelHelp = () => {
+        const routing = (S.settings.liveModel || 'auto') === 'auto'
+          ? 'Auto: Gemini 3.8 Live conversation; reasoning, translate aur transcription specialist models zaroorat par khud select honge.'
+          : 'Gemini 3.8 Live normal conversation ke liye; specialist models aur spoken-audio output zaroorat par automatically handle honge.';
+        return liveNative ? routing + ' Google Search Built-in web search setting se control hota hai; sources yahin clickable milenge.'
+          : routing + ' Browser preview mein UI-only; Live audio Android app mein chalta hai.';
+      };
+      const liveHelp = h('p', { class: 'muted' }, liveModelHelp());
       const liveOut = h('p', { class: 'muted' }, liveNative ? '' : 'Sirf Android app mein');
       const liveTest = h('button', { class: 'btn ghost', on: { click: () => {
         if (!liveNative) { liveOut.textContent = 'Adarsh Live sirf Android app mein chalta hai.'; return; }
@@ -393,7 +401,8 @@ const App = (() => {
       const liveBlock = [
         h('div', { class: 'grp' },
           swItem('voice', 'Adarsh Live', 'Google Gemini Live', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && typeof Live !== 'undefined' && Live) Live.stop(); })),
-        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick, h('div', { class: 'inline' }, liveTest, liveOut)) : null
+        h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Adarsh Live model'), livePick, liveHelp),
+        S.settings.adarshLive ? h('div', { class: 'inline' }, liveTest, liveOut) : null
       ];
       const kids = [
         swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
@@ -532,7 +541,7 @@ const App = (() => {
         } });
       }).catch(() => toast('Backup file padh nahi paya')); t.value = '';
     }
-    if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
+    if ((t.id === 'f-any' || t.id === 'f-img' || t.id === 'f-camera') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
   });
 
   let edgeSwipeBound = false;

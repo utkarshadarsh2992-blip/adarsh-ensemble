@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-IF9Y75URao0GmWm/CIP+bY/rjw5JnGJcVINV/Po3Sfc='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"><title>ADARSH</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-E9sFfMC+y1MDVB7/jlcRgRDHQLaduJa+UhhPPYQBq88='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' https:; font-src 'self' https://fonts.gstatic.com data:; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'"><title>ADARSH</title>
 <link rel="icon" href="data:,">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -561,6 +561,58 @@ button.item:active{background:var(--card2)}
 .v-btns{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .chipbtn{font:500 13px var(--sans);padding:8px 14px;border-radius:999px;background:var(--card);color:var(--muted)}
 .chipbtn[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+.live-sources{display:flex;flex-direction:column;align-items:center;gap:7px}
+.live-sources[hidden],.live-source-list[hidden]{display:none}
+.live-source-list{width:min(560px,100%);max-height:18vh;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:0 4px;text-align:left}
+.live-source-item{padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:color-mix(in srgb,var(--card) 78%,transparent);font-size:12px;line-height:1.35;overflow-wrap:anywhere}
+.live-source-item a{color:var(--accent);text-decoration:none}
+.live-source-item a:active{text-decoration:underline}
+
+/* Voice screen color grade: charcoal glass, coral core, copper telemetry rings. */
+.voice{
+  --voice-fg:#F5F1EF; --voice-muted:#B8B2B2; --voice-accent:#F0926E; --voice-copper:#A66B54;
+  color:var(--voice-fg);
+  background:radial-gradient(64% 38% at 50% 38%,rgba(233,126,91,.16),transparent 76%),
+    linear-gradient(180deg,#211819 0%,#171519 48%,#0D1014 100%);
+}
+.voice::before{
+  content:'';position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.55;
+  background-image:linear-gradient(rgba(241,149,112,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(241,149,112,.035) 1px,transparent 1px);
+  background-size:36px 36px;mask-image:linear-gradient(to bottom,#000 0%,transparent 76%);
+}
+.voice>.v-top,.voice>.v-mid,.voice>.v-foot{position:relative;z-index:1}
+.voice .v-top{border-bottom:1px solid rgba(214,151,124,.12)}
+.voice .v-top .tag{color:#D9C6BF;border-color:rgba(194,135,111,.31);background:rgba(15,15,19,.28)}
+.voice .orb .r{border-color:color-mix(in srgb,var(--voice-copper) 88%,transparent)}
+.voice .orb .r1{border-color:rgba(241,149,112,.78)}
+.voice .orb .r2{border-color:rgba(199,125,98,.75)}
+.voice .orb .r3{border-color:rgba(166,107,84,.7)}
+.voice .orb .core{
+  background:radial-gradient(circle at 35% 29%,#FFD0BC 0%,#F39A76 43%,#DB7956 100%);
+  box-shadow:0 0 54px rgba(231,128,92,.42),0 0 104px rgba(231,128,92,.13),inset 0 0 18px rgba(255,255,255,.27);
+}
+.voice .orb .arc{border-top-color:#FFC0A2;border-right-color:rgba(241,149,112,.42)}
+.voice .v-state{color:#F5F1EF;text-shadow:0 0 24px rgba(241,149,112,.15)}
+.voice .v-cap{color:var(--voice-muted)}
+.voice .v-cap .u{color:#AAA4A5}
+.voice .v-cap .a{color:#F5F1EF}
+.voice .v-foot{border-top:1px solid rgba(214,151,124,.1)}
+.voice .chipbtn{
+  border:1px solid rgba(255,255,255,.045);background:#1C1E27;color:#B8B8C1;
+  transition:background .18s ease,border-color .18s ease,color .18s ease,transform .18s ease;
+}
+.voice .chipbtn:active{transform:translateY(1px)}
+.voice .chipbtn[aria-pressed="true"]{background:rgba(240,146,110,.15);border-color:rgba(240,146,110,.27);color:#F5A17F}
+.voice .chipbtn.gl[aria-pressed="true"]{background:linear-gradient(135deg,#F5A07B,#DF805D);border-color:transparent;color:#24140F;box-shadow:0 0 22px rgba(231,128,92,.17)}
+.voice .chipbtn.gl[aria-disabled="true"]{border-style:dashed}
+.voice .chipbtn.camera-toggle[aria-disabled="true"]{border-style:dashed;opacity:.66}
+.voice .camera-status{margin:0;text-align:center;color:#AAA4A5;font:500 10.5px/1.35 var(--mono);letter-spacing:.01em}
+.voice .chipbtn.gl[data-preview-only="true"]::after{content:'ANDROID ONLY';display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid rgba(240,146,110,.2);border-radius:999px;background:rgba(240,146,110,.08);font:500 8px/1 var(--mono);letter-spacing:.07em;color:#F2A080}
+.voice .v-type input{background:#1B1E28;border:1px solid rgba(255,255,255,.055);color:#F5F1EF}
+.voice .v-type input::placeholder{color:#838591}
+.voice .v-type .circ.send{background:#F0926E;color:#23140F;box-shadow:0 0 24px rgba(240,146,110,.2)}
+.voice .live-source-item{border-color:rgba(194,135,111,.22);background:rgba(28,30,39,.8)}
+.voice .live-source-item a{color:#F2A080}
 
 /* ---------- lock ---------- */
 .lock{position:absolute;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:24px}
@@ -710,7 +762,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 .keygrp[open]>summary::before{content:'\25BE  '}
 
 /* Hey Adarsh opens the same app voice session in a small, dismissible in-app panel. */
-.voice.wake-mini{inset:auto 12px calc(12px + env(safe-area-inset-bottom,0px)) 12px;height:168px;max-height:calc(100% - 24px);padding:10px 13px 12px;gap:0;border:1px solid color-mix(in srgb,var(--fg) 10%,transparent);border-radius:24px;background:color-mix(in srgb,var(--paper) 94%,transparent);box-shadow:0 16px 44px rgba(0,0,0,.28);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+.voice.wake-mini{inset:auto 12px calc(12px + env(safe-area-inset-bottom,0px)) 12px;height:168px;max-height:calc(100% - 24px);padding:10px 13px 12px;gap:0;border:1px solid rgba(194,135,111,.3);border-radius:24px;background:linear-gradient(145deg,#251c1c 0%,#12151a 100%);color:var(--voice-fg);box-shadow:0 16px 44px rgba(0,0,0,.42);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
 .voice.wake-mini .v-top{min-height:30px;flex:none;padding:0}
 .voice.wake-mini .tag{font-size:10px;letter-spacing:.12em}
 .voice.wake-mini .v-mid{flex:1;flex-direction:row;justify-content:flex-start;gap:10px;padding:5px 2px 0;overflow:hidden}
@@ -1147,6 +1199,7 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
 </div>
 <input type="file" id="f-any" multiple hidden>
 <input type="file" id="f-img" accept="image/*" hidden>
+<input type="file" id="f-camera" accept="image/*" capture="environment" hidden>
 <input type="file" id="f-import" accept="application/json" hidden><script>'use strict';
 /* 00-android-bridge.js : only active inside the Android app (window.AdarshNative is injected by the WebView).
    In a normal browser this file does nothing, so the same build still works with the HTTP backend or the demo.
@@ -1226,6 +1279,14 @@ pre.raw{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere;font:400 12.5
     controllerStatus() { try { return JSON.parse(N.controllerStatus()); } catch (e) { return { linked: false, revision: 0 }; } },
     controllerPair(code) { return nativeJob('controllerPair', code); },
     controllerSync() { return nativeJob('controllerSync'); },
+    controllerAssistantRead() { return nativeJob('controllerAssistantRead'); },
+    controllerAssistantUpdate(change) {
+      if (!change || typeof change !== 'object' || Array.isArray(change)) return Promise.reject(new Error('Invalid Controller change.'));
+      let payload;
+      try { payload = JSON.stringify(change); } catch (e) { return Promise.reject(new Error('Invalid Controller change.')); }
+      if (typeof payload !== 'string') return Promise.reject(new Error('Invalid Controller change.'));
+      return nativeJob('controllerAssistantUpdate', payload);
+    },
     status() { try { return JSON.parse(N.status()); } catch (e) { return { ready: false }; } },
     send(req, o) {
       return new Promise((res, rej) => {
@@ -3293,11 +3354,17 @@ const Chat = (() => {
   function addSheet() {
     sheet({ title: 'Add', build(b, close) {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
-      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()),
+      const rows = [];
+      if (Modes.current().id === 'standard') rows.push(row('image', 'Camera', 'Standard only · photo Groq Qwen ko bheji jayegi', () => {
+        if (srcMode() !== 'auto') return toast('Camera analysis ke liye Answer source Auto rakho.');
+        $('#f-camera').click();
+      }));
+      rows.push(row('image', 'Photo', 'Choose from gallery · image analysis Standard-only', () => $('#f-img').click()),
         row('sparkle', 'Generate image', 'NVIDIA FLUX 3 Image Klein', () => mediaPrompt('image')),
         row('video', 'Generate video', 'NVIDIA Cosmos3 Nano (backup: Cosmos 1.0) · MP4', () => mediaPrompt('video')),
         row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()),
         row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
+      b.append(...rows);
     } });
   }
   function mediaPrompt(kind) {
@@ -3350,8 +3417,12 @@ const Chat = (() => {
     }
   }
   function addFile(f) {
-    if (f.size > 8 * 1024 * 1024) return toast(f.name + ' is over 8 MB');
-    const a = { id: uid('a'), name: f.name || 'pasted', kind: f.type.startsWith('image/') ? 'image' : 'file', type: f.type, size: f.size, file: f };
+    const isImage = f.type.startsWith('image/');
+    if (f.size > (isImage ? 6 : 8) * 1024 * 1024) return toast(f.name + (isImage ? ' is over 6 MB' : ' is over 8 MB'));
+    const queuedImages = pending.filter(a => a.kind === 'image');
+    if (isImage && queuedImages.length >= 3) return toast('Ek baar mein zyada se zyada 3 photos bhejo.');
+    if (isImage && queuedImages.reduce((n, a) => n + a.size, 0) + f.size > 10 * 1024 * 1024) return toast('Sab photos mila kar 10 MB tak rakho.');
+    const a = { id: uid('a'), name: f.name || 'pasted', kind: isImage ? 'image' : 'file', type: f.type, size: f.size, file: f };
     if (a.kind === 'image') { a.thumb = URL.createObjectURL(f); thumbs.set(a.id, a.thumb); }
     pending.push(a); drawAtts(); onInput();
   }
@@ -4990,7 +5061,7 @@ const Usage = (() => {
       h('span', { class: 'pill ' + tn }, bad ? bad + ' galat' : doubt ? doubt + ' shak' : 'sab pakka'));
     const rows = t.claims.map(c => h('div', { class: 'fc-row ' + c.v }, h('span', { class: 'fc-v' }, VERDICT[c.v] || c.v),
       h('div', { class: 'fc-t' }, h('b', {}, c.c), c.why ? h('small', {}, c.why) : null, c.fix ? h('small', { class: 'fc-fix' }, '→ ' + c.fix) : null)));
-    return [h('details', { class: 'fcheck ' + tn, open: bad || doubt ? '' : null }, head, rows,
+    return [h('details', { class: 'fcheck ' + tn }, head, rows,
       h('div', { class: 'fc-f' }, 'Ye bhi ek chhota model hai (gpt-oss-20b, ' + (t.level || level()) + '): galti ho sakti hai. Zaroori cheez source se bhi dekho.'))];
   }
   /* Groq's daily quota is running low: say so once a day (rate limits matter to sir) */
@@ -5551,7 +5622,7 @@ const App = (() => {
     st.append(label('Assistant'), h('div', { class: 'grp' },
       navItem('sliders', 'Answer source', ({ auto: 'Auto', manual: 'Manual', hybrid: 'Hybrid' })[S.settings.source || 'auto'], () => Chat.sourceSheet()),
       navItem('edit', 'Reply style', replySummary(), replySheet),
-      swItem('globe', 'Built-in web search', '', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
+      swItem('globe', 'Built-in web search', 'Chat aur Adarsh Live Google Search', () => S.settings.webSearch !== false, v => { S.settings.webSearch = v; toast(v ? 'Web search on' : 'Web search off'); }),
       swItem('search', 'Research sources', '', () => S.settings.research !== false, v => { S.settings.research = v; toast(v ? 'Sources on' : 'Sources off'); }),
       navItem('book', 'Lessons', '', () => Lessons.listSheet()),
       navItem('mic', 'Voice & language', (S.settings.voiceEngine === 'device' ? 'Phone' : (S.settings.voiceName || 'Orus')) + ' · ' + S.settings.lang, voiceSheet),
@@ -5757,8 +5828,16 @@ const App = (() => {
          The row is always shown, so a build that cannot reach the native bridge still shows the switch and says why. */
       const liveNative = !!(window.AdarshNative && (window.AdarshNative.liveStart || window.AdarshNative.liveProbe));
       const livePick = h('select', { 'aria-label': 'Adarsh Live model', style: 'width:100%;padding:12px;border-radius:14px;background:var(--card);color:var(--fg);border:0;font:inherit',
-        on: { change: () => { S.settings.liveModel = livePick.value; save(); } } },
+        on: { change: () => { S.settings.liveModel = livePick.value; save(); liveHelp.textContent = liveModelHelp(); } } },
         (typeof LIVE_MODELS !== 'undefined' ? LIVE_MODELS : []).map(([v, l]) => { const o = h('option', { value: v }, l); if ((S.settings.liveModel || 'auto') === v) o.selected = true; return o; }));
+      const liveModelHelp = () => {
+        const routing = (S.settings.liveModel || 'auto') === 'auto'
+          ? 'Auto: Gemini 3.8 Live conversation; reasoning, translate aur transcription specialist models zaroorat par khud select honge.'
+          : 'Gemini 3.8 Live normal conversation ke liye; specialist models aur spoken-audio output zaroorat par automatically handle honge.';
+        return liveNative ? routing + ' Google Search Built-in web search setting se control hota hai; sources yahin clickable milenge.'
+          : routing + ' Browser preview mein UI-only; Live audio Android app mein chalta hai.';
+      };
+      const liveHelp = h('p', { class: 'muted' }, liveModelHelp());
       const liveOut = h('p', { class: 'muted' }, liveNative ? '' : 'Sirf Android app mein');
       const liveTest = h('button', { class: 'btn ghost', on: { click: () => {
         if (!liveNative) { liveOut.textContent = 'Adarsh Live sirf Android app mein chalta hai.'; return; }
@@ -5776,7 +5855,8 @@ const App = (() => {
       const liveBlock = [
         h('div', { class: 'grp' },
           swItem('voice', 'Adarsh Live', 'Google Gemini Live', () => S.settings.adarshLive === true, v => { S.settings.adarshLive = v; if (!v && typeof Live !== 'undefined' && Live) Live.stop(); })),
-        S.settings.adarshLive ? h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Live model'), livePick, h('div', { class: 'inline' }, liveTest, liveOut)) : null
+        h('div', { class: 'fld' }, h('label', { class: 'l' }, 'Adarsh Live model'), livePick, liveHelp),
+        S.settings.adarshLive ? h('div', { class: 'inline' }, liveTest, liveOut) : null
       ];
       const kids = [
         swItem('speaker', 'Chat jawab bolkar sunao', '', () => S.settings.speak, v => { S.settings.speak = v; if (!v) TTS.stop(); }),
@@ -5915,7 +5995,7 @@ const App = (() => {
         } });
       }).catch(() => toast('Backup file padh nahi paya')); t.value = '';
     }
-    if ((t.id === 'f-any' || t.id === 'f-img') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
+    if ((t.id === 'f-any' || t.id === 'f-img' || t.id === 'f-camera') && t.files) { [...t.files].forEach(Chat.addFile); t.value = ''; }
   });
 
   let edgeSwipeBound = false;
@@ -6270,16 +6350,11 @@ const WakeWord = (() => {
    screen, shows both transcripts and falls back to the old listen/answer/speak loop on any error.
    Changing the live model or voice is one line here (LIVE_MODELS / default model). */
 const LIVE_MODELS = [
-  ['auto', 'Auto · need ke hisaab se'],
-  ['gemini-3.8-live-extended-thinking', 'Gemini 3.8 Live Extended Thinking'],
-  ['gemini-2.5-flash-native-audio-preview-12-2025', 'Gemini 2.5 Flash Native Audio Dialog'],
-  ['gemini-3.1-flash-live-preview', 'Gemini 3.1 Flash Live'],
-  ['gemini-3.5-live-translate-preview', 'Gemini 3.5 Live Translate'],
-  ['gemini-3.5-transcribe-live', 'Gemini 3.5 Transcribe Live']
+  ['auto', 'Auto · Live chat routing'],
+  ['gemini-3.8-live', 'Gemini 3.8 Live · conversation']
 ];
 const LIVE_DEFAULT_MODEL = 'auto';
-/* One Live model per job. Auto routing picks the role, so changing a model is one line here.
-   Keep in sync with ROLE_MODEL in AdarshLive.kt. */
+/* Specialist IDs stay internal: intent routing selects them for reasoning, translate, and transcription tasks. */
 const LIVE_ROLES = {
   main: ['gemini-3.8-live', 'Main voice'],
   think: ['gemini-3.8-live-extended-thinking', 'Advanced reasoning'],
@@ -6339,7 +6414,7 @@ const Live = (() => {
     if (!native()) return false;
     handlers = h; on = true;
     let out = {};
-    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt(), target: translateTarget('') })) || '{}'); }
+    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt(), target: translateTarget(''), webSearch: S.settings.webSearch !== false })) || '{}'); }
     catch (e) { out = { ok: false, message: e.message }; }
     if (out && out.ok === false) { on = false; if (h && h.onError) h.onError(out.message || 'Live start nahi hua.'); return false; }
     model = out.model || liveModel();
@@ -6364,6 +6439,8 @@ const Live = (() => {
       else if (ev.type === 'role') { role = ev.role || 'main'; if (h.onRole) h.onRole(ev.role, ev.label, ev.model); }
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
       else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
+      else if (ev.type === 'sources' && h.onSources) h.onSources(Array.isArray(ev.sources) ? ev.sources : []);
+      else if (ev.type === 'camera' && h.onCamera) h.onCamera(ev);
       else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
       else if (ev.type === 'closed' && h.onClosed) h.onClosed();
     } catch (e) {}
@@ -6373,12 +6450,80 @@ const Live = (() => {
 })();
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, tagEl, glBtn;
+  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, tagEl, glBtn, cameraBtn, cameraStatus;
   let session = 0, releasePrompt = null, releaseAsk = null;
+  let sourceBox = null, sourceBtn = null, sourceList = null, sourceOpen = false;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
   let liveOn = false, wakeLive = false, liveUser = '', liveModel = '';
+  let liveConnected = false, liveRole = 'main', cameraState = 'off', cameraMessage = '', cameraRequested = false;
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
+  const cameraNative = () => { const n = window.AdarshNative; return !!(Live.native() && n && typeof n.liveCameraStart === 'function' && typeof n.liveCameraStop === 'function'); };
+  const audioOnlyRole = r => ['transcribe', 'translate', 'audio-only', 'audio_only'].includes(String(r || '').toLowerCase());
+  const cameraEligible = () => cameraNative() && openFlag && liveOn && liveConnected && !audioOnlyRole(liveRole);
+  function refreshCameraControls() {
+    if (!cameraBtn || !cameraStatus) return;
+    const native = cameraNative(), ready = cameraEligible();
+    cameraBtn.disabled = !ready;
+    cameraBtn.setAttribute('aria-disabled', String(!ready));
+    cameraBtn.setAttribute('aria-pressed', String(cameraState === 'on'));
+    cameraBtn.setAttribute('aria-label', cameraState === 'on' || cameraState === 'starting' ? 'Turn camera off' : 'Turn camera on');
+    cameraBtn.title = !native ? (Live.native() ? 'Camera is unavailable in this Android app version' : 'Camera is available in the Android app only')
+      : !openFlag ? 'Open voice mode to use the camera' : !liveOn ? 'Start Gemini Live to use the camera'
+        : !liveConnected ? 'Camera is available after Gemini Live connects'
+          : audioOnlyRole(liveRole) ? 'Camera is unavailable for this audio-only Live role'
+            : cameraState === 'on' ? 'Turn off the camera' : 'Turn on the camera';
+    cameraStatus.textContent = !native ? (Live.native() ? 'Camera unavailable' : 'Android app only')
+      : cameraState === 'on' ? 'Camera on · frames shared with Gemini Live'
+        : cameraState === 'starting' ? 'Starting camera…'
+          : cameraState === 'permission_required' ? 'Camera permission needed'
+            : cameraState === 'error' ? 'Camera unavailable'
+              : audioOnlyRole(liveRole) && liveConnected ? 'Unavailable for audio-only Live'
+                : !liveConnected ? 'Connect Live to use camera' : 'Camera off';
+    cameraStatus.title = cameraMessage || cameraStatus.textContent;
+  }
+  function applyCameraStatus(state, message) {
+    if (!['on', 'off', 'permission_required', 'error', 'starting'].includes(state)) return;
+    cameraState = state;
+    cameraMessage = typeof message === 'string' ? message.slice(0, 180) : '';
+    cameraRequested = state === 'on' || state === 'starting';
+    refreshCameraControls();
+  }
+  function cameraReply(raw) {
+    let value = raw;
+    if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch (e) { return null; } }
+    if (!value || typeof value !== 'object') return null;
+    const state = ['on', 'off', 'permission_required', 'error', 'starting'].includes(value.state) ? value.state
+      : value.ok === false ? 'error' : '';
+    return state ? { state, message: typeof value.message === 'string' ? value.message : '' } : null;
+  }
+  function stopCamera() {
+    const shouldStop = cameraRequested || cameraState === 'on' || cameraState === 'starting';
+    const n = window.AdarshNative;
+    cameraRequested = false; cameraState = 'off'; cameraMessage = '';
+    refreshCameraControls();
+    if (!shouldStop || !n || typeof n.liveCameraStop !== 'function') return false;
+    try { n.liveCameraStop(); } catch (e) {}
+    return true;
+  }
+  function startCamera() {
+    if (!cameraEligible()) return false;
+    const n = window.AdarshNative;
+    cameraState = 'starting'; cameraMessage = ''; cameraRequested = true; refreshCameraControls();
+    try {
+      const status = cameraReply(n.liveCameraStart());
+      if (status) applyCameraStatus(status.state, status.message);
+    } catch (e) {
+      cameraRequested = false; cameraState = 'error'; cameraMessage = 'Could not start camera'; refreshCameraControls();
+    }
+    return true;
+  }
+  function toggleCamera() {
+    if (!cameraEligible()) return;
+    if (cameraState === 'on' || cameraState === 'starting') { stopCamera(); return; }
+    startCamera();
+  }
+  function cameraEvent(ev) { if (ev && ev.type === 'camera') applyCameraStatus(ev.state, ev.message); }
   /* The caption is the user's line, then the answer typed out one word at a time at speaking pace, so nothing
      runs ahead of the voice; once the voice stops the rest follows quickly. */
   function capBuild() {
@@ -6402,6 +6547,22 @@ const Voice = (() => {
   const capNow = () => { if (capRev) capRev.finish(); };   /* errors and closures read at once, no typing */
   const capPace = () => { if (capRev) capRev.pace(); };
 
+  function showLiveSources(rows) {
+    if (!sourceBox || !sourceBtn || !sourceList) return;
+    const seen = new Set();
+    const clean = (Array.isArray(rows) ? rows : []).slice(0, 12).map(s => {
+      const url = safeExternalUrl(s && s.url);
+      return url ? { url, title: String(s.title || url).slice(0, 160) } : null;
+    }).filter(s => s && !seen.has(s.url) && seen.add(s.url)).slice(0, 8);
+    sourceList.replaceChildren();
+    clean.forEach(s => sourceList.append(h('div', { class: 'live-source-item' }, externalAnchor(s.url, s.title))));
+    sourceBox.hidden = clean.length === 0;
+    sourceBtn.textContent = 'Sources (' + clean.length + ')';
+    if (!clean.length) sourceOpen = false;
+    sourceList.hidden = !sourceOpen || clean.length === 0;
+    sourceBtn.setAttribute('aria-expanded', String(sourceOpen && clean.length > 0));
+  }
+
   function build() {
     el = $('#voice'); el.textContent = '';
     orb = h('button', { class: 'orb', 'aria-label': 'Talk to Adarsh', on: { click: toggle } }, h('span', { class: 'r r3' }), h('span', { class: 'r r2' }), h('span', { class: 'r r1' }), h('span', { class: 'arc' }), h('span', { class: 'core' }));
@@ -6412,12 +6573,37 @@ const Voice = (() => {
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
     speakOn = S.settings.voiceReplies !== false;
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
-    /* Google (Gemini) Live on/off right on the voice screen; only the Android app has the native socket. */
-    glBtn = Live.native() ? h('button', { class: 'chipbtn gl', 'aria-pressed': String(S.settings.adarshLive === true), title: 'Google Gemini Live voice', on: { click: () => setGoogleLive(S.settings.adarshLive !== true) } }, 'Google Live') : null;
+    /* Keep the toggle visible in web preview too; only Android has the native Live socket. */
+    const nativeLive = Live.native();
+    glBtn = h('button', {
+      class: 'chipbtn gl', 'aria-pressed': String(S.settings.adarshLive === true),
+      'aria-label': nativeLive ? 'Google Live toggle' : 'Google Live toggle, Android app only',
+      'aria-disabled': String(!nativeLive), 'data-preview-only': String(!nativeLive),
+      title: nativeLive ? 'Google Gemini Live voice' : 'Available in the Android app; browser preview is UI only',
+      on: { click: () => {
+        if (!Live.native()) { toast('Adarsh Live Android app mein chalta hai; web preview mein sirf UI.'); return; }
+        setGoogleLive(S.settings.adarshLive !== true);
+      } }
+    }, 'Google Live');
+    cameraBtn = h('button', {
+      class: 'chipbtn camera-toggle', type: 'button', 'aria-pressed': 'false', 'aria-disabled': 'true',
+      'aria-label': 'Turn camera on', disabled: true, title: 'Start Gemini Live to use the camera',
+      on: { click: toggleCamera }
+    }, 'Camera');
+    cameraStatus = h('p', { class: 'camera-status', 'aria-live': 'polite' }, '');
+    sourceOpen = false;
+    sourceBtn = h('button', { class: 'chipbtn live-source-toggle', 'aria-expanded': 'false', 'aria-controls': 'live-source-list', on: { click: () => {
+      sourceOpen = !sourceOpen; sourceList.hidden = !sourceOpen; sourceBtn.setAttribute('aria-expanded', String(sourceOpen));
+    } } }, 'Sources');
+    sourceList = h('div', { class: 'live-source-list', id: 'live-source-list' });
+    sourceBox = h('div', { class: 'live-sources' }, sourceBtn, sourceList);
+    showLiveSources([]);
     tagEl = h('span', { class: 'tag' }, tagText());
     el.append(h('div', { class: 'v-top pad' }, tagEl, ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn, cameraBtn), cameraStatus, sourceBox,
+        h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+    refreshCameraControls();
   }
   const tagText = () => ((S.settings.adarshLive || wakeLive) && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output');
   /* Flip between Google Live and the normal listen -> answer -> speak loop without closing the screen.
@@ -6425,6 +6611,7 @@ const Voice = (() => {
   function setGoogleLive(v) {
     wakeLive = false;
     S.settings.adarshLive = v === true; save();
+    stopCamera(); liveConnected = false; liveRole = 'main';
     if (glBtn) glBtn.setAttribute('aria-pressed', String(S.settings.adarshLive));
     if (tagEl) tagEl.textContent = tagText();
     vibe();
@@ -6432,6 +6619,7 @@ const Voice = (() => {
     session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
     STT.stop(); TTS.stop();
     if (liveOn) { liveOn = false; Live.stop(); }
+    refreshCameraControls();
     capNow();
     if (S.settings.adarshLive) {
       if (startLive()) { toast('Google Live on'); return; }
@@ -6444,7 +6632,7 @@ const Voice = (() => {
   /* opts.listen: coming back from the background session, so start listening right away */
   function open(opts = {}) {
     if (BackgroundVoice.active()) return BackgroundVoice.open();
-    if (openFlag) return; wakeLive = opts.wakeWord === true; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.classList.toggle('wake-mini', opts.wakeWord === true); el.hidden = false; setState('idle');
+    if (openFlag) return; wakeLive = opts.wakeWord === true; liveConnected = false; liveRole = 'main'; cameraState = 'off'; cameraMessage = ''; cameraRequested = false; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.classList.toggle('wake-mini', opts.wakeWord === true); el.hidden = false; setState('idle');
     caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
@@ -6465,7 +6653,8 @@ const Voice = (() => {
   function startLive() {
     const token = session;
     const holdOnLiveFailure = wakeLive;
-    liveUser = ''; liveModel = '';
+    liveUser = ''; liveModel = ''; liveConnected = false; liveRole = 'main'; refreshCameraControls();
+    showLiveSources([]);
     /* Live owns the speaker; a pending device/natural TTS job must not talk over native PCM. */
     TTS.stop();
     capHold();
@@ -6474,9 +6663,10 @@ const Voice = (() => {
     const ok = Live.start({
       onState: (s, m, ev) => {
         if (!active(token)) return;
-        if (s === 'speaking') { setState('speaking'); capPace(); }
-        else if (s === 'listening') { setState('listening'); capPace(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
+        if (s === 'speaking') { liveConnected = true; refreshCameraControls(); setState('speaking'); capPace(); }
+        else if (s === 'listening') { liveConnected = true; refreshCameraControls(); setState('listening'); capPace(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
         else if (s === 'connecting') {
+          liveConnected = false; stopCamera();
           setState('connecting');
           /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
           const n = ev && ev.attempt ? ' ' + ev.attempt + '/' + ev.total : '';
@@ -6484,32 +6674,47 @@ const Voice = (() => {
         }
       },
       onNotice: (m) => { if (active(token)) caption(liveUser, m); },
+      onSources: (sources) => { if (active(token)) showLiveSources(sources); },
+      onCamera: (ev) => { if (active(token)) cameraEvent(ev); },
       onUser: (t) => {
         if (!active(token)) return;
         if (capRev) capRev.finish();
         liveUser = (liveUser + ' ' + t).trim().slice(-600); liveModel = '';
+        sourceOpen = false; showLiveSources([]);
         capHold(); caption(liveUser, liveModel);
         /* auto role routing: the sentence itself decides which Live model should answer it */
+        /* Chat-model choice only sets the everyday voice; specialist jobs are auto-routed in the background. */
         const want = Live.roleFor(t, Live.role);
-        if (want && want !== Live.role && Live.switch(want, t)) setState('thinking');
+        if (want && want !== Live.role && Live.switch(want, t)) {
+          liveRole = want;
+          if (audioOnlyRole(liveRole)) stopCamera(); else refreshCameraControls();
+          setState('thinking');
+        }
       },
       onRole: (r, label) => {
         if (!active(token)) return;
+        liveRole = r || 'main';
+        if (audioOnlyRole(liveRole)) stopCamera(); else refreshCameraControls();
         if (r && r !== 'main' && label) { setState('thinking'); stateEl.textContent = label; }
         else if (r === 'main') stateEl.textContent = 'Live · just speak';
       },
       onModel: (t) => { if (!active(token)) return; liveModel = (liveModel + ' ' + t).trim().slice(-1200); caption(liveUser, liveModel); },
       onError: (m) => {
         if (!active(token)) return;
-        liveOn = false;
+        stopCamera(); liveConnected = false; liveOn = false; refreshCameraControls();
         caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
         /* a wake trigger also falls back, so "Hey Adarsh" always ends in a listening voice screen */
         setTimeout(() => { if (active(token)) { if (holdOnLiveFailure) { wakeLive = false; if (tagEl) tagEl.textContent = tagText(); } setState('idle'); listen(); } }, 900);
       },
-      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
+      onClosed: () => {
+        if (!active(token)) return;
+        const wasOn = liveOn;
+        stopCamera(); liveConnected = false; liveOn = false; refreshCameraControls();
+        if (wasOn) { setState('idle'); capNow(); }
+      }
     });
-    if (!ok) { liveOn = false; setState('idle'); return false; }
+    if (!ok) { stopCamera(); liveConnected = false; liveOn = false; refreshCameraControls(); setState('idle'); return false; }
     liveOn = true; setState('connecting');
     return true;
   }
@@ -6518,14 +6723,14 @@ const Voice = (() => {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
-    liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop(); el.classList.remove('wake-mini');
+    stopCamera(); liveConnected = false; liveRole = 'main'; liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop(); el.classList.remove('wake-mini');
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc); WakeWord.resume('voice');
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
   function toggle() {
     if (liveOn) {
-      if (el.dataset.state === 'speaking') { Live.stop(); liveOn = false; setState('idle'); return; }   // interrupt, stay open
-      Live.stop(); liveOn = false; close(); return;   // end the live session
+      if (el.dataset.state === 'speaking') { stopCamera(); liveConnected = false; Live.stop(); liveOn = false; refreshCameraControls(); setState('idle'); return; }   // interrupt, stay open
+      stopCamera(); liveConnected = false; Live.stop(); liveOn = false; refreshCameraControls(); close(); return;   // end the live session
     }
     const s = el.dataset.state;
     if (s === 'listening') return STT.stop();
@@ -6647,7 +6852,11 @@ const Actions = (() => {
     'note.add': ['Note', 'file'], 'note.edit': ['Note edit', 'edit'], 'note.list': ['Notes', 'file'],
     'work.add': ['Work project', 'book'], 'work.edit': ['Work edit', 'edit'], 'work.log': ['Work log', 'book'], 'work.list': ['Work', 'book'],
     'memory.add': ['Memory', 'brain'], 'memory.edit': ['Memory edit', 'edit'], 'memory.list': ['Memory', 'brain'], 'settings.update': ['Setting', 'sliders'],
-    'app.open': ['App', 'sliders'], 'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
+    'app.open': ['App', 'sliders'], 'controller.read': ['Controller status', 'server'], 'controller.model.toggle': ['Controller model', 'sliders'],
+    'controller.model.remove': ['Controller model removal', 'sliders'],
+    'controller.model.set': ['Controller model', 'sliders'], 'controller.route.set': ['Controller routing', 'sliders'],
+    'controller.news.set': ['Controller News limit', 'sliders'], 'controller.briefing.set': ['Controller briefing', 'sliders'],
+    'web.search': ['Search', 'search'], 'phone.status': ['Phone', 'server'], 'calendar.add': ['Calendar', 'cal'],
     'voice.open': ['Voice', 'voice'], 'message.draft': ['Message', 'send'], 'call.dial': ['Call', 'chat'], 'torch.set': ['Torch', 'bolt'] };
   const contexts = new WeakMap();
   const ctx = d => contexts.get(d);
@@ -6662,16 +6871,119 @@ const Actions = (() => {
   function webStep(s) {
     const a = s.args || {};
     if (s.action === 'web.search') { window.open('https://www.google.com/search?q=' + encodeURIComponent(a.query), '_blank', 'noopener'); return { ok: true, message: 'Search khol diya' }; }
-    const sites = { youtube: 'youtube.com', whatsapp: 'web.whatsapp.com', instagram: 'instagram.com', gmail: 'mail.google.com', maps: 'maps.google.com', telegram: 'web.telegram.org', spotify: 'open.spotify.com', drive: 'drive.google.com', facebook: 'facebook.com', twitter: 'x.com', netflix: 'netflix.com' };
-    if (s.action === 'app.open' && sites[a.app]) { window.open('https://' + sites[a.app], '_blank', 'noopener'); return { ok: true, message: 'App website khol di' }; }
+    const sites = { youtube: 'youtube.com', whatsapp: 'web.whatsapp.com', instagram: 'instagram.com', gmail: 'mail.google.com', maps: 'maps.google.com', telegram: 'web.telegram.org', spotify: 'open.spotify.com', drive: 'drive.google.com', facebook: 'facebook.com', twitter: 'x.com', netflix: 'netflix.com', controller: 'adarshctl-pc68aukk.manus.space' };
+    if (s.action === 'app.open' && Object.prototype.hasOwnProperty.call(sites, a.app)) {
+      window.open('https://' + sites[a.app], '_blank', 'noopener');
+      return { ok: true, message: a.app === 'controller' ? 'Adarsh Controller khol diya' : 'App website khol di' };
+    }
     if (s.action === 'phone.status') return { ok: true, message: navigator.onLine ? 'Browser online hai' : 'Browser offline hai' };
     if (s.action === 'voice.open') { Voice.open(); return { ok: true, message: 'Voice mode khul gaya' }; }
     return { ok: false, message: 'Ye operation sirf Android app mein chalta hai' };
+  }
+  const NEWS_FIELDS = ['alerts_per_day', 'alert_min_score', 'list_min_score', 'groq_tokens_cap', 'groq_calls_cap', 'tavily_day_cap', 'tavily_month_cap'];
+  const safeNum = (obj, key) => obj && Number.isFinite(Number(obj[key])) ? Number(obj[key]) : null;
+  function safeControllerState(raw) {
+    if (!raw || raw.ok !== true || !raw.config || !Array.isArray(raw.config.models) || !raw.config.routes || typeof raw.config.routes !== 'object') return null;
+    const models = raw.config.models.slice(0, 100).filter(m => m && typeof m.label === 'string' && typeof m.model === 'string' && ['groq', 'openrouter', 'gemini', 'nvidia', 'cloudflare'].includes(m.provider))
+      .map(m => {
+        const extra = m.extra && typeof m.extra === 'object' ? m.extra : {};
+        return { label: m.label.slice(0, 80), provider: m.provider, model: m.model.slice(0, 128), enabled: m.enabled === true,
+          extra: { ...( ['low', 'medium', 'high'].includes(extra.reasoning_effort) ? { reasoning_effort: extra.reasoning_effort } : {}),
+            ...( ['hidden', 'raw', 'parsed'].includes(extra.reasoning_format) ? { reasoning_format: extra.reasoning_format } : {}) } };
+      });
+    const routes = Object.fromEntries(Object.entries(raw.config.routes).slice(0, 100).filter(([k, v]) => typeof k === 'string' && Array.isArray(v))
+      .map(([k, v]) => [k.slice(0, 100), v.filter(x => typeof x === 'string').slice(0, 10).map(x => x.slice(0, 80))]));
+    const srcNews = raw.news && typeof raw.news === 'object' ? raw.news : {};
+    const settings = {};
+    NEWS_FIELDS.forEach(k => { const n = safeNum(srcNews.settings, k); if (n !== null) settings[k] = n; });
+    const srcBudget = srcNews.budget && typeof srcNews.budget === 'object' ? srcNews.budget : {};
+    const copyNumbers = (obj, keys) => Object.fromEntries(keys.map(k => [k, safeNum(obj, k)]).filter(([, v]) => v !== null));
+    const budget = {
+      groq: copyNumbers(srcBudget.groq, ['tokens_used', 'tokens_cap', 'calls_used', 'calls_cap']),
+      tavily: copyNumbers(srcBudget.tavily, ['day_used', 'day_cap', 'month_used', 'month_cap']),
+      alerts: copyNumbers(srcBudget.alerts, ['today', 'cap']),
+    };
+    const ds = raw.device_settings && typeof raw.device_settings === 'object' ? raw.device_settings : {};
+    const device_settings = {
+      briefingOn: ds.briefingOn === true,
+      briefingTime: typeof ds.briefingTime === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(ds.briefingTime) ? ds.briefingTime : '',
+      newsBriefing: ds.newsBriefing === true,
+      briefingTelegram: ds.briefingTelegram === true,
+    };
+    return { revision: Number.isSafeInteger(raw.revision) ? raw.revision : 0, models, routes,
+      news: { local_day: String(srcNews.local_day || '').slice(0, 10), tz: String(srcNews.tz || '').slice(0, 80), settings, budget }, device_settings };
+  }
+  const fmtNum = n => Number(n).toLocaleString('en-IN');
+  function controllerSummary(s) {
+    const models = s.models.map(m => `${m.label}=${m.provider}/${m.model} ${m.enabled ? 'ON' : 'OFF'}`);
+    const routes = Object.entries(s.routes).map(([k, v]) => `${k} → ${v.join(' → ')}`);
+    const n = s.news, b = n.budget;
+    const limits = Object.entries(n.settings).map(([k, v]) => `${k} ${fmtNum(v)}`).join(', ') || 'unavailable';
+    const usage = [`Groq tokens ${fmtNum(b.groq.tokens_used || 0)}/${fmtNum(b.groq.tokens_cap || 0)}, calls ${fmtNum(b.groq.calls_used || 0)}/${fmtNum(b.groq.calls_cap || 0)}`,
+      `Tavily day ${fmtNum(b.tavily.day_used || 0)}/${fmtNum(b.tavily.day_cap || 0)}, month ${fmtNum(b.tavily.month_used || 0)}/${fmtNum(b.tavily.month_cap || 0)}`,
+      `alerts ${fmtNum(b.alerts.today || 0)}/${fmtNum(b.alerts.cap || 0)}`].join('; ');
+    const d = s.device_settings;
+    return [`Controller revision ${s.revision}.`, `Models (${models.length}): ${models.join('; ') || 'none'}.`,
+      `Routes (${routes.length} overrides): ${routes.join('; ') || 'bundled defaults'}.`, `News limits: ${limits}. Usage: ${usage}.`,
+      `Briefing: ${d.briefingOn ? 'on' : 'off'}${d.briefingTime ? ' at ' + d.briefingTime : ''}; News ${d.newsBriefing ? 'on' : 'off'}; Telegram ${d.briefingTelegram ? 'on' : 'off'}.`].join(' ').slice(0, 3600);
+  }
+  function controllerLabel(models, label) {
+    const matches = models.filter(m => m.label.toLowerCase() === String(label || '').toLowerCase());
+    return matches.length === 1 ? matches[0] : null;
+  }
+  async function controllerStep(s) {
+    const backend = window.ADARSH_BACKEND, action = s.action, a = s.args || {};
+    const reading = action === 'controller.read';
+    if (reading ? !Productivity.access().localRead : !Productivity.access().localEdit) return { ok: false, message: 'Controller AI access is off in Settings.' };
+    if (!Productivity.native() || !backend || backend.native !== true || typeof backend.controllerAssistantRead !== 'function' || typeof backend.controllerAssistantUpdate !== 'function') return { ok: false, message: 'Controller AI access paired Android app mein hi available hai.' };
+    try {
+      const current = safeControllerState(await backend.controllerAssistantRead());
+      if (!current) return { ok: false, message: 'Controller pair nahi hai ya safe state read nahi hui. Credentials AI ko nahi dikhaye gaye.' };
+      if (reading) return { ok: true, message: controllerSummary(current), controller: current };
+      let payload;
+      if (action === 'controller.model.toggle' || action === 'controller.model.remove' || action === 'controller.model.set' || action === 'controller.route.set') {
+        let models = current.models.map(m => ({ ...m, extra: { ...m.extra } })), routes = { ...current.routes };
+        if (action === 'controller.model.remove') {
+          const target = controllerLabel(models, a.label);
+          if (!target) return { ok: false, message: `Model label ${String(a.label).slice(0, 80)} unique registry mein nahi mila; kuch change nahi kiya.` };
+          models = models.filter(m => m.label !== target.label);
+        } else if (action === 'controller.model.toggle') {
+          const target = controllerLabel(models, a.label);
+          if (!target) return { ok: false, message: `Model label ${String(a.label).slice(0, 80)} unique registry mein nahi mila; kuch change nahi kiya.` };
+          models = models.map(m => m.label === target.label ? { ...m, enabled: a.enabled === true } : m);
+        } else if (action === 'controller.model.set') {
+          const existing = controllerLabel(models, a.label);
+          if (!existing && models.length >= 100) return { ok: false, message: 'Model registry limit 100 hai; kuch change nahi kiya.' };
+          if (!existing && models.some(m => m.label.toLowerCase() === String(a.label).toLowerCase())) return { ok: false, message: 'Model label case-insensitive duplicate hai; kuch change nahi kiya.' };
+          const extra = { ...(existing ? existing.extra : {}) };
+          if (a.reasoning_effort) extra.reasoning_effort = a.reasoning_effort;
+          if (a.reasoning_format) extra.reasoning_format = a.reasoning_format;
+          const next = { label: a.label, provider: a.provider, model: a.model, enabled: typeof a.enabled === 'boolean' ? a.enabled : (existing ? existing.enabled : true), extra };
+          models = existing ? models.map(m => m.label === existing.label ? next : m) : [...models, next];
+        } else routes[a.key] = a.models.slice();
+        payload = { kind: 'config', values: { models, routes }, expected_revision: current.revision,
+          reason: `Adarsh direct command: ${action} ${String(a.label || a.key || '').slice(0, 80)}` };
+      } else if (action === 'controller.news.set') {
+        payload = { kind: 'news_settings', values: { [a.field]: a.value }, reason: `Adarsh direct command: News ${a.field}=${a.value}` };
+      } else if (action === 'controller.briefing.set') {
+        payload = { kind: 'briefing_settings', values: { [a.field]: a.value }, reason: `Adarsh direct command: briefing ${a.field}` };
+      } else return { ok: false, message: 'Controller operation allowlist mein nahi hai.' };
+      const saved = await backend.controllerAssistantUpdate(payload);
+      if (!saved || saved.ok !== true) return { ok: false, message: 'Controller ne update reject kiya; existing configuration unchanged rakhi.' };
+      const suffix = saved.applied === false ? '; server par save hua, phone par apply pending hai' : '';
+      return { ok: true, message: `Controller update apply ho gaya${Number.isSafeInteger(saved.revision) ? ` (revision ${saved.revision})` : ''}${suffix}.`, revision: saved.revision };
+    } catch (e) {
+      return { ok: false, message: `Controller update nahi hua: ${String(e && e.message || 'connection ya validation error').slice(0, 180)}. Existing state safe rakhi.` };
+    }
   }
   async function step(s, confirmed, mode) {
     if (!LABEL[s.action]) return { ok: false, message: 'Sir, ye action AI ke liye allowed nahi hai.' };
     const sensitive = ['message.draft', 'call.dial'].includes(s.action);
     if (sensitive && !confirmed) return { ok: false, pending: true, message: 'Sir, confirmation chahiye.' };
+    if (s.action.startsWith('controller.')) {
+      if (mode !== 'standard') return { ok: false, message: 'Controller command ke liye Standard mode use karo.' };
+      return controllerStep(s);
+    }
     if (!Productivity.native() && /^(app|web|phone|voice)\./.test(s.action)) {
       if (mode !== 'standard' || !Productivity.access().localEdit || (s.action === 'app.open' && s.args.app === 'settings')) return { ok: false, message: 'Ye action disabled hai.' };
       try { return webStep(s); } catch (e) { return { ok: false, message: 'App/search nahi khul paya.' }; }

@@ -277,16 +277,11 @@ const WakeWord = (() => {
    screen, shows both transcripts and falls back to the old listen/answer/speak loop on any error.
    Changing the live model or voice is one line here (LIVE_MODELS / default model). */
 const LIVE_MODELS = [
-  ['auto', 'Auto · need ke hisaab se'],
-  ['gemini-3.8-live-extended-thinking', 'Gemini 3.8 Live Extended Thinking'],
-  ['gemini-2.5-flash-native-audio-preview-12-2025', 'Gemini 2.5 Flash Native Audio Dialog'],
-  ['gemini-3.1-flash-live-preview', 'Gemini 3.1 Flash Live'],
-  ['gemini-3.5-live-translate-preview', 'Gemini 3.5 Live Translate'],
-  ['gemini-3.5-transcribe-live', 'Gemini 3.5 Transcribe Live']
+  ['auto', 'Auto · Live chat routing'],
+  ['gemini-3.8-live', 'Gemini 3.8 Live · conversation']
 ];
 const LIVE_DEFAULT_MODEL = 'auto';
-/* One Live model per job. Auto routing picks the role, so changing a model is one line here.
-   Keep in sync with ROLE_MODEL in AdarshLive.kt. */
+/* Specialist IDs stay internal: intent routing selects them for reasoning, translate, and transcription tasks. */
 const LIVE_ROLES = {
   main: ['gemini-3.8-live', 'Main voice'],
   think: ['gemini-3.8-live-extended-thinking', 'Advanced reasoning'],
@@ -346,7 +341,7 @@ const Live = (() => {
     if (!native()) return false;
     handlers = h; on = true;
     let out = {};
-    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt(), target: translateTarget('') })) || '{}'); }
+    try { out = JSON.parse(N().liveStart(JSON.stringify({ model: liveModel(), voice: voice(), prompt: prompt(), target: translateTarget(''), webSearch: S.settings.webSearch !== false })) || '{}'); }
     catch (e) { out = { ok: false, message: e.message }; }
     if (out && out.ok === false) { on = false; if (h && h.onError) h.onError(out.message || 'Live start nahi hua.'); return false; }
     model = out.model || liveModel();
@@ -371,6 +366,8 @@ const Live = (() => {
       else if (ev.type === 'role') { role = ev.role || 'main'; if (h.onRole) h.onRole(ev.role, ev.label, ev.model); }
       else if (ev.type === 'user' && h.onUser) h.onUser(ev.text);
       else if (ev.type === 'model' && h.onModel) h.onModel(ev.text);
+      else if (ev.type === 'sources' && h.onSources) h.onSources(Array.isArray(ev.sources) ? ev.sources : []);
+      else if (ev.type === 'camera' && h.onCamera) h.onCamera(ev);
       else if (ev.type === 'error') { on = false; if (h.onError) h.onError(ev.message || 'Live error'); }
       else if (ev.type === 'closed' && h.onClosed) h.onClosed();
     } catch (e) {}
@@ -380,12 +377,80 @@ const Live = (() => {
 })();
 
 const Voice = (() => {
-  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, tagEl, glBtn;
+  let el, orb, stateEl, cap, capU, capA, capRev, inp, handsfree = false, speakOn = S.settings.voiceReplies !== false, openFlag = false, micBtn, tagEl, glBtn, cameraBtn, cameraStatus;
   let session = 0, releasePrompt = null, releaseAsk = null;
+  let sourceBox = null, sourceBtn = null, sourceList = null, sourceOpen = false;
   const active = token => openFlag && token === session;
   const LABEL = { idle: 'Tap to talk', listening: 'Listening…', thinking: 'Thinking…', speaking: 'Speaking…', connecting: 'Connecting…', live: 'Live · just speak' };
   let liveOn = false, wakeLive = false, liveUser = '', liveModel = '';
+  let liveConnected = false, liveRole = 'main', cameraState = 'off', cameraMessage = '', cameraRequested = false;
   const setState = (s) => { el.dataset.state = s; stateEl.textContent = LABEL[s] || s; if (micBtn) micBtn.textContent = liveOn ? (s === 'speaking' ? 'Interrupt' : 'End') : s === 'listening' ? 'Stop' : s === 'speaking' ? 'Interrupt' : 'Talk'; };
+  const cameraNative = () => { const n = window.AdarshNative; return !!(Live.native() && n && typeof n.liveCameraStart === 'function' && typeof n.liveCameraStop === 'function'); };
+  const audioOnlyRole = r => ['transcribe', 'translate', 'audio-only', 'audio_only'].includes(String(r || '').toLowerCase());
+  const cameraEligible = () => cameraNative() && openFlag && liveOn && liveConnected && !audioOnlyRole(liveRole);
+  function refreshCameraControls() {
+    if (!cameraBtn || !cameraStatus) return;
+    const native = cameraNative(), ready = cameraEligible();
+    cameraBtn.disabled = !ready;
+    cameraBtn.setAttribute('aria-disabled', String(!ready));
+    cameraBtn.setAttribute('aria-pressed', String(cameraState === 'on'));
+    cameraBtn.setAttribute('aria-label', cameraState === 'on' || cameraState === 'starting' ? 'Turn camera off' : 'Turn camera on');
+    cameraBtn.title = !native ? (Live.native() ? 'Camera is unavailable in this Android app version' : 'Camera is available in the Android app only')
+      : !openFlag ? 'Open voice mode to use the camera' : !liveOn ? 'Start Gemini Live to use the camera'
+        : !liveConnected ? 'Camera is available after Gemini Live connects'
+          : audioOnlyRole(liveRole) ? 'Camera is unavailable for this audio-only Live role'
+            : cameraState === 'on' ? 'Turn off the camera' : 'Turn on the camera';
+    cameraStatus.textContent = !native ? (Live.native() ? 'Camera unavailable' : 'Android app only')
+      : cameraState === 'on' ? 'Camera on · frames shared with Gemini Live'
+        : cameraState === 'starting' ? 'Starting camera…'
+          : cameraState === 'permission_required' ? 'Camera permission needed'
+            : cameraState === 'error' ? 'Camera unavailable'
+              : audioOnlyRole(liveRole) && liveConnected ? 'Unavailable for audio-only Live'
+                : !liveConnected ? 'Connect Live to use camera' : 'Camera off';
+    cameraStatus.title = cameraMessage || cameraStatus.textContent;
+  }
+  function applyCameraStatus(state, message) {
+    if (!['on', 'off', 'permission_required', 'error', 'starting'].includes(state)) return;
+    cameraState = state;
+    cameraMessage = typeof message === 'string' ? message.slice(0, 180) : '';
+    cameraRequested = state === 'on' || state === 'starting';
+    refreshCameraControls();
+  }
+  function cameraReply(raw) {
+    let value = raw;
+    if (typeof raw === 'string') { try { value = JSON.parse(raw); } catch (e) { return null; } }
+    if (!value || typeof value !== 'object') return null;
+    const state = ['on', 'off', 'permission_required', 'error', 'starting'].includes(value.state) ? value.state
+      : value.ok === false ? 'error' : '';
+    return state ? { state, message: typeof value.message === 'string' ? value.message : '' } : null;
+  }
+  function stopCamera() {
+    const shouldStop = cameraRequested || cameraState === 'on' || cameraState === 'starting';
+    const n = window.AdarshNative;
+    cameraRequested = false; cameraState = 'off'; cameraMessage = '';
+    refreshCameraControls();
+    if (!shouldStop || !n || typeof n.liveCameraStop !== 'function') return false;
+    try { n.liveCameraStop(); } catch (e) {}
+    return true;
+  }
+  function startCamera() {
+    if (!cameraEligible()) return false;
+    const n = window.AdarshNative;
+    cameraState = 'starting'; cameraMessage = ''; cameraRequested = true; refreshCameraControls();
+    try {
+      const status = cameraReply(n.liveCameraStart());
+      if (status) applyCameraStatus(status.state, status.message);
+    } catch (e) {
+      cameraRequested = false; cameraState = 'error'; cameraMessage = 'Could not start camera'; refreshCameraControls();
+    }
+    return true;
+  }
+  function toggleCamera() {
+    if (!cameraEligible()) return;
+    if (cameraState === 'on' || cameraState === 'starting') { stopCamera(); return; }
+    startCamera();
+  }
+  function cameraEvent(ev) { if (ev && ev.type === 'camera') applyCameraStatus(ev.state, ev.message); }
   /* The caption is the user's line, then the answer typed out one word at a time at speaking pace, so nothing
      runs ahead of the voice; once the voice stops the rest follows quickly. */
   function capBuild() {
@@ -409,6 +474,22 @@ const Voice = (() => {
   const capNow = () => { if (capRev) capRev.finish(); };   /* errors and closures read at once, no typing */
   const capPace = () => { if (capRev) capRev.pace(); };
 
+  function showLiveSources(rows) {
+    if (!sourceBox || !sourceBtn || !sourceList) return;
+    const seen = new Set();
+    const clean = (Array.isArray(rows) ? rows : []).slice(0, 12).map(s => {
+      const url = safeExternalUrl(s && s.url);
+      return url ? { url, title: String(s.title || url).slice(0, 160) } : null;
+    }).filter(s => s && !seen.has(s.url) && seen.add(s.url)).slice(0, 8);
+    sourceList.replaceChildren();
+    clean.forEach(s => sourceList.append(h('div', { class: 'live-source-item' }, externalAnchor(s.url, s.title))));
+    sourceBox.hidden = clean.length === 0;
+    sourceBtn.textContent = 'Sources (' + clean.length + ')';
+    if (!clean.length) sourceOpen = false;
+    sourceList.hidden = !sourceOpen || clean.length === 0;
+    sourceBtn.setAttribute('aria-expanded', String(sourceOpen && clean.length > 0));
+  }
+
   function build() {
     el = $('#voice'); el.textContent = '';
     orb = h('button', { class: 'orb', 'aria-label': 'Talk to Adarsh', on: { click: toggle } }, h('span', { class: 'r r3' }), h('span', { class: 'r r2' }), h('span', { class: 'r r1' }), h('span', { class: 'arc' }), h('span', { class: 'core' }));
@@ -419,12 +500,37 @@ const Voice = (() => {
     const hf = h('button', { class: 'chipbtn', 'aria-pressed': String(handsfree), on: { click: () => { handsfree = !handsfree; hf.setAttribute('aria-pressed', String(handsfree)); } } }, 'Hands-free');
     speakOn = S.settings.voiceReplies !== false;
     const sp = h('button', { class: 'chipbtn', 'aria-pressed': String(speakOn), on: { click: () => { speakOn = !speakOn; S.settings.voiceReplies = speakOn; save(); sp.setAttribute('aria-pressed', String(speakOn)); if (!speakOn) TTS.stop(); } } }, 'Voice replies');
-    /* Google (Gemini) Live on/off right on the voice screen; only the Android app has the native socket. */
-    glBtn = Live.native() ? h('button', { class: 'chipbtn gl', 'aria-pressed': String(S.settings.adarshLive === true), title: 'Google Gemini Live voice', on: { click: () => setGoogleLive(S.settings.adarshLive !== true) } }, 'Google Live') : null;
+    /* Keep the toggle visible in web preview too; only Android has the native Live socket. */
+    const nativeLive = Live.native();
+    glBtn = h('button', {
+      class: 'chipbtn gl', 'aria-pressed': String(S.settings.adarshLive === true),
+      'aria-label': nativeLive ? 'Google Live toggle' : 'Google Live toggle, Android app only',
+      'aria-disabled': String(!nativeLive), 'data-preview-only': String(!nativeLive),
+      title: nativeLive ? 'Google Gemini Live voice' : 'Available in the Android app; browser preview is UI only',
+      on: { click: () => {
+        if (!Live.native()) { toast('Adarsh Live Android app mein chalta hai; web preview mein sirf UI.'); return; }
+        setGoogleLive(S.settings.adarshLive !== true);
+      } }
+    }, 'Google Live');
+    cameraBtn = h('button', {
+      class: 'chipbtn camera-toggle', type: 'button', 'aria-pressed': 'false', 'aria-disabled': 'true',
+      'aria-label': 'Turn camera on', disabled: true, title: 'Start Gemini Live to use the camera',
+      on: { click: toggleCamera }
+    }, 'Camera');
+    cameraStatus = h('p', { class: 'camera-status', 'aria-live': 'polite' }, '');
+    sourceOpen = false;
+    sourceBtn = h('button', { class: 'chipbtn live-source-toggle', 'aria-expanded': 'false', 'aria-controls': 'live-source-list', on: { click: () => {
+      sourceOpen = !sourceOpen; sourceList.hidden = !sourceOpen; sourceBtn.setAttribute('aria-expanded', String(sourceOpen));
+    } } }, 'Sources');
+    sourceList = h('div', { class: 'live-source-list', id: 'live-source-list' });
+    sourceBox = h('div', { class: 'live-sources' }, sourceBtn, sourceList);
+    showLiveSources([]);
     tagEl = h('span', { class: 'tag' }, tagText());
     el.append(h('div', { class: 'v-top pad' }, tagEl, ibtn('x', 'Close voice mode', close)),
       h('div', { class: 'v-mid' }, orb, stateEl, cap),
-      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn), h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+      h('div', { class: 'v-foot pad' }, h('div', { class: 'v-btns' }, micBtn, hf, sp, glBtn, cameraBtn), cameraStatus, sourceBox,
+        h('div', { class: 'v-type' }, inp, h('button', { class: 'circ send', 'aria-label': 'Send', on: { click: typed } }, icon('send')))));
+    refreshCameraControls();
   }
   const tagText = () => ((S.settings.adarshLive || wakeLive) && Live.native() ? 'ADARSH LIVE' : 'VOICE') + ' · ' + S.settings.lang + (TTS.ok() ? '' : ' · no speech output');
   /* Flip between Google Live and the normal listen -> answer -> speak loop without closing the screen.
@@ -432,6 +538,7 @@ const Voice = (() => {
   function setGoogleLive(v) {
     wakeLive = false;
     S.settings.adarshLive = v === true; save();
+    stopCamera(); liveConnected = false; liveRole = 'main';
     if (glBtn) glBtn.setAttribute('aria-pressed', String(S.settings.adarshLive));
     if (tagEl) tagEl.textContent = tagText();
     vibe();
@@ -439,6 +546,7 @@ const Voice = (() => {
     session++; if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
     STT.stop(); TTS.stop();
     if (liveOn) { liveOn = false; Live.stop(); }
+    refreshCameraControls();
     capNow();
     if (S.settings.adarshLive) {
       if (startLive()) { toast('Google Live on'); return; }
@@ -451,7 +559,7 @@ const Voice = (() => {
   /* opts.listen: coming back from the background session, so start listening right away */
   function open(opts = {}) {
     if (BackgroundVoice.active()) return BackgroundVoice.open();
-    if (openFlag) return; wakeLive = opts.wakeWord === true; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.classList.toggle('wake-mini', opts.wakeWord === true); el.hidden = false; setState('idle');
+    if (openFlag) return; wakeLive = opts.wakeWord === true; liveConnected = false; liveRole = 'main'; cameraState = 'off'; cameraMessage = ''; cameraRequested = false; WakeWord.pause('voice'); session++; openFlag = true; if (opts.listen && STT.supported()) handsfree = true; build(); el.classList.toggle('wake-mini', opts.wakeWord === true); el.hidden = false; setState('idle');
     caption('', STT.supported() ? (opts.listen ? 'Wapas app mein. Bolo, main sun raha hoon.' : 'Tap the orb and speak. Hindi, English or Hinglish.') : 'Speech input isn’t available in this browser. Type below, replies can still be spoken.');
     document.addEventListener('keydown', onEsc);
     BackgroundVoice.arm();
@@ -472,7 +580,8 @@ const Voice = (() => {
   function startLive() {
     const token = session;
     const holdOnLiveFailure = wakeLive;
-    liveUser = ''; liveModel = '';
+    liveUser = ''; liveModel = ''; liveConnected = false; liveRole = 'main'; refreshCameraControls();
+    showLiveSources([]);
     /* Live owns the speaker; a pending device/natural TTS job must not talk over native PCM. */
     TTS.stop();
     capHold();
@@ -481,9 +590,10 @@ const Voice = (() => {
     const ok = Live.start({
       onState: (s, m, ev) => {
         if (!active(token)) return;
-        if (s === 'speaking') { setState('speaking'); capPace(); }
-        else if (s === 'listening') { setState('listening'); capPace(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
+        if (s === 'speaking') { liveConnected = true; refreshCameraControls(); setState('speaking'); capPace(); }
+        else if (s === 'listening') { liveConnected = true; refreshCameraControls(); setState('listening'); capPace(); stateEl.textContent = 'Live · just speak' + (m ? ' · ' + m.replace('gemini-', '') : ''); }
         else if (s === 'connecting') {
+          liveConnected = false; stopCamera();
           setState('connecting');
           /* say which attempt is running, so a slow start is visible instead of a dead "Connecting…" */
           const n = ev && ev.attempt ? ' ' + ev.attempt + '/' + ev.total : '';
@@ -491,32 +601,47 @@ const Voice = (() => {
         }
       },
       onNotice: (m) => { if (active(token)) caption(liveUser, m); },
+      onSources: (sources) => { if (active(token)) showLiveSources(sources); },
+      onCamera: (ev) => { if (active(token)) cameraEvent(ev); },
       onUser: (t) => {
         if (!active(token)) return;
         if (capRev) capRev.finish();
         liveUser = (liveUser + ' ' + t).trim().slice(-600); liveModel = '';
+        sourceOpen = false; showLiveSources([]);
         capHold(); caption(liveUser, liveModel);
         /* auto role routing: the sentence itself decides which Live model should answer it */
+        /* Chat-model choice only sets the everyday voice; specialist jobs are auto-routed in the background. */
         const want = Live.roleFor(t, Live.role);
-        if (want && want !== Live.role && Live.switch(want, t)) setState('thinking');
+        if (want && want !== Live.role && Live.switch(want, t)) {
+          liveRole = want;
+          if (audioOnlyRole(liveRole)) stopCamera(); else refreshCameraControls();
+          setState('thinking');
+        }
       },
       onRole: (r, label) => {
         if (!active(token)) return;
+        liveRole = r || 'main';
+        if (audioOnlyRole(liveRole)) stopCamera(); else refreshCameraControls();
         if (r && r !== 'main' && label) { setState('thinking'); stateEl.textContent = label; }
         else if (r === 'main') stateEl.textContent = 'Live · just speak';
       },
       onModel: (t) => { if (!active(token)) return; liveModel = (liveModel + ' ' + t).trim().slice(-1200); caption(liveUser, liveModel); },
       onError: (m) => {
         if (!active(token)) return;
-        liveOn = false;
+        stopCamera(); liveConnected = false; liveOn = false; refreshCameraControls();
         caption('', 'Adarsh Live: ' + m + ' — normal voice par ja raha hoon.'); capNow();
         toast('Adarsh Live off: ' + m);
         /* a wake trigger also falls back, so "Hey Adarsh" always ends in a listening voice screen */
         setTimeout(() => { if (active(token)) { if (holdOnLiveFailure) { wakeLive = false; if (tagEl) tagEl.textContent = tagText(); } setState('idle'); listen(); } }, 900);
       },
-      onClosed: () => { if (active(token) && liveOn) { liveOn = false; setState('idle'); capNow(); } }
+      onClosed: () => {
+        if (!active(token)) return;
+        const wasOn = liveOn;
+        stopCamera(); liveConnected = false; liveOn = false; refreshCameraControls();
+        if (wasOn) { setState('idle'); capNow(); }
+      }
     });
-    if (!ok) { liveOn = false; setState('idle'); return false; }
+    if (!ok) { stopCamera(); liveConnected = false; liveOn = false; refreshCameraControls(); setState('idle'); return false; }
     liveOn = true; setState('connecting');
     return true;
   }
@@ -525,14 +650,14 @@ const Voice = (() => {
     if (!openFlag) return; openFlag = false; session++;
     if (!opts.keepBackground) BackgroundVoice.disarm();
     if (releaseAsk) releaseAsk(''); if (releasePrompt) releasePrompt();
-    liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop(); el.classList.remove('wake-mini');
+    stopCamera(); liveConnected = false; liveRole = 'main'; liveOn = false; wakeLive = false; if (capRev) capRev.stop(); capRev = null; Live.stop(); el.classList.remove('wake-mini');
     STT.stop(); TTS.stop(); el.hidden = true; document.removeEventListener('keydown', onEsc); WakeWord.resume('voice');
   }
   const onEsc = (e) => { if (e.key === 'Escape') close(); };
   function toggle() {
     if (liveOn) {
-      if (el.dataset.state === 'speaking') { Live.stop(); liveOn = false; setState('idle'); return; }   // interrupt, stay open
-      Live.stop(); liveOn = false; close(); return;   // end the live session
+      if (el.dataset.state === 'speaking') { stopCamera(); liveConnected = false; Live.stop(); liveOn = false; refreshCameraControls(); setState('idle'); return; }   // interrupt, stay open
+      stopCamera(); liveConnected = false; Live.stop(); liveOn = false; refreshCameraControls(); close(); return;   // end the live session
     }
     const s = el.dataset.state;
     if (s === 'listening') return STT.stop();

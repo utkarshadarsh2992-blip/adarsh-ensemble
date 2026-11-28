@@ -15,14 +15,22 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Matrix
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.provider.MediaStore
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Base64
+import android.util.Size
+import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
 import android.webkit.ValueCallback
@@ -35,13 +43,27 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
@@ -71,10 +93,27 @@ class MainActivity : AppCompatActivity() {
     private val micPermission = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { ok -> val cb = micCallback; micCallback = null; cb?.invoke(ok) }
+    @Volatile private var liveCameraGeneration = 0
+    private var pendingLiveCameraToken: Int? = null
+    private var grantedLiveCameraToken: Int? = null
+    private val liveCameraPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val token = pendingLiveCameraToken
+        pendingLiveCameraToken = null
+        if (token == null || token != liveCameraGeneration) return@registerForActivityResult
+        if (!granted) {
+            liveCameraEvent("error", "Camera permission nahi mili. Live voice chalu rahegi.")
+        } else if (!destroyed && pageTrusted && live?.canReceiveVideo() == true) {
+            if (resumed) startLiveCameraNow(token) else grantedLiveCameraToken = token
+        } else {
+            liveCameraEvent("off", "Live session band ho chuka hai; camera start nahi hua.")
+        }
+    }
     private val dictation by lazy { Dictation(this) }
     private var speaker: Speaker? = null
     private var neural: VoiceManager? = null
-    private var live: AdarshLive? = null
+    @Volatile private var live: AdarshLive? = null
     private var pendingLive: JSONObject? = null
     private var updater: UpdateManager? = null
     private var actions: ActionRunner? = null
@@ -97,6 +136,29 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var awaitingResult = false
     // <input type=file> (Import data, attachments): the WebView needs a chooser from the app, or the tap does nothing.
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+    private var cameraFile: File? = null
+    @Volatile private var liveCameraActive = false
+    private var liveCameraPreviewView: PreviewView? = null
+    private var liveCameraProvider: ProcessCameraProvider? = null
+    private var liveCameraPreviewUseCase: Preview? = null
+    private var liveCameraAnalysisUseCase: ImageAnalysis? = null
+    private var liveCameraExecutor: ExecutorService? = null
+    private val lastLiveCameraFrameAt = AtomicLong(0L)
+    private val cameraCapture = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { resultCode ->
+        val cb = fileCallback; fileCallback = null
+        val source = cameraFile; cameraFile = null
+        awaitingResult = false
+        val saved = resultCode.resultCode == RESULT_OK
+        val result = if (saved && source != null && source.isFile && source.length() > 0L) compressCameraPhoto(source) else null
+        val uri = try { result?.let { FileProvider.getUriForFile(this, "$packageName.updates", it) } } catch (_: Exception) { null }
+        if (uri == null) {
+            source?.delete()
+            if (result != source) result?.delete()
+        } else if (result != source) source?.delete()
+        cb?.onReceiveValue(uri?.let { arrayOf(it) })
+    }
     private val filePicker = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { r ->
@@ -108,6 +170,67 @@ class MainActivity : AppCompatActivity() {
             else data.data?.let { arrayOf(it) }
         }
         cb?.onReceiveValue(uris)
+    }
+
+    /** Store camera output privately, apply EXIF rotation, and bound both decoded memory and upload size. */
+    private fun compressCameraPhoto(source: File): File? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(source.absolutePath, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1600) sample *= 2
+            val decoded = BitmapFactory.decodeFile(source.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+            val orientation = try {
+                android.media.ExifInterface(source.absolutePath).getAttributeInt(
+                    android.media.ExifInterface.TAG_ORIENTATION, android.media.ExifInterface.ORIENTATION_NORMAL
+                )
+            } catch (_: Exception) { android.media.ExifInterface.ORIENTATION_NORMAL }
+            val matrix = Matrix()
+            when (orientation) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                android.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+                android.media.ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+                android.media.ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.postScale(-1f, 1f) }
+                android.media.ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.postScale(-1f, 1f) }
+            }
+            val oriented = if (matrix.isIdentity) decoded else Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+            if (oriented !== decoded) decoded.recycle()
+            val scale = minOf(1f, 1600f / maxOf(oriented.width, oriented.height).toFloat())
+            val resized = if (scale < 1f) Bitmap.createScaledBitmap(oriented,
+                (oriented.width * scale).toInt().coerceAtLeast(1), (oriented.height * scale).toInt().coerceAtLeast(1), true) else oriented
+            if (resized !== oriented) oriented.recycle()
+            val output = File(source.parentFile, "camera-vision-${System.nanoTime()}.jpg")
+            val ok = FileOutputStream(output).use { resized.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            if (resized !== oriented) resized.recycle() else oriented.recycle()
+            if (ok && output.length() > 0L) output else { output.delete(); null }
+        } catch (_: Exception) { null }
+    }
+
+    private fun launchCameraCapture(cb: ValueCallback<Array<Uri>>): Boolean {
+        fileCallback?.onReceiveValue(null)
+        fileCallback = cb
+        val output = File(File(cacheDir, "updates").apply { mkdirs() }, "camera-input-${System.nanoTime()}.jpg")
+        return try {
+            cameraFile = output
+            val uri = FileProvider.getUriForFile(this, "$packageName.updates", output)
+            awaitingResult = true
+            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, uri).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                clipData = ClipData.newUri(contentResolver, "ADARSH camera photo", uri)
+            }
+            cameraCapture.launch(intent)
+            true
+        } catch (_: Exception) {
+            cameraFile = null
+            fileCallback = null
+            output.delete()
+            awaitingResult = false
+            cb.onReceiveValue(null)
+            false
+        }
     }
     // Export data: "Save file" writes the JSON wherever the user picks (Downloads, Drive...).
     private var pendingSave: String? = null
@@ -276,6 +399,8 @@ class MainActivity : AppCompatActivity() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
         handoffConfig = null
         backgroundGeneration++
+        stopLiveCamera(message = "Camera sharing Live screen se bahar jaate hi band hui.")
+        live?.stop() // release the Live AudioRecord before the background voice service claims the microphone
         dictation.destroy(); speaker?.stopAll(silent = true); neural?.stop()
         WakeWordService.pause(this, "background_voice")
         val out = BackgroundVoiceService.start(this, cfg, handoff = true)
@@ -371,9 +496,10 @@ class MainActivity : AppCompatActivity() {
         }
         web.webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(view: WebView, cb: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                val types = params.acceptTypes.filter { it.isNotBlank() && it.contains('/') }
+                if (params.isCaptureEnabled && types.any { it.startsWith("image/") }) return launchCameraCapture(cb)
                 fileCallback?.onReceiveValue(null)
                 fileCallback = cb
-                val types = params.acceptTypes.filter { it.isNotBlank() && it.contains('/') }
                 // "application/json" greys out .json files in many file managers: only images are filtered by type
                 val type = if (types.size == 1 && types[0].startsWith("image/")) types[0] else "*/*"
                 val i = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type)
@@ -475,6 +601,10 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         resumed = true
         awaitingResult = false   // our own permission dialog / picker has closed
+        grantedLiveCameraToken?.let { token ->
+            grantedLiveCameraToken = null
+            if (token == liveCameraGeneration && !destroyed && live?.canReceiveVideo() == true) startLiveCameraNow(token)
+        }
         getSystemService(NotificationManager::class.java)?.cancel(REPLY_ID)
         web.onResume()
         flush()   // answers that arrived while the app was in the background
@@ -483,8 +613,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        // Screen off / another app: keep the live voice chat going (no-op unless the voice screen armed a config).
-        if (!isChangingConfigurations) handoffToBackground()
+        // Camera is always foreground-only. Audio-only handoff is started after the Live socket releases its mic.
+        if (liveCameraActive) stopLiveCamera(message = "Camera sharing app background mein jaane par band hui.")
+        val handedOff = if (!isChangingConfigurations) handoffToBackground() else false
+        if (!handedOff && !awaitingResult) live?.stop()
         resumed = false
         // Runtime permission dialogs can pause the activity before BNR capture starts; that pending
         // permission path is left alone. Active BNR capture/transcription is foreground-only.
@@ -498,6 +630,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Runs on the UI thread: starts the Live session and pushes its first status to the page. */
     private fun startLiveNow(cfg: JSONObject): JSONObject {
+        stopLiveCamera(notify = false)
         WakeWordService.pause(this, "live")
         dictationWakePaused = false
         WakeWordService.resume(this, "dictation")
@@ -513,12 +646,182 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun liveEvent(ev: JSONObject) {
-        if (ev.optString("type") in setOf("error", "closed")) WakeWordService.resume(applicationContext, "live")
+        when (ev.optString("type")) {
+            "error", "closed" -> {
+                stopLiveCamera(message = "Live band hua; camera sharing bhi band hui.")
+                WakeWordService.resume(applicationContext, "live")
+            }
+            "role" -> if (ev.optString("role") in setOf("translate", "transcribe") && liveCameraActive) {
+                stopLiveCamera(message = "Is audio-only Live mode mein camera sharing pause hui.")
+            }
+        }
         js("window.__adarshLive&&window.__adarshLive($ev)")
     }
 
+    private fun liveCameraEvent(state: String, message: String? = null) {
+        val event = JSONObject().put("type", "camera").put("state", state)
+        if (!message.isNullOrBlank()) event.put("message", message.take(180))
+        js("window.__adarshLive&&window.__adarshLive($event)")
+    }
+
+    /** Only called from an explicit Live camera control; camera permission is separate from microphone permission. */
+    private fun startLiveCamera(): JSONObject {
+        if (destroyed || !resumed || !pageTrusted) return JSONObject().put("ok", false).put("state", "error")
+            .put("message", "Live screen visible hone par camera chalu karein.")
+        val session = live ?: return JSONObject().put("ok", false).put("state", "error").put("message", "Pehle Adarsh Live chalu karein.")
+        if (!session.canReceiveVideo()) return JSONObject().put("ok", false).put("state", "error")
+            .put("message", "Gemini Live connect hone ke baad camera chalu karein.")
+        if (liveCameraActive) return JSONObject().put("ok", true).put("state", "on")
+        if (pendingLiveCameraToken != null) return JSONObject().put("ok", true).put("state", "permission_required")
+        val token = ++liveCameraGeneration
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            pendingLiveCameraToken = token
+            return try {
+                awaitingResult = true
+                liveCameraPermission.launch(Manifest.permission.CAMERA)
+                JSONObject().put("ok", true).put("state", "permission_required")
+            } catch (_: Exception) {
+                pendingLiveCameraToken = null
+                awaitingResult = false
+                JSONObject().put("ok", false).put("state", "error").put("message", "Camera permission request nahi khul saki.")
+            }
+        }
+        return startLiveCameraNow(token)
+    }
+
+    private fun startLiveCameraNow(token: Int): JSONObject {
+        val session = live
+        if (destroyed || !resumed || !pageTrusted || token != liveCameraGeneration || session?.canReceiveVideo() != true) {
+            return JSONObject().put("ok", false).put("state", "error").put("message", "Live session ab active nahi hai.")
+        }
+        val root = web.parent as? FrameLayout
+            ?: return JSONObject().put("ok", false).put("state", "error").put("message", "Camera preview available nahi hai.")
+        val previewView = liveCameraPreviewView ?: PreviewView(this).also { view ->
+            view.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            view.scaleType = PreviewView.ScaleType.FILL_CENTER
+            view.setBackgroundColor(Color.BLACK)
+            view.background = GradientDrawable().apply { setColor(Color.BLACK); cornerRadius = dp(14).toFloat() }
+            view.clipToOutline = true
+            view.contentDescription = "Camera preview shared with Gemini Live while camera is on"
+            view.elevation = dp(12).toFloat()
+            val params = FrameLayout.LayoutParams(dp(132), dp(176), Gravity.TOP or Gravity.END).apply {
+                topMargin = dp(72)
+                marginEnd = dp(14)
+            }
+            root.addView(view, params)
+            liveCameraPreviewView = view
+        }
+        previewView.visibility = View.VISIBLE
+        val executor = Executors.newSingleThreadExecutor()
+        liveCameraExecutor = executor
+        val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
+        val analysis = ImageAnalysis.Builder()
+            .setTargetResolution(Size(640, 480))
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+        analysis.setAnalyzer(executor) { image ->
+            try {
+                val now = SystemClock.elapsedRealtime()
+                val previous = lastLiveCameraFrameAt.get()
+                if (liveCameraActive && token == liveCameraGeneration && resumed && session.canReceiveVideo() &&
+                    now - previous >= LIVE_CAMERA_FRAME_INTERVAL_MS && lastLiveCameraFrameAt.compareAndSet(previous, now)) {
+                    encodeLiveCameraFrame(image)?.let { session.sendVideoFrame(it) }
+                }
+            } catch (_: Exception) {
+                // Camera frames are best-effort; a single bad frame must not interrupt the Live audio session.
+            } finally {
+                image.close()
+            }
+        }
+        lastLiveCameraFrameAt.set(0L)
+        return try {
+            val future = ProcessCameraProvider.getInstance(applicationContext)
+            future.addListener({
+                if (destroyed || !resumed || token != liveCameraGeneration || !pageTrusted || live !== session || !session.canReceiveVideo()) {
+                    executor.shutdownNow()
+                    if (liveCameraExecutor === executor) liveCameraExecutor = null
+                    previewView.visibility = View.GONE
+                    return@addListener
+                }
+                try {
+                    val provider = future.get()
+                    provider.unbindAll()
+                    provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+                    liveCameraProvider = provider
+                    liveCameraPreviewUseCase = preview
+                    liveCameraAnalysisUseCase = analysis
+                    liveCameraActive = true
+                    liveCameraEvent("on")
+                } catch (_: Exception) {
+                    analysis.clearAnalyzer()
+                    executor.shutdownNow()
+                    if (liveCameraExecutor === executor) liveCameraExecutor = null
+                    previewView.visibility = View.GONE
+                    liveCameraEvent("error", "Camera start nahi hua. Permission aur camera availability check karein.")
+                }
+            }, ContextCompat.getMainExecutor(this))
+            JSONObject().put("ok", true).put("state", "starting")
+        } catch (_: Exception) {
+            analysis.clearAnalyzer()
+            executor.shutdownNow()
+            liveCameraExecutor = null
+            previewView.visibility = View.GONE
+            JSONObject().put("ok", false).put("state", "error").put("message", "Camera start nahi hua.")
+        }
+    }
+
+    private fun encodeLiveCameraFrame(image: ImageProxy): ByteArray? {
+        val source = try { image.toBitmap() } catch (_: Exception) { return null }
+        val rotation = image.imageInfo.rotationDegrees
+        val rotated = if (rotation == 0) source else try {
+            Bitmap.createBitmap(source, 0, 0, source.width, source.height, Matrix().apply { postRotate(rotation.toFloat()) }, true)
+        } catch (_: Exception) { source }
+        val scale = minOf(1f, 640f / maxOf(rotated.width, rotated.height).toFloat())
+        val scaled = if (scale < 1f) Bitmap.createScaledBitmap(rotated,
+            (rotated.width * scale).toInt().coerceAtLeast(1), (rotated.height * scale).toInt().coerceAtLeast(1), true) else rotated
+        return try {
+            val bytes = ByteArrayOutputStream()
+            if (!scaled.compress(Bitmap.CompressFormat.JPEG, 62, bytes) || bytes.size() > MAX_LIVE_CAMERA_FRAME_BYTES) null
+            else bytes.toByteArray()
+        } catch (_: Exception) { null }
+        finally {
+            if (scaled !== rotated) scaled.recycle()
+            if (rotated !== source) rotated.recycle()
+            source.recycle()
+        }
+    }
+
+    private fun stopLiveCamera(message: String? = null, notify: Boolean = true): JSONObject {
+        val wasActive = liveCameraActive || pendingLiveCameraToken != null || liveCameraProvider != null
+        liveCameraGeneration++
+        pendingLiveCameraToken = null
+        grantedLiveCameraToken = null
+        liveCameraActive = false
+        val analysis = liveCameraAnalysisUseCase
+        val preview = liveCameraPreviewUseCase
+        val provider = liveCameraProvider
+        liveCameraAnalysisUseCase = null
+        liveCameraPreviewUseCase = null
+        liveCameraProvider = null
+        try { analysis?.clearAnalyzer() } catch (_: Exception) { }
+        try {
+            if (provider != null) {
+                if (analysis != null) provider.unbind(analysis)
+                if (preview != null) provider.unbind(preview)
+            }
+        } catch (_: Exception) { }
+        liveCameraExecutor?.shutdownNow()
+        liveCameraExecutor = null
+        liveCameraPreviewView?.visibility = View.GONE
+        if (notify && wasActive) liveCameraEvent("off", message)
+        return JSONObject().put("ok", true).put("state", "off")
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
     override fun onDestroy() {
         destroyed = true
+        stopLiveCamera(notify = false)
         backgroundGeneration++
         pendingBackground = null
         if (current === this) current = null
@@ -538,6 +841,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val HOST = "appassets.androidplatform.net"
+        private const val LIVE_CAMERA_FRAME_INTERVAL_MS = 1_000L
+        private const val MAX_LIVE_CAMERA_FRAME_BYTES = 256 * 1024
         /** M1: true only while the main frame is https://appassets.androidplatform.net (set on the UI/IO thread). */
         @Volatile private var pageTrusted = false
         @Volatile private var pendingWakeOpen = false
@@ -676,6 +981,7 @@ class MainActivity : AppCompatActivity() {
             if (key.isNullOrBlank()) return@onMain JSONObject().put("ok", false).put("state", "error")
                 .put("message", "Gemini API key nahi mili. Controller > Keys & settings me daalo.").toString()
             WakeWordService.pause(a, "live")
+            a.stopLiveCamera(notify = false)
             cfg.put("key", key)
             val session = a.live ?: AdarshLive(a) { ev -> a.liveEvent(ev) }.also { a.live = it }
             if (session.active()) session.stop()
@@ -705,6 +1011,14 @@ class MainActivity : AppCompatActivity() {
         }
         fun liveSendText(text: String): String = onMain {
             JSONObject().put("ok", current?.live?.sendText(text) ?: false).toString()
+        }
+        fun liveCameraStart(): String = onMain {
+            current?.startLiveCamera()?.toString()
+                ?: JSONObject().put("ok", false).put("state", "error").put("message", "App active nahi hai.").toString()
+        }
+        fun liveCameraStop(): String = onMain {
+            current?.stopLiveCamera()?.toString()
+                ?: JSONObject().put("ok", true).put("state", "off").toString()
         }
         /** A generated report: Downloads/Adarsh on Q+, else the app's own reports folder. Falls back to the app folder
          *  when the MediaStore insert is refused (some OEMs), so a report is never lost. */
@@ -747,6 +1061,7 @@ class MainActivity : AppCompatActivity() {
         fun liveStop(): String = onMain {
             val a = current!!
             a.pendingLive = null
+            a.stopLiveCamera(message = "Live session band hui; camera sharing bhi band hui.")
             a.live?.stop()
             WakeWordService.resume(a, "live")
             JSONObject().put("ok", true).toString()

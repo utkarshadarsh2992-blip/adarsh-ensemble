@@ -276,6 +276,71 @@ test('action progress does not replace step objects, and the reply is delivered 
   assert.deepEqual(spoken.at(-1), { text: reply.text, saved: true });
 });
 
+test('Controller app.open uses only the fixed browser URL and untrusted plans cannot launch it', async t => {
+  const app = makeHarness();
+  t.after(() => app.close());
+  const opened = [];
+  app.window.open = (...args) => { opened.push(args); return null; };
+  const controller = plan([step('controller', 'app.open', { app: 'controller' })]);
+  await app.Actions.execute(controller, false);
+  assert.equal(controller.run.results.controller.ok, true);
+  assert.deepEqual(opened, [['https://adarshctl-pc68aukk.manus.space', '_blank', 'noopener']]);
+  assert.equal(app.Actions.webStep(step('arbitrary', 'app.open', { app: 'https://attacker.example' })).ok, false);
+  assert.equal(app.Actions.webStep(step('inherited', 'app.open', { app: 'constructor' })).ok, false);
+  const untrusted = plan([step('untrusted', 'app.open', { app: 'controller' })]);
+  untrusted.origin = 'model';
+  await app.Actions.execute(untrusted, false);
+  assert.equal(opened.length, 1);
+});
+
+test('paired Controller reads are sanitized and model edits send only models/routes', async t => {
+  const app = makeHarness({ native: true });
+  t.after(() => app.close());
+  const state = { ok: true, revision: 7, config: {
+    apiKey: 'LEAK_SENTINEL', models: [{ label: 'Research', provider: 'groq', model: 'llama-3.3-70b-versatile', enabled: true,
+      extra: { reasoning_effort: 'medium', secret: 'LEAK_SENTINEL' }, endpoint: 'https://private.example' }], routes: { standard: ['Research'] },
+    provider_endpoints: { groq: 'https://private.example' }
+  }, news: { settings: { alerts_per_day: 5 }, budget: { groq: { tokens_used: 12, tokens_cap: 100 } } },
+  device_settings: { briefingOn: true, briefingTime: '21:30', briefingTelegram: true }, credentials: { values: { groq: 'LEAK_SENTINEL' } },
+  setup: { secret: 'LEAK_SENTINEL' } };
+  const updates = [];
+  app.window.AdarshNative.controllerAssistantRead = id => app.window.__adarshResult(id, JSON.stringify(state), null);
+  app.window.AdarshNative.controllerAssistantUpdate = (id, payload) => {
+    updates.push(JSON.parse(payload));
+    app.window.__adarshResult(id, JSON.stringify({ ok: true, revision: 8, applied: true }), null);
+  };
+
+  const read = plan([step('inspect', 'controller.read')]);
+  await app.Actions.execute(read, false);
+  assert.equal(read.run.results.inspect.ok, true);
+  assert.equal(read.run.results.inspect.controller.models[0].label, 'Research');
+  assert.equal(JSON.stringify(read.run.results.inspect).includes('LEAK_SENTINEL'), false);
+  assert.equal(JSON.stringify(read.run.results.inspect).includes('private.example'), false);
+
+  const toggle = plan([step('disable', 'controller.model.toggle', { label: 'Research', enabled: false })]);
+  await app.Actions.execute(toggle, false);
+  assert.equal(toggle.run.results.disable.ok, true);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].kind, 'config');
+  assert.deepEqual(Object.keys(updates[0].values).sort(), ['models', 'routes']);
+  assert.equal(updates[0].values.models[0].enabled, false);
+  assert.equal(JSON.stringify(updates[0]).includes('LEAK_SENTINEL'), false);
+  assert.equal(JSON.stringify(updates[0]).includes('private.example'), false);
+});
+
+test('Controller edits stop at the local access gate when permission is disabled', async t => {
+  const app = makeHarness({ native: true });
+  t.after(() => app.close());
+  let called = 0;
+  app.S.settings.aiAccess = { localEdit: false };
+  app.window.AdarshNative.controllerAssistantRead = () => { called++; };
+  const toggle = plan([step('disable', 'controller.model.toggle', { label: 'Research', enabled: false })]);
+  await app.Actions.execute(toggle, false);
+  assert.equal(called, 0);
+  assert.equal(toggle.run.results.disable.ok, false);
+  assert.match(toggle.run.results.disable.message, /access is off/i);
+});
+
 test('safe steps are not replayed when a later sensitive step is confirmed', async t => {
   const app = makeHarness();
   t.after(() => app.close());

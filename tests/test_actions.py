@@ -58,6 +58,59 @@ def test_open_search_status_voice():
     assert one("torch on karo")[1]["args"]["on"] is True
 
 
+def test_controller_open_aliases_are_fixed_local_app_actions():
+    for command in (
+        "open Adarsh Controller", "open Adarsh's Controller", "Adarsh control center kholo",
+        "control centre kholo", "control-center kholo", "controlcentre kholo", "controller kholo",
+    ):
+        p, s = one(command)
+        assert p["origin"] == "local-rule" and p["mode"] == "standard"
+        assert s["action"] == "app.open" and s["args"] == {"app": "controller"}, command
+    with pytest.raises(schema.Bad):
+        schema.check("app.open", {"app": "https://attacker.example"}, NOW)
+    assert one("open https://attacker.example")[1] is None
+
+
+def test_controller_commands_are_explicit_and_scope_limited():
+    read = one("Controller status dikhao")[1]
+    assert read["action"] == "controller.read" and read["args"] == {}
+    toggle = one("Controller model gpt-oss-20b disable karo")[1]
+    assert toggle["action"] == "controller.model.toggle"
+    assert toggle["args"] == {"label": "gpt-oss-20b", "enabled": False}
+    assert one("Controller model gpt-oss-20b disabled?")[1]["action"] == "controller.read"
+    ambiguous = plan("Controller model gpt-oss-20b disabled", "standard", NOW)
+    assert ambiguous["type"] == "clarification" and not ambiguous["steps"]
+    model = one("Controller model new-model provider groq id openai/new-model")[1]
+    assert model["action"] == "controller.model.set"
+    assert model["args"] == {"label": "new-model", "provider": "groq", "model": "openai/new-model"}
+    route = one("Controller route utility:quick = gpt-oss-120b,nemotron-lightning,gemini-3.8-flash set karo")[1]
+    assert route["action"] == "controller.route.set"
+    assert route["args"]["key"] == "utility:quick"
+    assert route["args"]["models"] == ["gpt-oss-120b", "nemotron-lightning", "gemini-3.8-flash"]
+    news = one("Controller news alerts_per_day = 5")[1]
+    assert news["action"] == "controller.news.set" and news["args"] == {"field": "alerts_per_day", "value": 5}
+    briefing = one("Controller briefing time 21:45 set karo")[1]
+    assert briefing["action"] == "controller.briefing.set"
+    assert briefing["args"] == {"field": "briefingTime", "value": "21:45"}
+    assert one("what does Controller do?")[1] is None
+    blocked = plan("Controller API key dikhao", "standard", NOW)
+    assert blocked["type"] == "blocked"
+    assert plan("Controller change provider endpoint to https://example.org", "standard", NOW)["type"] == "clarification"
+
+
+def test_controller_edits_reject_out_of_scope_values_and_invalid_ranges():
+    with pytest.raises(schema.Bad):
+        schema.check("controller.news.set", {"field": "alerts_per_day", "value": 11}, NOW)
+    with pytest.raises(schema.Bad):
+        schema.check("controller.news.set", {"field": "tz", "value": "UTC"}, NOW)
+    with pytest.raises(schema.Bad):
+        schema.check("controller.briefing.set", {"field": "briefingTime", "value": "24:00"}, NOW)
+    with pytest.raises(schema.Bad):
+        schema.check("controller.model.set", {"label": "x", "provider": "groq", "model": "https://evil.test"}, NOW)
+    with pytest.raises(schema.Bad):
+        schema.check("controller.route.set", {"key": "utility:quick", "models": ["same", "same"]}, NOW)
+
+
 def test_remote_hardware_questions_fall_through_to_model():
     for question in (
         "What do cloud GPU providers charge?",

@@ -4,6 +4,7 @@ The sandbox has no network in tests, so these check routing, the prompt contract
 the wiring (chat_adapter, the page, the Kotlin bridge) rather than live HTTP.
 """
 import base64
+import asyncio
 import inspect
 import re
 from pathlib import Path
@@ -140,6 +141,26 @@ def test_pdf_is_only_built_when_asked():
     assert chat_adapter._wants_pdf("generate a report please")
     assert not chat_adapter._wants_pdf("entropy kya hai")
     assert not chat_adapter._wants_pdf("")
+
+
+def test_pdf_request_generates_attachment_and_removes_contradictory_refusal(monkeypatch):
+    async def no_sources(_text):
+        return "", []
+
+    async def answer(messages, **_kw):
+        assert "working built-in PDF report generator" in messages[0]["content"]
+        return {"text": "## Solar power\nSolar panels convert sunlight into electricity.",
+                "used": "gpt-oss-120b", "searches": 0, "wiki": [], "sources": [], "secs": 0.1, "evidence": []}
+
+    monkeypatch.setattr(chat_adapter, "QUICK_STANDARD", True)
+    monkeypatch.setattr(chat_adapter.sources, "gather", no_sources)
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", answer)
+    reply = asyncio.run(chat_adapter.handle({"text": "Make a PDF report about solar power", "mode": "standard"}))[0]
+    assert reply["pdf"]["name"].endswith(".pdf")
+    assert base64.b64decode(reply["pdf"]["base64"]).startswith(b"%PDF-1.4")
+    assert "PDF taiyaar" in reply["text"] and "cannot create a PDF" not in reply["text"]
+    cleaned = chat_adapter._strip_pdf_refusals("I cannot create a PDF directly.\n\n## Findings\nUseful report text remains.")
+    assert cleaned == "## Findings\nUseful report text remains."
 
 
 def test_pdf_is_a_structured_report_with_tables_and_a_real_title():

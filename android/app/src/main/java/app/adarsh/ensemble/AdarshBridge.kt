@@ -75,6 +75,11 @@ class AdarshBridge(
     fun liveSwitch(role: String): String = if (ok()) MainActivity.liveSwitch(role) else denied
     @JavascriptInterface
     fun liveSendText(text: String): String = if (ok()) MainActivity.liveSendText(text) else denied
+    /** Camera frames remain native; these calls only request/stop the local preview and return status. */
+    @JavascriptInterface
+    fun liveCameraStart(): String = if (ok()) MainActivity.liveCameraStart() else denied
+    @JavascriptInterface
+    fun liveCameraStop(): String = if (ok()) MainActivity.liveCameraStop() else denied
     @JavascriptInterface
     fun savePdf(name: String, base64: String): String = if (ok()) MainActivity.savePdf(name, base64) else denied
     /** Source links leave the bundled WebView only through a validated Android ACTION_VIEW intent. */
@@ -176,6 +181,18 @@ class AdarshBridge(
     @JavascriptInterface
     fun controllerSync(id: String) {
         if (ok()) Engine.controllerSync(id) { result, error -> deliver(id, result, error) }
+        else deliver(id, null, "Untrusted page")
+    }
+
+    @JavascriptInterface
+    fun controllerAssistantRead(id: String) {
+        if (ok()) Engine.controllerAssistantRead(id) { result, error -> deliver(id, result, error) }
+        else deliver(id, null, "Untrusted page")
+    }
+
+    @JavascriptInterface
+    fun controllerAssistantUpdate(id: String, payloadJson: String) {
+        if (ok()) Engine.controllerAssistantUpdate(id, payloadJson) { result, error -> deliver(id, result, error) }
         else deliver(id, null, "Untrusted page")
     }
 

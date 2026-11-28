@@ -11,6 +11,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import chat_adapter  # noqa: E402
 import config  # noqa: E402
+import health  # noqa: E402
+import llm  # noqa: E402
 import pipeline  # noqa: E402
 import voice  # noqa: E402
 
@@ -57,9 +59,107 @@ def test_standard_is_one_call(quick):
     assert quick[0][2]["tools"] is True  # web search + Wikipedia tools offered
 
 
+def test_standard_image_uses_groq_qwen_vision_and_image_only_gets_default_prompt(monkeypatch, quick):
+    seen = {}
+
+    class Client:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): return False
+
+    async def fake_chat(client, spec, messages, **kw):
+        seen.update(spec=spec, messages=messages, kw=kw)
+        health.trace_add(spec, spec, True, messages=messages, output="Photo mein ek laal ball dikh rahi hai.")
+        return "Photo mein ek laal ball dikh rahi hai."
+
+    monkeypatch.setattr(chat_adapter, "make_client", Client)
+    monkeypatch.setattr(chat_adapter, "chat", fake_chat)
+    photo = base64.b64encode(b"\xff\xd8\xfffake-jpeg").decode("ascii")
+    async def ask():
+        result = await chat_adapter.handle({"mode": "standard", "text": "", "attachments": [
+            {"kind": "image", "type": "image/jpeg", "dataUrl": "data:image/jpeg;base64," + photo}
+        ]})
+        return result, health._trace.get()
+    out, trace = run(ask())
+    assert "Qwen 3.8 27B vision" in out[0]["steps"][0]
+    assert seen["spec"].provider == "groq" and seen["spec"].model == "qwen/qwen3.8-27b"
+    assert seen["spec"].fallbacks == (), "camera vision never silently falls back to a different provider/model"
+    parts = seen["messages"][1]["content"]
+    assert parts[0]["text"] == "Is photo mein kya dikh raha hai?"
+    assert parts[1]["image_url"]["url"].endswith(photo)
+    assert out[0]["text"].startswith("Photo mein")
+    assert seen["kw"]["max_tokens"] <= config.tpm_limit(seen["spec"]) - llm._est_tokens(seen["messages"])
+    assert trace and all("prompt" not in row for row in trace)
+    assert photo not in json.dumps(trace)
+
+
+def test_photo_analysis_is_rejected_outside_standard_and_when_qwen_is_controller_disabled(monkeypatch, quick):
+    photo = base64.b64encode(b"\xff\xd8\xfffake-jpeg").decode("ascii")
+    attachment = {"kind": "image", "type": "image/jpeg", "dataUrl": "data:image/jpeg;base64," + photo}
+    out = run(chat_adapter.handle({"mode": "physics", "text": "Is photo ko samjhao", "attachments": [attachment]}))
+    assert "sirf Standard" in out["text"]
+    monkeypatch.setattr(config, "DISABLED_LABELS", frozenset({"qwen3.8-27b"}))
+    out = run(chat_adapter.handle({"mode": "standard", "text": "Is photo ko samjhao", "attachments": [attachment]}))
+    assert "disabled" in out[0]["text"]
+
+
+def test_vision_prompt_over_the_groq_tpm_budget_is_rejected_before_call(quick):
+    photo = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xffphoto").decode("ascii")
+    attachments = [{"kind": "image", "type": "image/jpeg", "dataUrl": photo} for _ in range(3)]
+    out = run(chat_adapter.handle({"mode": "standard", "text": "x" * 8000, "attachments": attachments}))
+    assert "tokens/min limit" in out[0]["text"]
+    assert quick == [], "over-budget image prompts are rejected before model traffic"
+
+
+def test_multimodal_budget_and_system_merge_do_not_count_or_stringify_base64():
+    short_url = "data:image/jpeg;base64," + base64.b64encode(b"\xff\xd8\xffx").decode()
+    long_url = "data:image/jpeg;base64," + ("A" * 1_000_000)
+    def messages(url):
+        return [{"role": "system", "content": "Analyze the image."},
+                {"role": "user", "content": [{"type": "text", "text": "What is shown?"},
+                                                  {"type": "image_url", "image_url": {"url": url}}]}]
+    assert llm._est_tokens(messages(short_url)) == llm._est_tokens(messages(long_url))
+    merged = llm._merge_system(messages(long_url))
+    assert merged[0]["content"][0] == {"type": "text", "text": "Analyze the image."}
+    assert merged[0]["content"][2]["image_url"]["url"] == long_url
+
+
 def test_standard_voice_asks_for_spoken_style(quick):
     run(chat_adapter.handle({"text": "France ki rajdhani kya hai?", "mode": "standard", "meta": {"voice": True}}))
     assert "read aloud" in quick[0][1][0]["content"]
+
+
+def test_live_delegate_returns_clickable_sources_and_respects_search_setting(monkeypatch, quick):
+    async def fake(messages, **kw):
+        quick.append(("gpt-oss-120b", messages, kw))
+        return {"text": "Lunar eclipses happen when Earth blocks sunlight from the Moon.",
+                "used": "gpt-oss-120b", "searches": 0, "wiki": ["lunar eclipse"],
+                "sources": [{"title": "Lunar eclipse", "url": "https://en.wikipedia.org/wiki/Lunar_eclipse"}], "secs": 0.1}
+
+    monkeypatch.setattr(chat_adapter.standard_agent, "answer", fake)
+    out = run(chat_adapter.handle({
+        "text": "Explain how a lunar eclipse happens.", "mode": "standard",
+        "meta": {"voice": True, "live_delegate": True},
+        "reply": {"web": "off"},
+        "access": {"localRead": False, "personalOnline": False, "currentChat": False, "oldChats": False},
+    }))
+    assert quick[-1][2]["web"] is False, "Live delegation respects the app's web-search-off setting"
+    assert out[0]["sources"] == [{"title": "Lunar eclipse", "url": "https://en.wikipedia.org/wiki/Lunar_eclipse"}]
+    assert "[Lunar eclipse](https://en.wikipedia.org/wiki/Lunar_eclipse)" in out[0]["text"]
+
+
+def test_live_delegate_skips_controller_disabled_gpt120b(monkeypatch, quick):
+    monkeypatch.setattr(config, "DISABLED_LABELS", frozenset({"gpt-oss-120b"}))
+    async def no_sources(_text):
+        return "", []
+    monkeypatch.setattr(chat_adapter.sources, "gather", no_sources)
+    before = len(quick)
+    out = run(chat_adapter.handle({
+        "text": "Explain how a lunar eclipse happens.", "mode": "standard",
+        "meta": {"voice": True, "live_delegate": True},
+        "access": {"localRead": False, "personalOnline": False, "currentChat": False, "oldChats": False},
+    }))
+    assert len(quick) == before, "a controller-disabled GPT-120B is never contacted"
+    assert "disabled" in out[0]["text"].lower()
 
 
 def test_depth_changes_the_instruction(quick):

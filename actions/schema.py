@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import math
+import re
 import time
 from typing import Any
 
@@ -18,6 +19,9 @@ APPS = {
     "camera": ("camera",),
     "settings": ("settings", "setting"),
     "chrome": ("chrome", "browser"),
+    "controller": ("adarsh controller", "adarsh's controller", "adarshs controller", "adarsh control center",
+                   "adarsh control centre", "control center", "control-centre", "control-center", "control centre",
+                   "controlcentre", "controlcenter", "controller"),
     "spotify": ("spotify", "music"),
     "phone": ("phone app", "dialer"),
     "messages": ("messages", "sms"),
@@ -87,6 +91,13 @@ _ALLOWED = {
     "settings.update": {"key", "value"},
     "timer.start": {"seconds", "text"},
     "app.open": {"app"},
+    "controller.read": set(),
+    "controller.model.toggle": {"label", "enabled"},
+    "controller.model.remove": {"label"},
+    "controller.model.set": {"label", "provider", "model", "enabled", "reasoning_effort", "reasoning_format"},
+    "controller.route.set": {"key", "models"},
+    "controller.news.set": {"field", "value"},
+    "controller.briefing.set": {"field", "value"},
     "web.search": {"query"},
     "phone.status": set(),
     "calendar.add": {"at", "title", "minutes", "human"},
@@ -113,6 +124,10 @@ RISK.update({
     "app.open": SAFE, "web.search": SAFE, "phone.status": SAFE, "calendar.add": SAFE,
     "voice.open": SAFE, "torch.set": SAFE, "message.draft": CONFIRM, "call.dial": CONFIRM,
 })
+RISK.update({
+    "controller.read": SAFE, "controller.model.toggle": SAFE, "controller.model.remove": SAFE, "controller.model.set": SAFE,
+    "controller.route.set": SAFE, "controller.news.set": SAFE, "controller.briefing.set": SAFE,
+})
 # Everything the user can change by command. Never here (and never will be): API keys, deleting chats,
 # PIN/password/lock and the AI-access permissions themselves; those stay manual in Settings.
 _BOOL_SETTINGS = {"speak", "voiceReplies", "haptics", "webSearch", "bootAnim", "notif", "updateNotify", "calls"}
@@ -137,6 +152,20 @@ _ENUM_ALIASES = {
 }
 _BLOCKED_SETTINGS = {"lockOnHide", "lockAfter", "pin", "password", "aiAccess", "apiKeys", "keys"}
 _ALLOWED_SETTINGS = {"name", "rate", "voiceName"} | _BOOL_SETTINGS | set(_ENUM_SETTINGS)
+_CONTROLLER_PROVIDERS = {"groq", "openrouter", "gemini", "nvidia", "cloudflare"}
+_NEWS_LIMITS = {
+    "alerts_per_day": (0, 10), "alert_min_score": (1, 10), "list_min_score": (1, 10),
+    "groq_tokens_cap": (1000, 10_000_000), "groq_calls_cap": (1, 100_000),
+    "tavily_day_cap": (0, 1000), "tavily_month_cap": (2, 100_000),
+}
+_ROUTE_MODES = {"standard", "verified", "physics", "math", "business", "coding"}
+_ROUTE_ROLES = {"architect", "theorist", "empiricist", "specialist", "pattern", "skeptic", "debater", "judge", "method", "evidence", "refiner", "verifier", "falsifier1", "falsifier2", "falsifier3"}
+_ROUTE_UTILITIES = {"quick", "auditor", "master_writer", "master_auditor", "classifier", "stripper", "verifier", "judge", "synthesizer", "guard_llm"}
+_SECRET_LIKE = re.compile(r"(?:bearer\s+\S+|(?:sk|rk|pk|nvapi|gsk)[_-][A-Za-z0-9_-]{12,}|AIza[A-Za-z0-9_-]{20,}|[A-Za-z0-9_-]{40,})", re.I)
+
+
+def _looks_secret_like(value: str) -> bool:
+    return bool(_SECRET_LIKE.search(value))
 
 
 def _future(at: Any, now: int, max_days: int = 400) -> int:
@@ -317,6 +346,61 @@ def check(action: str, args: dict, now: int | None = None) -> dict:
         a["app"] = _str(a, "app", 40).lower()
         if a["app"] not in APPS: raise Bad("unknown app")
         if a["app"] == "settings": raise Denied("opening Settings is blocked by safety policy")
+    elif action == "controller.read":
+        pass
+    elif action == "controller.model.toggle":
+        a["label"] = _str(a, "label", 80, required=True)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", a["label"]): raise Bad("model label format invalid")
+        if not isinstance(a.get("enabled"), bool): raise Bad("model enable needs true or false")
+    elif action == "controller.model.remove":
+        a["label"] = _str(a, "label", 80, required=True)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", a["label"]): raise Bad("model label format invalid")
+    elif action == "controller.model.set":
+        a["label"] = _str(a, "label", 80, required=True)
+        a["provider"] = _str(a, "provider", 20, required=True).lower()
+        a["model"] = _str(a, "model", 128, required=True)
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", a["label"]) or _looks_secret_like(a["label"]): raise Bad("model label format invalid")
+        if a["provider"] not in _CONTROLLER_PROVIDERS: raise Bad("unsupported Controller provider")
+        if not re.fullmatch(r"[A-Za-z0-9@][A-Za-z0-9._:/@+-]{0,127}", a["model"]) or "://" in a["model"] or a["model"].startswith("//") or _looks_secret_like(a["model"]): raise Bad("provider model ID format invalid")
+        if "enabled" in a and not isinstance(a["enabled"], bool): raise Bad("enabled needs true or false")
+        if "reasoning_effort" in a:
+            a["reasoning_effort"] = _str(a, "reasoning_effort", 10).lower()
+            if a["reasoning_effort"] not in {"low", "medium", "high"}: raise Bad("unsupported reasoning effort")
+        if "reasoning_format" in a:
+            a["reasoning_format"] = _str(a, "reasoning_format", 10).lower()
+            if a["reasoning_format"] not in {"hidden", "raw", "parsed"}: raise Bad("unsupported reasoning format")
+    elif action == "controller.route.set":
+        a["key"] = _str(a, "key", 100, required=True).lower()
+        m = re.fullmatch(r"mode:([^:]+):([^:]+)", a["key"])
+        utility = re.fullmatch(r"utility:([a-z_]+)", a["key"])
+        if not ((m and m.group(1) in _ROUTE_MODES and m.group(2) in _ROUTE_ROLES) or (utility and utility.group(1) in _ROUTE_UTILITIES)):
+            raise Bad("unsupported Controller route key")
+        if not isinstance(a.get("models"), list) or not 1 <= len(a["models"]) <= 10: raise Bad("route needs 1–10 model labels")
+        labels = []
+        for label in a["models"]:
+            if not isinstance(label, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}", label.strip()): raise Bad("route model label format invalid")
+            labels.append(label.strip())
+        if len(set(labels)) != len(labels): raise Bad("route labels must be unique")
+        a["models"] = labels
+    elif action == "controller.news.set":
+        a["field"] = _str(a, "field", 40, required=True)
+        if a["field"] not in _NEWS_LIMITS: raise Denied("that News field is not voice-editable")
+        a["value"] = _bounded_int(a.get("value"), a["field"], *_NEWS_LIMITS[a["field"]])
+    elif action == "controller.briefing.set":
+        a["field"] = _str(a, "field", 40, required=True)
+        if a["field"] not in {"briefingOn", "briefingTime", "newsBriefing", "briefingTelegram"}:
+            raise Denied("that briefing field is not voice-editable")
+        value = a.get("value")
+        if a["field"] == "briefingTime":
+            value = _str(a, "value", 5, required=True)
+            if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value): raise Bad("briefing time must use HH:mm")
+        else:
+            low = value.lower().strip() if isinstance(value, str) else value
+            if isinstance(value, bool): pass
+            elif low in {"on", "true", "yes", "haan", "chalu"}: value = True
+            elif low in {"off", "false", "no", "nahi", "band"}: value = False
+            else: raise Bad("briefing setting needs On/Off")
+        a["value"] = value
     elif action == "web.search":
         a["query"] = _str(a, "query", 200, required=True)
         if len(a["query"]) < 2: raise Bad("search is empty")

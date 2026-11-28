@@ -206,7 +206,21 @@ async def _post_stream(client, url: str, payload: dict, headers: dict, timeout: 
 
 def _est_tokens(messages: list[dict]) -> int:
     # conservative: Hinglish / code / math tokenize worse than plain English
-    return sum(len(m.get("content") or "") for m in messages) // 3 + 8 * len(messages)
+    chars, images = 0, 0
+    for message in messages:
+        content = message.get("content") or ""
+        if isinstance(content, str):
+            chars += len(content)
+        elif isinstance(content, list):
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text":
+                    chars += len(str(part.get("text") or ""))
+                elif part.get("type") == "image_url":
+                    # Groq Qwen vision charges images as image tokens, not as their base64 character count.
+                    images += 1
+    return chars // 3 + 2048 * images + 8 * len(messages)
 
 
 def _merge_system(messages: list[dict]) -> list[dict]:
@@ -214,7 +228,11 @@ def _merge_system(messages: list[dict]) -> list[dict]:
     sys_txt = "\n".join(m["content"] for m in messages if m["role"] == "system")
     rest = [dict(m) for m in messages if m["role"] != "system"]
     if sys_txt and rest and rest[0]["role"] == "user":
-        rest[0]["content"] = f"{sys_txt}\n\n{rest[0]['content']}"
+        content = rest[0].get("content")
+        if isinstance(content, list):
+            rest[0]["content"] = [{"type": "text", "text": sys_txt}, *content]
+        else:
+            rest[0]["content"] = f"{sys_txt}\n\n{content or ''}"
     return rest or messages
 
 

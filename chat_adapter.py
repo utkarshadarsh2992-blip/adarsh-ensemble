@@ -10,6 +10,7 @@ import os
 import json
 import re
 import time
+import base64
 
 import httpx
 
@@ -27,6 +28,7 @@ import sources
 import app_knowledge
 import bigtask
 import truth
+import llm
 from llm import LLMError, chat, make_client
 import verified
 import standard_agent
@@ -53,6 +55,10 @@ MAX_HISTORY_ITEMS = 40
 MAX_HISTORY_TEXT = 2000
 MAX_ATTACHMENTS = 8
 MAX_ATTACHMENT_DATA_CHARS = 12 * 1024 * 1024
+MAX_VISION_IMAGES = 3
+MAX_VISION_IMAGE_BYTES = 6 * 1024 * 1024
+MAX_VISION_TOTAL_BYTES = 10 * 1024 * 1024
+_IMAGE_DATA_URL = re.compile(r"^data:(image/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$", re.I)
 MAX_META_CHARS = 64 * 1024
 _PRIVATE_OPEN = "<ADARSH_PRIVATE_CONTEXT>"
 _PRIVATE_CLOSE = "</ADARSH_PRIVATE_CONTEXT>"
@@ -118,6 +124,45 @@ def _bound_request(body: dict) -> dict:
         meta = {}
     bounded["meta"] = meta
     return bounded
+
+
+def _image_attachments(attachments) -> tuple[list[dict], str]:
+    """Validate bounded image data URLs; return only MIME and URL, never put image bytes in prompt traces."""
+    candidates = []
+    for item in attachments if isinstance(attachments, list) else []:
+        if not isinstance(item, dict):
+            continue
+        data_url = item.get("dataUrl") if isinstance(item.get("dataUrl"), str) else ""
+        declared = str(item.get("type") or "").lower()
+        if item.get("kind") == "image" or declared.startswith("image/") or data_url.lower().startswith("data:image/"):
+            candidates.append(data_url)
+    if len(candidates) > MAX_VISION_IMAGES:
+        return [], f"Ek baar mein zyada se zyada {MAX_VISION_IMAGES} photos bhejo."
+    images, total = [], 0
+    for data_url in candidates:
+        match = _IMAGE_DATA_URL.fullmatch(data_url)
+        if not match:
+            return [], "Photo incomplete ya unsupported format mein hai. JPG, PNG ya WebP photo (6 MB tak) dobara attach karo."
+        mime = match.group(1).lower()
+        mime = "image/jpeg" if mime == "image/jpg" else mime
+        try:
+            raw = base64.b64decode(match.group(2), validate=True)
+        except (ValueError, base64.binascii.Error):
+            return [], "Photo upload sahi se nahi padha. Chhoti JPG, PNG ya WebP photo dobara attach karo."
+        if not raw:
+            return [], "Photo khaali hai; doosri photo attach karo."
+        if len(raw) > MAX_VISION_IMAGE_BYTES:
+            return [], "Har photo 6 MB ya usse chhoti honi chahiye."
+        actual = ("image/jpeg" if raw.startswith(b"\xff\xd8\xff") else
+                  "image/png" if raw.startswith(b"\x89PNG\r\n\x1a\n") else
+                  "image/webp" if raw.startswith(b"RIFF") and raw[8:12] == b"WEBP" else "")
+        if actual != mime:
+            return [], "Photo format pehchaan nahi paaya. JPG, PNG ya WebP photo dobara attach karo."
+        total += len(raw)
+        if total > MAX_VISION_TOTAL_BYTES:
+            return [], "Sab photos mila kar 10 MB tak bhejo; badi photo hatao ya chhoti karo."
+        images.append({"mime": mime, "data_url": data_url})
+    return images, ""
 
 
 def _context(history: list[dict] | None, current: str) -> str:
@@ -211,6 +256,10 @@ QUICK_VOICE = (
 PDF_WORD = re.compile(r"\bpdf\b", re.I)
 PDF_VERB = re.compile(r"\b(bana|banao|banado|banade|banaye|generate|export|save|likh|create|make|chahiye)\b", re.I)
 PDF_REPORT = re.compile(r"\b(report|file|document)\b", re.I)
+PDF_REQUEST_NOTE = (
+    "The app has a working built-in PDF report generator. When the user asks for a PDF, write the requested report content "
+    "normally and do not say you cannot create, export, or attach a PDF; the app will render and attach the actual PDF."
+)
 
 
 def _wants_pdf(text: str) -> bool:
@@ -219,6 +268,28 @@ def _wants_pdf(text: str) -> bool:
     if PDF_WORD.search(asked):
         return True
     return bool(PDF_REPORT.search(asked) and PDF_VERB.search(asked))
+
+
+def _pdf_refusal_sentence(sentence: str) -> bool:
+    low = str(sentence or "").lower()
+    if not PDF_WORD.search(low):
+        return False
+    english = re.search(r"\b(?:can't|cannot|unable|not able|don't have|do not have|won't|not supported)\b", low)
+    hinglish = re.search(r"\b(?:nahi|nahin|nhi)\b.{0,70}\b(?:sakta|sakti|paunga|paungi|kar|bana|hoga|hogi)\b", low)
+    return bool(english or hinglish)
+
+
+def _strip_pdf_refusals(text: str) -> str:
+    """Remove model sentences that contradict the app's successful PDF attachment, preserving report content."""
+    chunks = re.split(r"(?<=[.!?])(\s+)", str(text or ""))
+    kept = []
+    for i in range(0, len(chunks), 2):
+        if _pdf_refusal_sentence(chunks[i]):
+            continue
+        kept.append(chunks[i])
+        if i + 1 < len(chunks):
+            kept.append(chunks[i + 1])
+    return "".join(kept).strip()
 
 
 def _pdf_title(body: str, asked: str = "") -> tuple[str, str]:
@@ -245,8 +316,12 @@ def _plain_heading(text: str) -> str:
 
 def _attach_pdf(reply: dict, asked: str, rows: list[dict], mode: str = "") -> None:
     """Build the report from the finished answer and hand it to the page as base64 (Kotlin saves it)."""
-    body = str(reply.get("text") or "").strip()
+    original = str(reply.get("text") or "").strip()
+    body = _strip_pdf_refusals(original) if _wants_pdf(asked) else original
+    if body != original:
+        reply["text"] = body
     if not body:
+        reply["text"] = "Jawab mein report ka text nahi aaya, isliye PDF content tayyar nahi hua. Topic ya report ke points bhejo."
         return
     title, content = _pdf_title(body, asked)
     try:
@@ -263,12 +338,19 @@ def _attach_pdf(reply: dict, asked: str, rows: list[dict], mode: str = "") -> No
 async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice: bool, *,
                        research: bool = True, deep: bool = False, web: bool = True,
                        std: str = "2.9", learn: dict | None = None, deeper: bool = False,
-                       truth_opts: dict | None = None) -> dict:
+                       truth_opts: dict | None = None, live_delegate: bool = False) -> dict:
     """Standard mode: the configured Groq-only chain. It searches the web (Groq browser_search) and Wikipedia by itself
     when that helps. Never falls back to another provider; a failure comes back as a clear text reply.
-    std "2.9" = short core answer + 'Gehrai mein jao' button; "9.2" = one concept in full depth (learning.py).
+    std "2.9" = short core answer + 'Gehrai mein jao' button; std "9.2" = one concept in full depth (learning.py).
     Not voice: the answer carries a hidden check block (questions + new words), split off here.
-    truth_opts (truth.py): level -> rules + temperature; check -> one small Groq fact-check call after the answer."""
+    truth_opts (truth.py): level -> rules + temperature; one small Groq fact-check call after the answer."""
+    if live_delegate:
+        labels = getattr(config, "STANDARD_CHAIN_LABELS", ()) or ()
+        disabled = getattr(config, "DISABLED_LABELS", frozenset()) or frozenset()
+        has_gpt = any(config.base_label(str(label)) == "gpt-oss-120b" for label in labels)
+        gpt_disabled = any(config.base_label(str(label)) == "gpt-oss-120b" for label in disabled)
+        if not has_gpt or gpt_disabled:
+            return {"type": "text", "text": "GPT-120B Controller mein disabled hai ya Standard route mein configured nahi hai, isliye helper call skip ki."}
     learn = learn or {"checks": True, "block": True, "known": []}
     truth_opts = truth_opts or {"level": "balanced", "check": "off"}
     if voice:
@@ -280,6 +362,8 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
         if deeper:
             system += " " + learning.DEEPER_NOTE
     system += " " + truth.rules(truth_opts["level"], web and research)
+    if _wants_pdf(text):
+        system += " " + PDF_REQUEST_NOTE
     system += " " + pipeline._language_hint(text, reply_lang)
     if learn.get("known"):
         system += " " + learning.known_note(learn["known"])
@@ -312,7 +396,7 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
         wanted = False  # This Groq model's daily quota is running out: the optional call goes first
     if wanted:
         checked = await truth.check(text[:1500], text_out, out.get("evidence"), pipeline._language_hint(text, reply_lang))
-    if not voice:
+    if not voice or live_delegate:
         text_out += standard_agent.sources_block(out["sources"])
     steps = [f"Standard {std} · Groq {out['used']} (sirf Groq)"]
     if out["searches"]:
@@ -327,6 +411,9 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
         steps.append("Fact-check: chala nahi (Groq busy, ya jawab me check karne layak claim nahi mila)")
     steps.append(f"{out['secs']}s")
     rep = {"type": "text", "text": text_out, "steps": steps, "std": std}
+    if live_delegate:
+        rep["sources"] = [{"title": str(s.get("title") or "")[:160], "url": str(s.get("url") or "")[:500]}
+                          for s in out.get("sources", []) if isinstance(s, dict)]
     if checked:
         rep["truth"] = {**checked, "level": truth_opts["level"]}
     left = 1.0 - health.used_frac(quota_spec)
@@ -343,6 +430,65 @@ async def _quick_reply(text: str, extra: str, reply_lang: str, depth: str, voice
     if calls:
         rep["calls"] = calls
     return rep
+
+
+async def _vision_reply(text: str, images: list[dict], extra: str, reply_lang: str, depth: str,
+                        std: str, learn: dict, body: dict) -> dict:
+    """Standard-only image understanding, pinned to Groq Qwen 3.8 27B with no provider/model fallback."""
+    label = "qwen3.8-27b"
+    spec0 = config.REGISTRY.get(label)
+    if not spec0 or spec0.provider != "groq" or spec0.model != "qwen/qwen3.8-27b":
+        return {"type": "text", "text": "Camera analysis abhi unavailable hai: Groq Qwen vision route configured nahi hai.", "uiMode": "standard"}
+    disabled = getattr(config, "DISABLED_LABELS", frozenset()) or frozenset()
+    if config.base_label(label) in disabled:
+        return {"type": "text", "text": "Groq Qwen vision Controller mein disabled hai, isliye photo analyze nahi ki. Controller se model enable karo.", "uiMode": "standard"}
+    spec = config.use(label, "vision", ())
+    system = QUICK_SYSTEM + " " + learning.MENTOR_STYLE + " " + learning.STD_STYLES[std]
+    if depth == "simple":
+        system += " " + SIMPLE_WORDS
+    system += " " + pipeline._language_hint(text, reply_lang)
+    system += (
+        " Analyze only what is visible in the supplied image(s). Describe uncertainty when text or details are unclear. "
+        "Do not invent unseen context, external verification, citations, or image details."
+    )
+    if learn.get("known"):
+        system += " " + learning.known_note(learn["known"])
+    if learn.get("block", True):
+        system += "\n" + learning.check_rules(std == "2.9", learn.get("checks", True))
+    if _wants_pdf(text):
+        system += " " + PDF_REQUEST_NOTE
+    parts = [{"type": "text", "text": text + (extra or "")}]
+    parts.extend({"type": "image_url", "image_url": {"url": item["data_url"]}} for item in images)
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": parts}]
+    available = config.tpm_limit(spec) - llm._est_tokens(messages)
+    if available < 256:
+        return {"type": "text", "text": "Photo prompt Groq ki tokens/min limit se bada hai. Kam photos ya chhota sawaal bhejo.",
+                "uiMode": "standard", "std": std}
+    output_tokens = min(1800, available)
+    trace = health.start_trace(False)  # image data URLs must never enter diagnostic prompt traces
+    health.set_stage("standard:camera")
+    try:
+        async with make_client() as client:
+            answer = await chat(client, spec, messages, temperature=0.2, max_tokens=output_tokens, budget=75)
+    except LLMError as e:
+        return {"type": "text", "text": "Camera analysis nahi ho paaya: " + str(e), "uiMode": "standard", "std": std}
+    except Exception:
+        return {"type": "text", "text": "Camera analysis mein temporary error aaya. Photo dobara bhejo.", "uiMode": "standard", "std": std}
+    finally:
+        health.set_stage("")
+    text_out, learned = learning.split_checks(answer, learn.get("known"))
+    rep = {"type": "text", "text": text_out, "uiMode": "standard", "std": std,
+           "steps": [f"Standard {std} · Groq Qwen 3.8 27B vision"]}
+    if learned and not (body.get("meta") or {}).get("voice"):
+        if not learn.get("checks", True):
+            learned["checks"] = []
+        rep["learn"] = learned
+    calls = pipeline._compact_calls(trace)
+    if calls:
+        rep["calls"] = calls
+    return rep
+
+
 def _audit_line(issue: dict, kind: str) -> str:
     quote = " ".join(str(issue.get("quote") or "").split())
     fix = " ".join(str(issue.get("fix") or "").split())
@@ -426,6 +572,9 @@ async def handle(body: dict) -> dict | list[dict]:
         # night briefing: one Groq call over sir's own bounded summary, never the action parser (briefing.py)
         return await briefing.reply(body)
 
+    image_inputs, image_error = _image_attachments(body.get("attachments"))
+    if image_error:
+        return {"type": "text", "text": image_error}
     local = local_response(body)
     if local is not None:
         return local
@@ -439,6 +588,8 @@ async def handle(body: dict) -> dict | list[dict]:
         # Same: the ensemble does not emit `ask` cards. If one arrives, fold the answers in.
         parts = [f"{a.get('header', '')}: {a.get('answer', '')}" for a in meta["answer"].get("answers", [])]
         text = (text + "\n" + "\n".join(parts)).strip()
+    if len(text) < 2 and image_inputs:
+        text = "Is photo mein kya dikh raha hai?"
     if len(text) < 2:
         return {"type": "text", "text": "Kuch likho, phir main sawaal verify karunga."}
 
@@ -457,6 +608,19 @@ async def handle(body: dict) -> dict | list[dict]:
         answers = []  # answers without manual/hybrid would be rejected by the pipeline
 
     ui_mode = str(body.get("mode") or "standard")
+    if image_inputs:
+        if ui_mode != "standard":
+            return {"type": "text", "text": "Photo dekhna abhi sirf Standard mode mein available hai. Standard select karke photo dobara bhejo.", "uiMode": ui_mode}
+        if source != "auto":
+            return {"type": "text", "text": "Photo analysis ke liye Answer source ko Auto par rakho; Manual/Hybrid photo nahi bhejte.", "uiMode": "standard"}
+        pdf_block, pdf_names = pdf_read.attachments_text(body.get("attachments"))
+        vision = await _vision_reply(text, image_inputs, pdf_block, reply_lang, depth, learning.std_style(body),
+                                     learning.options(body), body)
+        if _wants_pdf(text):
+            _attach_pdf(vision, text, [], "Standard")
+        if pdf_names:
+            vision["text"] = vision.get("text", "") + "\n\n*PDF padha: " + ", ".join(pdf_names) + "*"
+        return [vision]
     if source == "auto" and ui_mode == "standard" and _is_casual(text):
         quick = await _casual_reply(text, reply_lang, depth, body)
         if quick:
@@ -499,8 +663,8 @@ async def handle(body: dict) -> dict | list[dict]:
         q_text, q_extra, cut_note = _fit(text, extra)
         quick = await _quick_reply(q_text, q_extra, reply_lang, depth, bool(meta.get("voice")),
                                    research=not has_records, deep=bool(meta.get("deep")), web=web_search,
-std=learning.std_style(body), learn=learn, deeper=bool(meta.get("deeper")),
-                                   truth_opts=truth_opts)
+                                   std=learning.std_style(body), learn=learn, deeper=bool(meta.get("deeper")),
+                                   truth_opts=truth_opts, live_delegate=bool(meta.get("live_delegate")))
         quick["text"] = sources.strip_invalid_citations(quick.get("text") or "", src_rows)
         if cut_note:
             quick["text"] += "\n\n" + cut_note
@@ -547,7 +711,8 @@ std=learning.std_style(body), learn=learn, deeper=bool(meta.get("deeper")),
             mode=str(body.get("mode") or "standard"),
             web_research=not private_context,
             topics=topics,
-            learner_note=(truth.rules(truth_opts["level"], not private_context) + "\n" + learning.known_note(learn["known"])).strip(),
+            learner_note=(truth.rules(truth_opts["level"], not private_context) + "\n" + learning.known_note(learn["known"])
+                          + ("\n" + PDF_REQUEST_NOTE if _wants_pdf(text) else "")).strip(),
         )
     finally:
         thinking.reset(weight)

@@ -103,6 +103,38 @@ object Engine {
         }
     }
 
+    /** Assistant Controller reads stay asynchronous and return only ControllerLink's native-safe projection. */
+    fun controllerAssistantRead(id: String, onDone: (String?, String?) -> Unit) {
+        pool.execute {
+            val result = try { org.json.JSONObject(controller.assistantState()) }
+                catch (_: Throwable) { org.json.JSONObject().put("ok", false).put("error", "Controller offline hai.") }
+            if (result.optBoolean("ok")) {
+                applyControllerConfigWhenIdle()
+                applyAssistantBriefingSettings(result)
+            }
+            onDone(result.toString(), null)
+        }
+    }
+
+    /** Direct assistant edits are strictly validated and posted by the native ControllerLink client. */
+    fun controllerAssistantUpdate(id: String, payloadJson: String, onDone: (String?, String?) -> Unit) {
+        pool.execute {
+            val result = try { org.json.JSONObject(controller.assistantUpdate(payloadJson)) }
+                catch (_: Throwable) { org.json.JSONObject().put("ok", false).put("error", "Controller update nahi ho paya.") }
+            if (result.optBoolean("ok")) {
+                val state = try { org.json.JSONObject(controller.assistantState()) }
+                    catch (_: Throwable) { org.json.JSONObject().put("ok", false) }
+                if (state.optBoolean("ok")) {
+                    applyControllerConfigWhenIdle()
+                    applyAssistantBriefingSettings(state)
+                    result.put("revision", state.optLong("revision", result.optLong("revision", 0L)))
+                    result.put("applied", true)
+                } else result.put("applied", false)
+            }
+            onDone(result.toString(), null)
+        }
+    }
+
     fun controllerStatus(): String = try { controller.status() }
         catch (_: Exception) { """{"linked":false,"revision":0}""" }
 
@@ -189,6 +221,20 @@ object Engine {
                 applyControllerBundleLocked()
             }
             else controllerApplyPending = true
+        }
+    }
+
+    /** Controller assistant state carries only the approved briefing schedule fields, never credentials or consent. */
+    private fun applyAssistantBriefingSettings(state: org.json.JSONObject) {
+        try {
+            val settings = state.optJSONObject("device_settings") ?: return
+            if (!settings.has("briefingOn") && !settings.has("briefingTime")) return
+            val old = BriefingScheduler.status(app)
+            val on = if (settings.has("briefingOn")) settings.optBoolean("briefingOn") else old.optBoolean("on", false)
+            val time = settings.optString("briefingTime", old.optString("time", "21:30"))
+            BriefingScheduler.configure(app, org.json.JSONObject().put("on", on).put("time", time).toString())
+        } catch (_: Throwable) {
+            // Keep the previous local schedule if Android cannot apply the remote preference.
         }
     }
 

@@ -164,6 +164,91 @@ def _parse_app_setting(t: str) -> dict | None:
     m = re.search(r"\bcouncil\b\s*(?:ko)?\s*(fast|deep|quick)\b|\b(fast|deep)\s+council\b", low)
     if m: return _step("settings.update", key="think", value=m.group(1) or m.group(2))
     return None
+
+
+def _controller_command(text: str) -> dict | None:
+    """Recognize explicit Controller reads and edits; never infer edits from ordinary chat."""
+    if not re.search(r"\b(?:adarsh\s+controller|controller|control\s+center|control\s+centre)\b", text, re.I):
+        return None
+    body = re.sub(r"\b(?:adarsh\s+controller|controller|control\s+center|control\s+centre)\b", " ", text, count=1, flags=re.I)
+    low = re.sub(r"\s+", " ", body.lower()).strip()
+    if re.search(r"\b(?:open|kholo|launch)\b", low) and not re.search(r"\b(?:edit|update|change|set|enable|disable|add|remove|badal|limit|route)\b", low):
+        return None  # use fixed-URL app.open
+    read_topic = re.search(r"\b(?:status|overview|config|models?|routes?|routing|news|limits?|briefing|settings)\b", low)
+    read_cue = re.search(r"\b(?:show|list|read|dikhao|dekhao|batao|check|status|overview|kya|what|which|current|abhi)\b", low)
+    write_cue = re.search(r"\b(?:set|enable|disable|on|off|add|edit|update|change|badal|limit|route|routing|remove|delete|hatao|mitao)\b", low)
+    if "?" in text or _is_question(low):
+        if read_topic:
+            return _step("controller.read")
+        return None
+    if read_topic and read_cue and not write_cue:
+        return _step("controller.read")
+
+    providers = r"groq|openrouter|gemini|nvidia|cloudflare"
+    model_set = re.search(
+        rf"\bmodel\s+(?P<label>[A-Za-z0-9][A-Za-z0-9._-]{{0,79}})\s+provider\s+(?P<provider>{providers})\s+(?:id|model)\s+(?P<model>[A-Za-z0-9@][A-Za-z0-9._:/@+-]{{0,127}})(?:\s+(?:effort|reasoning\s+effort)\s+(?P<effort>low|medium|high))?(?:\s+(?:format|reasoning\s+format)\s+(?P<format>hidden|raw|parsed))?",
+        text, re.I,
+    )
+    if model_set:
+        args = {"label": model_set.group("label"), "provider": model_set.group("provider").lower(), "model": model_set.group("model")}
+        if model_set.group("effort"): args["reasoning_effort"] = model_set.group("effort").lower()
+        if model_set.group("format"): args["reasoning_format"] = model_set.group("format").lower()
+        on = re.search(r"\b(?:on|enable|enabled|chalu)\b", low)
+        off = re.search(r"\b(?:off|disable|disabled|band)\b", low)
+        if on and not off: args["enabled"] = True
+        elif off and not on: args["enabled"] = False
+        return _step("controller.model.set", **args)
+
+    remove_model = re.search(r"\bmodel\s+(?P<label>[A-Za-z0-9][A-Za-z0-9._-]{0,79})\s+(?:ko\s+)?(?:remove|delete|hatao|hata|mitao|mita)\b", text, re.I)
+    if remove_model:
+        return _step("controller.model.remove", label=remove_model.group("label"))
+
+    toggle = re.search(r"\bmodel\s+(?P<label>[A-Za-z0-9][A-Za-z0-9._-]{0,79})\s+(?:ko\s+)?(?P<state>enable|enabled|disable|disabled|on|off|chalu|band)\b", low, re.I)
+    if toggle:
+        # A bare "Model X is disabled" can describe state; require an explicit
+        # imperative tail before changing it. Ambiguous wording gets clarified.
+        tail = low[toggle.end():]
+        if not re.fullmatch(r"\s*(?:(?:please|plz)\s+)?(?:karo|kar\s+do|kr\s+do|krdo|kardo|set|set\s+karo|set\s+kar\s+do)(?:\s+(?:please|plz))?\s*", tail, re.I):
+            return _clarify("Sir, yeh model status lag raha hai. Change ke liye 'Controller model <label> ko off karo' ya 'on karo' boliye.")
+        return _step("controller.model.toggle", label=toggle.group("label"), enabled=toggle.group("state").lower() in {"enable", "enabled", "on", "chalu"})
+
+    route = re.search(r"\b(?:set\s+)?(?:route|routing)\s+(?P<key>(?:mode:[a-z]+:[a-z0-9]+|utility:[a-z_]+))\s*(?:=|to|use|ko)\s+(?P<models>.+)$", text, re.I)
+    if route:
+        model_text = re.sub(r"\s+(?:set\s+)?(?:karo|kar\s+do|kr\s+do|krdo|kardo|please)\s*$", "", route.group("models"), flags=re.I)
+        labels = [_clean(x) for x in re.split(r"\s*,\s*|\s+(?:and|aur)\s+", model_text) if _clean(x)]
+        return _step("controller.route.set", key=route.group("key").lower(), models=labels)
+
+    news_aliases = {
+        "alerts_per_day": ("alerts_per_day", "alerts per day", "alert limit", "notification limit", "notifications per day"),
+        "alert_min_score": ("alert_min_score", "alert minimum score", "alert min score"),
+        "list_min_score": ("list_min_score", "list minimum score", "list min score"),
+        "groq_tokens_cap": ("groq_tokens_cap", "groq tokens per day", "groq daily tokens", "groq token limit"),
+        "groq_calls_cap": ("groq_calls_cap", "groq calls per day", "groq daily calls", "groq call limit"),
+        "tavily_day_cap": ("tavily_day_cap", "tavily per day", "tavily daily limit", "tavily day limit"),
+        "tavily_month_cap": ("tavily_month_cap", "tavily per month", "tavily monthly limit", "tavily month limit"),
+    }
+    for field, aliases in news_aliases.items():
+        names = "|".join(re.escape(alias) for alias in sorted(aliases, key=len, reverse=True))
+        match = re.search(rf"(?:news\s+)?(?:{names})\s*(?:=|:|set\s+to|to|at)?\s*(\d+)\b", body, re.I)
+        if match: return _step("controller.news.set", field=field, value=int(match.group(1)))
+
+    briefing_time = re.search(r"\bbriefing\s+(?:time\s*)?(?:=|:|set\s+to|to|at)?\s*(\d{1,2}:\d{2})\b", body, re.I)
+    if briefing_time:
+        hh, mm = briefing_time.group(1).split(":")
+        return _step("controller.briefing.set", field="briefingTime", value=f"{int(hh):02d}:{mm}")
+    briefing_bool = re.search(r"\b(?:news\s+briefing|briefing\s+news|telegram\s+briefing|briefing\s+telegram|briefing)\b.*\b(on|off|enable|disable|chalu|band)\b", body, re.I)
+    if briefing_bool:
+        phrase = body[:briefing_bool.start(1)].lower()
+        field = "newsBriefing" if "news" in phrase else "briefingTelegram" if "telegram" in phrase else "briefingOn"
+        return _step("controller.briefing.set", field=field, value=briefing_bool.group(1).lower() in {"on", "enable", "chalu"})
+
+    if write_cue:
+        return _clarify("Sir, Controller edit clear nahi hua. Model, route, News limit ya briefing field aur exact value bataiye; API keys/endpoints voice se edit nahi hote.")
+    if read_topic and (read_cue or _is_question(low)):
+        return _step("controller.read")
+    return None
+
+
 def one(text: str, now: int) -> dict | None:
     """One clause -> one raw step. Validation and safety decisions happen in schema/plan."""
     raw = (text or "").strip()
@@ -181,6 +266,8 @@ def one(text: str, now: int) -> dict | None:
     # API keys are never read or changed by the assistant (Settings > API keys only).
     if re.search(r"\b(?:api\s*keys?|apikey|api)\b", padded) and re.search(r"\b(?:set|change|update|save|add|delete|remove|reset|badal|badlo|daal|dalo|hata|mita|dikhao|show|batao)\b", padded):
         return _blocked("API keys AI nahi chhoota; Settings > API keys mein khud badliye.")
+    controller_command = _controller_command(raw)
+    if controller_command: return controller_command
     if re.search(r"\b(?:clear|delete|remove|hata|mita|saaf|erase)\b", padded) and re.search(r"\b(?:chat|chats|conversation|history)\b", padded):
         return _blocked("chat delete sirf aap khud kar sakte hain; AI chats delete nahi karta.")
     app_setting = _parse_app_setting(source)

@@ -464,6 +464,10 @@ class ActionRunner(private val ctx: Context) {
 
     // ---- retained standard helpers
     private fun openApp(id: String, app: String): JSONObject {
+        if (app.equals("controller", ignoreCase = true)) {
+            go(Intent(Intent.ACTION_VIEW, Uri.parse("https://adarshctl-pc68aukk.manus.space")))
+            return ok(id, "Adarsh Controller khul raha hai")
+        }
         if (app == "camera") { go(Intent("android.media.action.STILL_IMAGE_CAMERA")); return ok(id, "Camera khul gaya") }
         if (app == "phone") { go(Intent(Intent.ACTION_DIAL)); return ok(id, "Dialer khul gaya") }
         val pkg = packages[app.lowercase()] ?: return error(id, "App nahi mili")

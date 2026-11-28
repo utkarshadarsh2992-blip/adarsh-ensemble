@@ -82,14 +82,16 @@ test('defaults and request body remain local fallbacks while duplicate editors a
     assert.deepEqual(JSON.parse(JSON.stringify(Usage.request())), { level: 'balanced', check: 'auto' }, 'stored values remain the offline fallback');
   } finally { app.close(); }
 });
-test('FACT-CHECK card: open with verdicts when something is wrong, closed when all is fine', async () => {
+test('FACT-CHECK card: stays collapsed for every verdict and opens when tapped', async () => {
   const app = mount({ reply: answer({ truth: TRUTH }) });
   try {
     await app.Chat.submit('Chandrayaan-3 kab land hua?');
     await until(() => app.document.querySelector('.fcheck'));
     const card = app.document.querySelector('.fcheck');
     assert.ok(card.classList.contains('bad'));
-    assert.ok(card.hasAttribute('open'), 'a wrong claim opens the card');
+    assert.equal(card.open, false, 'a wrong or uncertain claim does not auto-open the card');
+    card.querySelector('summary').click();
+    assert.equal(card.open, true, 'tapping the summary opens the card');
     assert.match(text(card.querySelector('.fc-h')), /FACT-CHECK.*SOURCES SE.*1 galat/);
     const rows = [...card.querySelectorAll('.fc-row')];
     assert.deepEqual(rows.map(r => text(r.querySelector('.fc-v'))), ['PAKKA', 'SHAK', 'GALAT']);
@@ -102,6 +104,21 @@ test('FACT-CHECK card: open with verdicts when something is wrong, closed when a
     assert.equal(app.Usage.extras({ reply: { type: 'text' } }).length, 0);
     assert.equal(app.Usage.extras({ reply: { truth: { claims: [] } } }).length, 0);
   } finally { app.close(); }
+});
+test('camera capture is offered only in Standard mode and uses the rear-camera capture input', () => {
+  const standard = mount();
+  try {
+    standard.document.querySelector('.plus').click();
+    const sheet = standard.document.querySelector('.sheet');
+    assert.match(text(sheet), /Camera.*Standard only.*Groq Qwen/);
+    assert.equal(standard.document.querySelector('#f-camera').getAttribute('capture'), 'environment');
+    assert.match(text(sheet), /Photo.*gallery.*Standard-only/);
+  } finally { standard.close(); }
+  const physics = mount({ settings: { mode: 'physics' } });
+  try {
+    physics.document.querySelector('.plus').click();
+    assert.doesNotMatch(text(physics.document.querySelector('.sheet')), /Camera.*Standard only/);
+  } finally { physics.close(); }
 });
 test('low Groq quota is announced once a day, not on every answer', async () => {
   const app = mount({ reply: answer({ quota: { provider: 'groq', left: 0.12 } }) });

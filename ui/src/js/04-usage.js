@@ -163,7 +163,7 @@ const Usage = (() => {
       h('span', { class: 'pill ' + tn }, bad ? bad + ' galat' : doubt ? doubt + ' shak' : 'sab pakka'));
     const rows = t.claims.map(c => h('div', { class: 'fc-row ' + c.v }, h('span', { class: 'fc-v' }, VERDICT[c.v] || c.v),
       h('div', { class: 'fc-t' }, h('b', {}, c.c), c.why ? h('small', {}, c.why) : null, c.fix ? h('small', { class: 'fc-fix' }, '→ ' + c.fix) : null)));
-    return [h('details', { class: 'fcheck ' + tn, open: bad || doubt ? '' : null }, head, rows,
+    return [h('details', { class: 'fcheck ' + tn }, head, rows,
       h('div', { class: 'fc-f' }, 'Ye bhi ek chhota model hai (gpt-oss-20b, ' + (t.level || level()) + '): galti ho sakti hai. Zaroori cheez source se bhi dekho.'))];
   }
   /* Groq's daily quota is running low: say so once a day (rate limits matter to sir) */

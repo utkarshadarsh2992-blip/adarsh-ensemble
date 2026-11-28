@@ -343,6 +343,37 @@ def test_current_news_without_relevant_source_cannot_be_ok_or_galat():
     assert all("reliable" in c["fix"].lower() for c in res["claims"])
 
 
+def test_volatile_quota_claims_need_relevant_source_refs_and_cannot_invent_explanations():
+    question = "Kaggle free GPU quota har hafte reset hota hai kya?"
+    answer = ("Kaggle ka free GPU quota weekly reset hota hai. Har hafte ek naya limit milta hai, "
+              "jaise 30 GPU-hour per week.")
+    assert truth.is_volatile_policy(question, answer)
+    raw = {"claims": [
+        {"c": "Kaggle ka free GPU quota weekly reset hota hai", "v": "ok",
+         "why": "Kaggle documentation states weekly reset", "refs": []},
+        {"c": "Har hafte 30 GPU-hour ka limit milta hai", "v": "galat",
+         "why": "Exact limit varies by account", "fix": "Check current quota on Kaggle account page", "refs": []},
+    ]}
+    res = truth.clean(raw, "model", question=question, answer=answer)
+    assert (res["ok"], res["shak"], res["galat"], res["basis"]) == (0, 2, 0, "model")
+    assert all("quota or service-policy" in c["why"] for c in res["claims"])
+    assert all("official documentation" in c["fix"] for c in res["claims"])
+    assert "changing service policy, quota" in truth.messages(question, answer, [])[0]["content"]
+
+
+def test_official_kaggle_evidence_can_support_weekly_quota_claims():
+    evidence = [{"title": "Efficient GPU Usage Tips", "url": "https://www.kaggle.com/docs/efficient-gpu-usage",
+                 "text": "Kaggle weekly GPU quota resets weekly and is 30 hours or sometimes higher depending on demand and resources."}]
+    raw = {"claims": [
+        {"c": "Kaggle ka free GPU quota weekly reset hota hai", "v": "ok", "refs": ["E1"]},
+        {"c": "Kaggle weekly GPU quota 30 hours or sometimes higher depending on demand and resources hai",
+         "v": "ok", "refs": ["E1"]},
+    ]}
+    res = truth.clean(raw, "sources", evidence=evidence, question="Kaggle GPU quota", answer="Weekly quota 30 hours ya zyada hai.")
+    assert (res["ok"], res["shak"], res["basis"]) == (2, 0, "sources")
+    assert all(c["refs"] == [evidence[0]["url"]] for c in res["claims"])
+
+
 def test_irrelevant_news_evidence_does_not_support_verdict_or_correction():
     evidence = [{"title": "Japan business trends", "url": "https://example.com/japan", "text":
                  "Japan business trends and Japanese companies are expanding regional energy infrastructure."}]

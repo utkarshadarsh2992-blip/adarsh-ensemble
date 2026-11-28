@@ -444,11 +444,17 @@ const Chat = (() => {
   function addSheet() {
     sheet({ title: 'Add', build(b, close) {
       const row = (ic, t, s, fn) => h('button', { class: 'opt-row', on: { click: () => { close(); fn(); } } }, icon(ic), h('span', { class: 't' }, h('b', {}, t), h('small', {}, s)));
-      b.append(row('image', 'Photo', 'From gallery or camera', () => $('#f-img').click()),
+      const rows = [];
+      if (Modes.current().id === 'standard') rows.push(row('image', 'Camera', 'Standard only · photo Groq Qwen ko bheji jayegi', () => {
+        if (srcMode() !== 'auto') return toast('Camera analysis ke liye Answer source Auto rakho.');
+        $('#f-camera').click();
+      }));
+      rows.push(row('image', 'Photo', 'Choose from gallery · image analysis Standard-only', () => $('#f-img').click()),
         row('sparkle', 'Generate image', 'NVIDIA FLUX 3 Image Klein', () => mediaPrompt('image')),
         row('video', 'Generate video', 'NVIDIA Cosmos3 Nano (backup: Cosmos 1.0) · MP4', () => mediaPrompt('video')),
         row('file', 'File', 'Documents, text, PDFs', () => $('#f-any').click()),
         row('sliders', 'Answer source', SRC[srcMode()][0] + ' · choose where answers come from', sourceSheet));
+      b.append(...rows);
     } });
   }
   function mediaPrompt(kind) {
@@ -501,8 +507,12 @@ const Chat = (() => {
     }
   }
   function addFile(f) {
-    if (f.size > 8 * 1024 * 1024) return toast(f.name + ' is over 8 MB');
-    const a = { id: uid('a'), name: f.name || 'pasted', kind: f.type.startsWith('image/') ? 'image' : 'file', type: f.type, size: f.size, file: f };
+    const isImage = f.type.startsWith('image/');
+    if (f.size > (isImage ? 6 : 8) * 1024 * 1024) return toast(f.name + (isImage ? ' is over 6 MB' : ' is over 8 MB'));
+    const queuedImages = pending.filter(a => a.kind === 'image');
+    if (isImage && queuedImages.length >= 3) return toast('Ek baar mein zyada se zyada 3 photos bhejo.');
+    if (isImage && queuedImages.reduce((n, a) => n + a.size, 0) + f.size > 10 * 1024 * 1024) return toast('Sab photos mila kar 10 MB tak rakho.');
+    const a = { id: uid('a'), name: f.name || 'pasted', kind: isImage ? 'image' : 'file', type: f.type, size: f.size, file: f };
     if (a.kind === 'image') { a.thumb = URL.createObjectURL(f); thumbs.set(a.id, a.thumb); }
     pending.push(a); drawAtts(); onInput();
   }

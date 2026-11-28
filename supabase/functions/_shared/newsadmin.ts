@@ -27,6 +27,19 @@ function daysAgo(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 }
 
+export function validateNewsSettingsPatch(value: unknown): Partial<Settings> {
+  if (!isObject(value)) fault(400, 'invalid_request');
+  const patch: Partial<Settings> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const rule = NEWS_LIMITS[key];
+    if (!rule) fault(400, 'invalid_request');
+    if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < rule.min || raw > rule.max) fault(400, 'invalid_request');
+    (patch as Record<string, number>)[key] = raw;
+  }
+  if (!Object.keys(patch).length) fault(400, 'invalid_request');
+  return patch;
+}
+
 export async function newsState(service: SupabaseClient): Promise<Record<string, unknown>> {
   const store = new SupabaseStore(service);
   const now = new Date();
@@ -61,17 +74,52 @@ export async function newsState(service: SupabaseClient): Promise<Record<string,
   };
 }
 
+export async function newsAssistantState(service: SupabaseClient): Promise<Record<string, unknown>> {
+  const store = new SupabaseStore(service);
+  const now = new Date();
+  const [settings, b] = await Promise.all([store.getSettings(), budget(store, now)]);
+  return {
+    settings: pick(settings),
+    budget: {
+      day: b.day,
+      groq: {
+        tokens_used: b.groq.tokens_used,
+        tokens_cap: b.groq.tokens_cap,
+        calls_used: b.groq.calls_used,
+        calls_cap: b.groq.calls_cap,
+        state: b.groq.state,
+      },
+      tavily: {
+        day_used: b.tavily.day_used,
+        day_cap: b.tavily.day_cap,
+        month_used: b.tavily.month_used,
+        month_cap: b.tavily.month_cap,
+      },
+      alerts: { today: b.alerts.today, cap: b.alerts.cap, day: b.alerts.day },
+    },
+    day: b.day,
+    local_day: localDay(now, settings.tz),
+    tz: settings.tz,
+  };
+}
+
 export async function newsSettingsSet(service: SupabaseClient, value: unknown): Promise<Record<string, unknown>> {
-  if (!isObject(value)) fault(400, 'invalid_request');
-  const patch: Partial<Settings> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    const rule = NEWS_LIMITS[key];
-    if (!rule) fault(400, 'invalid_request');
-    if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < rule.min || raw > rule.max) fault(400, 'invalid_request');
-    (patch as Record<string, number>)[key] = raw;
-  }
-  if (!Object.keys(patch).length) fault(400, 'invalid_request');
+  const patch = validateNewsSettingsPatch(value);
   const store = new SupabaseStore(service);
   const saved = await store.setSettings(patch);
+  return { ok: true, settings: pick(saved) };
+}
+
+export async function newsSettingsSetForDevice(
+  service: SupabaseClient, deviceTokenHash: string, value: unknown, reason: string,
+): Promise<Record<string, unknown>> {
+  const patch = validateNewsSettingsPatch(value);
+  const { error } = await service.rpc('controller_device_news_settings_update', {
+    p_device_token_hash: deviceTokenHash, p_settings: patch, p_reason: reason,
+  });
+  if (error?.code === '28000') fault(401, 'unauthorized');
+  if (error?.code === '22023') fault(400, 'invalid_request');
+  if (error) fault(503, 'unavailable');
+  const saved = await new SupabaseStore(service).getSettings();
   return { ok: true, settings: pick(saved) };
 }

@@ -27,7 +27,7 @@ function mount({ settings = {}, native = {} } = {}) {
   w.ADARSH_BACKEND = { async send() { return { type: 'text', text: 'ok' }; }, async ping() { return { ok: true }; } };
   const ctx = dom.getInternalVMContext();
   for (const f of ORDER) new vm.Script(fs.readFileSync(path.join(UI, 'src', f), 'utf8'), { filename: path.join(UI, 'src', f) }).runInContext(ctx);
-  new vm.Script('globalThis.TEST = { S, App, Voice, Live, WakeWord };').runInContext(ctx);
+  new vm.Script('globalThis.TEST = { S, App, Voice, Live, WakeWord, LIVE_MODELS };').runInContext(ctx);
   return { dom, window: w, document: w.document, ...w.TEST, close: () => dom.window.close() };
 }
 
@@ -35,6 +35,7 @@ function nativeWake(calls) {
   let state = { ok: true, enabled: false, active: false, supported: true, onDevice: true, phrase: 'Hey Adarsh', state: 'off', message: 'Wake word is off' };
   return {
     liveStart: json => { calls.push({ liveStart: JSON.parse(json) }); return JSON.stringify({ ok: true, state: 'connecting', model: 'gemini-3.8-live' }); },
+    liveSwitch: asked => { calls.push({ liveSwitch: asked }); return JSON.stringify({ ok: true, model: asked }); },
     liveStop: () => { calls.push({ liveStop: true }); return JSON.stringify({ ok: true }); },
     liveSendText: text => { calls.push({ liveSendText: text }); return JSON.stringify({ ok: true }); },
     wakeWordStatus: () => JSON.stringify(state),
@@ -110,6 +111,31 @@ test('failed wake-triggered Google Live falls back to the normal listening voice
   assert.ok(calls.some(c => c.speechStart), 'Hey Adarsh still ends in a listening voice screen');
   assert.equal(app.Voice.isOpen, true);
 });
+
+test('Live picker shows only the chat model while specialist models auto-route in the background', t => {
+  const calls = [];
+  const app = mount({ settings: { adarshLive: false, liveModel: 'gemini-3.8-live' }, native: nativeWake(calls) });
+  t.after(() => app.close());
+  app.App.show('settings');
+  app.document.querySelector('#v-settings [aria-label="Voice & language"]').click();
+  const picker = app.document.querySelector('[aria-label="Adarsh Live model"]');
+  assert.ok(picker, 'model picker is visible even before Live is switched on in Settings');
+  assert.equal(picker.options.length, 2, 'only Auto and the everyday Live chat model are user-selectable');
+  assert.equal(JSON.stringify(app.LIVE_MODELS.map(([id]) => id)), JSON.stringify(['auto', 'gemini-3.8-live']));
+  picker.value = 'gemini-3.8-live';
+  picker.dispatchEvent(new app.window.Event('change', { bubbles: true }));
+  assert.equal(app.S.settings.liveModel, 'gemini-3.8-live', 'the chosen model is saved to app settings');
+  app.S.settings.adarshLive = true;
+  app.Voice.open();
+  assert.equal(calls.find(c => c.liveStart).liveStart.model, 'gemini-3.8-live');
+  app.window.__adarshLive({ type: 'user', text: 'Translate this to Hindi please.' });
+  assert.ok(calls.some(c => c.liveSwitch === 'translate:hi'), 'the translation model is selected automatically and stays out of the picker');
+  app.window.__adarshLive({ type: 'user', text: 'Ruko, normal chat.' });
+  assert.ok(calls.some(c => c.liveSwitch === 'main'), 'normal conversation returns to the Live chat model');
+  app.window.__adarshLive({ type: 'user', text: 'Why does this work? Please explain.' });
+  assert.ok(calls.some(c => c.liveSwitch === 'think'), 'reasoning specialist is automatically selected when useful');
+});
+
 test('Settings Hey Adarsh summary shows the exact native reason and live updates', () => {
   const calls = [];
   const native = nativeWake(calls);
