@@ -65,9 +65,17 @@ def test_replies_are_read_from_binary_frames_too():
     assert "take(bytes.utf8())" in LIVE and "override fun onMessage(webSocket: WebSocket, text: String)" in LIVE
     # the setup turn goes out after the handshake, with a 900 ms safety net for the identity-guard race
     assert "sendSetup(webSocket)" in LIVE and "!setupSent && !gotSetup" in LIVE
-    # two payload shapes are tried: the official example (top-level responseModalities) first, nested second
-    assert 'setup.put("responseModalities", JSONArray().put("AUDIO"))' in LIVE
+    # responseModalities only inside generationConfig: top-level setup.responseModalities closes with 1007
+    assert 'setup.put("responseModalities"' not in LIVE
     assert 'put("generationConfig", JSONObject()' in LIVE and "shape == 0" in LIVE
+    assert '"google_search"' not in LIVE and '"googleSearch"' in LIVE
+
+
+def test_camera_capture_requests_permission_and_never_returns_false_to_webview():
+    main = (Path(__file__).resolve().parent.parent / "android/app/src/main/java/app/adarsh/ensemble/MainActivity.kt").read_text()
+    assert "captureCameraPermission.launch(Manifest.permission.CAMERA)" in main
+    body = main.split("private fun launchCameraCapture", 1)[1].split("private fun startCameraCaptureIntent", 1)[0]
+    assert not re.search(r"^\s*false\s*$|return false", body, re.M)
 
 
 def test_key_is_never_placed_in_the_url_first():

@@ -209,11 +209,43 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) { null }
     }
 
+    /* The manifest declares CAMERA for Live vision, so Android refuses ACTION_IMAGE_CAPTURE until it is granted. */
+    private val captureCameraPermission = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        awaitingResult = false
+        val cb = fileCallback ?: return@registerForActivityResult
+        if (granted && !destroyed) startCameraCaptureIntent(cb)
+        else { fileCallback = null; cb.onReceiveValue(null); if (!granted) toastCameraDenied() }
+    }
+
+    private fun toastCameraDenied() {
+        try { android.widget.Toast.makeText(this, "Camera permission nahi mili.", android.widget.Toast.LENGTH_SHORT).show() } catch (_: Exception) { }
+    }
+
+    /** Always returns true: once WebView's callback is owned here, returning false makes WebView crash. */
     private fun launchCameraCapture(cb: ValueCallback<Array<Uri>>): Boolean {
         fileCallback?.onReceiveValue(null)
         fileCallback = cb
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            return try {
+                awaitingResult = true
+                captureCameraPermission.launch(Manifest.permission.CAMERA)
+                true
+            } catch (_: Exception) {
+                awaitingResult = false
+                fileCallback = null
+                cb.onReceiveValue(null)
+                true
+            }
+        }
+        startCameraCaptureIntent(cb)
+        return true
+    }
+
+    private fun startCameraCaptureIntent(cb: ValueCallback<Array<Uri>>) {
         val output = File(File(cacheDir, "updates").apply { mkdirs() }, "camera-input-${System.nanoTime()}.jpg")
-        return try {
+        try {
             cameraFile = output
             val uri = FileProvider.getUriForFile(this, "$packageName.updates", output)
             awaitingResult = true
@@ -222,14 +254,12 @@ class MainActivity : AppCompatActivity() {
                 clipData = ClipData.newUri(contentResolver, "ADARSH camera photo", uri)
             }
             cameraCapture.launch(intent)
-            true
         } catch (_: Exception) {
             cameraFile = null
             fileCallback = null
             output.delete()
             awaitingResult = false
             cb.onReceiveValue(null)
-            false
         }
     }
     // Export data: "Save file" writes the JSON wherever the user picks (Downloads, Drive...).
@@ -505,7 +535,7 @@ class MainActivity : AppCompatActivity() {
                 val i = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType(type)
                 if (params.mode == FileChooserParams.MODE_OPEN_MULTIPLE) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                 return try { awaitingResult = true; filePicker.launch(Intent.createChooser(i, null)); true } catch (_: ActivityNotFoundException) {
-                    fileCallback = null; cb.onReceiveValue(null); false
+                    awaitingResult = false; fileCallback = null; cb.onReceiveValue(null); true
                 }
             }
         }

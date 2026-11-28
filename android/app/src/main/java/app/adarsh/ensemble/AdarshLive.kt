@@ -279,21 +279,17 @@ class AdarshLive(private val ctx: Context, private val emit: (JSONObject) -> Uni
         setup.put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", instruction()))))
             .put("inputAudioTranscription", JSONObject())
             .put("outputAudioTranscription", JSONObject())
-        if (shape == 0) {
-            // exactly the shape of the official WebSocket example: responseModalities at the top of setup
-            setup.put("responseModalities", JSONArray().put("AUDIO"))
-            setup.put("generationConfig", JSONObject().put("speechConfig", speech))
-        } else {
-            setup.put("generationConfig", JSONObject()
-                .put("responseModalities", JSONArray().put("AUDIO"))
-                .put("speechConfig", speech))
-        }
+        // responseModalities belongs inside generationConfig; at the top of setup the server closes with 1007.
+        setup.put("generationConfig", JSONObject()
+            .put("responseModalities", JSONArray().put("AUDIO"))
+            .put("speechConfig", speech))
         // Resumption handles are asked for on the dialogue models; translate/transcribe sessions are short-lived.
         val handle = resumeHandle
         setup.put("sessionResumption", if (handle != null) JSONObject().put("handle", handle) else JSONObject())
-        if (role !in setOf("translate", "transcribe")) {
+        // shape 1 is the plain fallback: same session without tools, in case a model rejects the tool list.
+        if (shape == 0 && role !in setOf("translate", "transcribe")) {
             val tools = JSONArray()
-            if (webSearchEnabled) tools.put(JSONObject().put("google_search", JSONObject()))
+            if (webSearchEnabled) tools.put(JSONObject().put("googleSearch", JSONObject()))
             val gpt120b = JSONObject()
                 .put("name", "ask_gpt120b")
                 .put("description", "Use only when a factual answer needs extra verification or a complex question materially benefits from the app's Groq-only GPT-120B research route. Do not call for greetings or every simple turn. Send only the current question; never send private profile, history, keys, or unrelated details.")
